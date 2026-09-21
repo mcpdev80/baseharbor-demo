@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>BaseHarbor Demo</title>
+  <link rel="stylesheet" href="/assets/brand-tokens.css">
+  <link rel="stylesheet" href="/assets/styles.css">
+</head>
+<body>
+<header>
+  <div class="mark"><img src="https://raw.githubusercontent.com/mcpdev80/baseharbor/main/docs/brand/baseharbor-icon-64.png" alt="BaseHarbor"></div>
+  <div class="brand">
+    <h1>BaseHarbor Demo</h1>
+    <p>Build. Run. Control. Everywhere.</p>
+  </div>
+</header>
+<main>
+  <section class="hero">
+    <div class="panel">
+      <div class="eyebrow">Reference application</div>
+      <h2>A normal Compose app. Portable infrastructure underneath.</h2>
+      <p>This repository starts without BaseHarbor-specific files. BaseHarbor discovers the application, creates the contract and provides standard bindings. The app itself only speaks PostgreSQL, Redis, S3, HTTP and OTLP.</p>
+      <span class="badge" id="overall">CHECKING</span>
+    </div>
+    <div class="panel flow">ordinary compose repo
+        ↓
+baha app inspect
+        ↓
+baha app init
+        ↓
+plan / policy / preflight
+        ↓
+apply / verify / reconcile
+        ↓
+real application</div>
+  </section>
+
+  <section class="grid">
+    <article class="card" data-cap="sql"><h3>SQL</h3><div class="status"><span class="dot"></span><span>checking</span></div><div class="meta">DATABASE_URL</div><div class="actions"><button onclick="act('sql')">Create record</button></div><div class="result"></div></article>
+    <article class="card" data-cap="cache"><h3>Cache</h3><div class="status"><span class="dot"></span><span>checking</span></div><div class="meta">REDIS_URL</div><div class="actions"><button onclick="act('cache')">Set + read key</button></div><div class="result"></div></article>
+    <article class="card" data-cap="object_storage"><h3>Object Storage</h3><div class="status"><span class="dot"></span><span>checking</span></div><div class="meta">S3-compatible API</div><div class="actions"><button onclick="act('object')">Upload object</button></div><div class="result"></div></article>
+    <article class="card" data-cap="secrets"><h3>Secrets</h3><div class="status"><span class="dot"></span><span>checking</span></div><div class="meta">Presence only — values never shown</div><div class="actions"><button onclick="refresh()">Verify bindings</button></div><div class="result"></div></article>
+    <article class="card" data-cap="telemetry"><h3>Telemetry / Traces</h3><div class="status"><span class="dot"></span><span>checking</span></div><div class="meta">OTEL_EXPORTER_OTLP_ENDPOINT</div><div class="actions"><button onclick="act('trace')">Emit trace</button></div><div class="result"></div></article>
+    <article class="card" data-cap="companion"><h3>Cross-App Connectivity</h3><div class="status"><span class="dot"></span><span>checking</span></div><div class="meta">COMPANION_URL</div><div class="actions"><button onclick="act('companion')">Call companion</button></div><div class="result"></div></article>
+    <article class="card" data-cap="runtime_resource"><h3>Runtime Resource API</h3><div class="status"><span class="dot"></span><span>checking</span></div><div class="meta">Application-time S3 resource</div><div class="actions"><button onclick="act('runtime-resource')">Create resource</button></div><div class="result"></div></article>
+    <article class="card"><h3>Metrics</h3><div class="status ready"><span class="dot"></span><span>ready</span></div><div class="meta">OpenMetrics at /metrics</div><div class="actions"><button class="secondary" onclick="window.open('/metrics','_blank')">Open metrics</button></div><div class="result">demo_requests_total</div></article>
+    <article class="card"><h3>Demo Scenario</h3><div class="status ready"><span class="dot"></span><span>interactive</span></div><div class="meta">Runs real capability operations</div><div class="actions"><button onclick="scenario()">Run demo scenario</button></div><div class="result" id="scenario"></div></article>
+  </section>
+
+  <div class="footer">BaseHarbor Demo · provider-neutral application code · optimized for release acceptance and live demonstrations</div>
+</main>
+<script src="/assets/app.js"></script>
+</body>
+</html>

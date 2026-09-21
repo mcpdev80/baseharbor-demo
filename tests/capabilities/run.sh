@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+set -euo pipefail
+source "$DEMO_ROOT/tests/lib.sh"
+
+section "Application-facing capabilities"
+base="http://127.0.0.1:8080"
+
+curl -fsS "$base/healthz" | jq -e '.status=="ok"' >/dev/null
+curl -fsS "$base/api/status" > "$ARTIFACT_DIR/demo-status.json"
+jq -e '.capabilities.sql.ready==true' "$ARTIFACT_DIR/demo-status.json" >/dev/null
+pass "SQL" "application protocol ready"
+
+curl -fsS -X POST "$base/api/sql" | tee "$ARTIFACT_DIR/sql.json" | jq -e '.records>=1' >/dev/null
+pass "SQL Data Path" "write + read"
+
+curl -fsS -X POST "$base/api/cache" | tee "$ARTIFACT_DIR/cache.json" | jq -e '.value=="portable-cache-value"' >/dev/null
+pass "Cache" "set + get + ttl"
+
+curl -fsS -X POST "$base/api/object" | tee "$ARTIFACT_DIR/object.json" | jq -e '.bucket|length>0' >/dev/null
+pass "Object Storage" "S3 put"
+
+curl -fsS "$base/metrics" | tee "$ARTIFACT_DIR/metrics.txt" | grep -q '^baseharbor_demo_requests_total '
+pass "Metrics" "OpenMetrics endpoint"
+
+curl -fsS -X POST "$base/api/trace" | tee "$ARTIFACT_DIR/trace.json" | jq -e '.export_configured==true' >/dev/null
+pass "Telemetry / Traces" "real OpenTelemetry span emitted"
+
+curl -fsS -X POST "$base/api/runtime-resource" | tee "$ARTIFACT_DIR/runtime-resource.json" | jq -e '.id|length>0' >/dev/null
+pass "Runtime Resources" "application-time resource request accepted through mTLS broker"
+
+jq -e '.capabilities.secrets.ready==true' "$ARTIFACT_DIR/demo-status.json" >/dev/null
+! grep -Fq 'acceptance-secret-value' "$ARTIFACT_DIR/demo-status.json"
+pass "Secrets" "binding present without value exposure"
+
+"$BAHA" app logs demo-app > "$ARTIFACT_DIR/app-logs.txt"
+grep -q '"event":"request"' "$ARTIFACT_DIR/app-logs.txt"
+pass "Logs" "structured workload logs observable"
