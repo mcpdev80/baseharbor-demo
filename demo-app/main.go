@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"database/sql"
 	"embed"
 	"encoding/json"
@@ -65,6 +67,7 @@ func main() {
 	mux.HandleFunc("/api/object", a.objectAction)
 	mux.HandleFunc("/api/trace", a.traceAction)
 	mux.HandleFunc("/api/companion", a.companionAction)
+	mux.HandleFunc("/api/runtime-resource", a.runtimeResourceAction)
 	mux.HandleFunc("/", static)
 
 	port := env("PORT", "8080")
@@ -166,6 +169,7 @@ func (a *app) status(w http.ResponseWriter, r *http.Request) {
 		"secrets":        {Ready: os.Getenv("APP_SECRET") != "", Detail: "APP_SECRET binding present"},
 		"telemetry":      {Ready: os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") != "", Optional: true, Detail: "standard OTLP endpoint"},
 		"companion":      {Ready: a.companion != "", Optional: true, Detail: "cross-app target"},
+		"runtime_resource": {Ready: os.Getenv("BASEHARBOR_RUNTIME_API_URL") != "", Optional: true, Detail: "BaseHarbor runtime HTTPS API"},
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"service":      "baseharbor-demo",
@@ -305,6 +309,73 @@ func (a *app) traceAction(w http.ResponseWriter, r *http.Request) {
 		"export_configured": os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") != "",
 		"context_active": ctx != nil,
 	})
+}
+
+func (a *app) runtimeResourceAction(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w)
+		return
+	}
+	apiURL := os.Getenv("BASEHARBOR_RUNTIME_API_URL")
+	tokenFile := os.Getenv("BASEHARBOR_RUNTIME_TOKEN_FILE")
+	caFile := os.Getenv("BASEHARBOR_RUNTIME_CA_FILE")
+	certFile := os.Getenv("BASEHARBOR_RUNTIME_CLIENT_CERT_FILE")
+	keyFile := os.Getenv("BASEHARBOR_RUNTIME_CLIENT_KEY_FILE")
+	if apiURL == "" || tokenFile == "" || caFile == "" || certFile == "" || keyFile == "" {
+		writeError(w, "runtime resource API bindings missing")
+		return
+	}
+	token, err := os.ReadFile(tokenFile)
+	if err != nil {
+		writeError(w, "runtime token unavailable")
+		return
+	}
+	caPEM, err := os.ReadFile(caFile)
+	if err != nil {
+		writeError(w, "runtime CA unavailable")
+		return
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(caPEM) {
+		writeError(w, "runtime CA invalid")
+		return
+	}
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		writeError(w, "runtime client identity unavailable")
+		return
+	}
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+		Transport: &http.Transport{TLSClientConfig: &tls.Config{
+			MinVersion: tls.VersionTLS12,
+			RootCAs: pool,
+			Certificates: []tls.Certificate{cert},
+		}},
+	}
+	name := "demo-runtime-" + strconv.FormatInt(time.Now().Unix(), 10)
+	payload, _ := json.Marshal(map[string]string{"capability":"object-storage.s3/v1","name":name})
+	req, _ := http.NewRequestWithContext(r.Context(), http.MethodPost, strings.TrimRight(apiURL, "/")+"/runtime/v1/resources", bytes.NewReader(payload))
+	req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(string(token)))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", "demo-"+name)
+	resp, err := client.Do(req)
+	if err != nil {
+		writeError(w, err.Error())
+		return
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode/100 != 2 {
+		writeError(w, fmt.Sprintf("runtime API %s: %s", resp.Status, strings.TrimSpace(string(body))))
+		return
+	}
+	var created map[string]any
+	if err := json.Unmarshal(body, &created); err != nil {
+		writeError(w, "runtime API returned invalid JSON")
+		return
+	}
+	writeJSON(w, http.StatusOK, created)
 }
 
 func (a *app) companionAction(w http.ResponseWriter, r *http.Request) {
