@@ -1,0 +1,12 @@
+:root {
+  --bh-harbor-navy: #0B152A;
+  --bh-deep-navy: #0F192A;
+  --bh-ocean-blue: #0068E9;
+  --bh-signal-blue: #0583FB;
+  --bh-harbor-orange: #F96509;
+  --bh-mist: #E3EAF1;
+  --bh-steel: #1D2B47;
+  --bh-white: #FFFFFF;
+  --bh-font-ui: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --bh-font-code: "JetBrains Mono", "DejaVu Sans Mono", monospace;
+}
