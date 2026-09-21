@@ -73,6 +73,14 @@ pass "Application Init Deterministic" "full portable contract built by CLI plus 
 )
 pass "Plan" "human + JSON"
 
+(
+  cd "$DEMO_ROOT"
+  "$BAHA" up --control-plane-only --yes --recovery-file "$ARTIFACT_DIR/openbao-recovery.json" | tee "$ARTIFACT_DIR/control-plane-bootstrap.txt"
+  "$BAHA" openbao status | tee "$ARTIFACT_DIR/openbao-status.txt"
+)
+grep -q "AppRole login succeeded" "$ARTIFACT_DIR/openbao-status.txt"
+pass "Control Plane Bootstrap" "control plane and OpenBao prepared through the public baha up flow"
+
 # First apply is expected to materialize runtime + secret scope, then fail closed
 # because APP_SECRET is required before workload start.
 set +e
