@@ -25,6 +25,9 @@ pass "Metrics" "OpenMetrics endpoint"
 curl -fsS -X POST "$base/api/trace" | tee "$ARTIFACT_DIR/trace.json" | jq -e '.export_configured==true' >/dev/null
 pass "Telemetry / Traces" "real OpenTelemetry span emitted"
 
+curl -fsS -X POST "$base/api/runtime-resource" | tee "$ARTIFACT_DIR/runtime-resource.json" | jq -e '.id|length>0' >/dev/null
+pass "Runtime Resources" "application-time resource request accepted through mTLS broker"
+
 jq -e '.capabilities.secrets.ready==true' "$ARTIFACT_DIR/demo-status.json" >/dev/null
 ! grep -Fq 'acceptance-secret-value' "$ARTIFACT_DIR/demo-status.json"
 pass "Secrets" "binding present without value exposure"
