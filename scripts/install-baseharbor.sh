@@ -9,8 +9,9 @@ mkdir -p "$install_dir"
 if [ -n "$source_ref" ]; then
   workdir="${BASEHARBOR_SOURCE_DIR:-/tmp/baseharbor-candidate}"
   rm -rf "$workdir"
-  git clone --filter=blob:none https://github.com/mcpdev80/baseharbor.git "$workdir"
-  git -C "$workdir" checkout --detach "$source_ref"
+  git clone --filter=blob:none --no-checkout https://github.com/mcpdev80/baseharbor.git "$workdir"
+  git -C "$workdir" fetch --depth 1 origin "$source_ref"
+  git -C "$workdir" checkout --detach FETCH_HEAD
 
   (
     cd "$workdir"
