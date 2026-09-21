@@ -30,7 +30,8 @@ pass "Application Init Quick Ambiguity Gate" "multiple Compose candidates fail c
 clean_generated_state
 (
   cd "$DEMO_ROOT"
-  "$BAHA" app init baseharbor-demo     --environment dev     --postgres     --redis     --s3-bucket uploads     --require-secret APP_SECRET     --input tls_mode=local     --yes
+  "$BAHA" app init baseharbor-demo     --environment dev     --postgres     --redis     --s3-bucket uploads     --require-secret APP_SECRET
+  "$BAHA" app init --input tls_mode=local --yes
 )
 
 cat >> "$DEMO_ROOT/baseharbor.yaml" <<'EOF'

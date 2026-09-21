@@ -9,7 +9,8 @@ rm -rf "$companion/.baseharbor" "$companion/baseharbor.yaml"
 (
   cd "$companion"
   "$BAHA" app inspect . > "$ARTIFACT_DIR/companion-inspect.txt"
-  "$BAHA" app init companion-app --environment dev --input tls_mode=local --yes
+  "$BAHA" app init companion-app --environment dev
+  "$BAHA" app init --input tls_mode=local --yes
   "$BAHA" app apply > "$ARTIFACT_DIR/companion-apply.txt"
   "$BAHA" app doctor > "$ARTIFACT_DIR/companion-doctor.txt"
 )
