@@ -15,13 +15,17 @@ after="$(git -C "$DEMO_ROOT" status --porcelain --untracked-files=all)"
 test "$before" = "$after"
 pass "Repository Inspection" "read-only human + JSON"
 
+set +e
 (
   cd "$DEMO_ROOT"
   "$BAHA" app init --quick
-)
-test -s "$DEMO_ROOT/baseharbor.yaml"
-cp "$DEMO_ROOT/baseharbor.yaml" "$ARTIFACT_DIR/baseharbor.quick.yaml"
-pass "Application Init Quick" "contract generated from detected evidence"
+) >"$ARTIFACT_DIR/init-quick-ambiguous.txt" 2>&1
+quick_rc=$?
+set -e
+test "$quick_rc" -ne 0
+grep -q "multiple Compose files were detected" "$ARTIFACT_DIR/init-quick-ambiguous.txt"
+test ! -e "$DEMO_ROOT/baseharbor.yaml"
+pass "Application Init Quick Ambiguity Gate" "multiple Compose candidates fail closed without guessing"
 
 clean_generated_state
 (
