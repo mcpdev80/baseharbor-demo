@@ -8,6 +8,9 @@ export BASEHARBOR_INSTALL_DIR="${BASEHARBOR_INSTALL_DIR:-$DEMO_ROOT/.tools/bin}"
 mkdir -p "$ARTIFACT_DIR" "$BASEHARBOR_INSTALL_DIR"
 : > "$ARTIFACT_DIR/results.tsv"
 
+if [ -n "${BASEHARBOR_SOURCE_REF:-}" ]; then
+  export BASEHARBOR_RUNTIME_IMAGE=baseharbor-runtime:demo-candidate
+fi
 "$DEMO_ROOT/scripts/install-baseharbor.sh"
 export BAHA="$BASEHARBOR_INSTALL_DIR/baha"
 export BASEHARBOR_STATE_DIR="${BASEHARBOR_STATE_DIR:-/tmp/baseharbor-demo-platform-state}"
@@ -26,7 +29,17 @@ trap cleanup EXIT
 
 rm -rf "$BASEHARBOR_STATE_DIR"
 
-for test_script in   tests/lifecycle/run.sh   tests/policy/run.sh   tests/capabilities/run.sh   tests/security/run.sh   tests/reconciliation/run.sh   tests/connectivity/run.sh   tests/agent/run.sh   tests/mcp/run.sh   tests/failure/run.sh   tests/backup-restore/run.sh
+for test_script in \
+  tests/lifecycle/run.sh \
+  tests/policy/run.sh \
+  tests/capabilities/run.sh \
+  tests/security/run.sh \
+  tests/reconciliation/run.sh \
+  tests/connectivity/run.sh \
+  tests/agent/run.sh \
+  tests/mcp/run.sh \
+  tests/failure/run.sh \
+  tests/backup-restore/run.sh
 do
   bash "$DEMO_ROOT/$test_script"
 done
