@@ -19,10 +19,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/redis/go-redis/v9"
-	_ "github.com/jackc/pgx/v5/stdlib"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
@@ -163,12 +163,12 @@ func (a *app) status(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	caps := map[string]capabilityState{
-		"sql":            a.sqlStatus(ctx),
-		"cache":          a.cacheStatus(ctx),
-		"object_storage": a.s3Status(ctx),
-		"secrets":        {Ready: os.Getenv("APP_SECRET") != "", Detail: "APP_SECRET binding present"},
-		"telemetry":      {Ready: os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") != "", Optional: true, Detail: "standard OTLP endpoint"},
-		"companion":      {Ready: a.companion != "", Optional: true, Detail: "cross-app target"},
+		"sql":              a.sqlStatus(ctx),
+		"cache":            a.cacheStatus(ctx),
+		"object_storage":   a.s3Status(ctx),
+		"secrets":          {Ready: os.Getenv("APP_SECRET") != "", Detail: "APP_SECRET binding present"},
+		"telemetry":        {Ready: os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") != "", Optional: true, Detail: "standard OTLP endpoint"},
+		"companion":        {Ready: a.companion != "", Optional: true, Detail: "cross-app target"},
 		"runtime_resource": {Ready: os.Getenv("BASEHARBOR_RUNTIME_API_URL") != "", Optional: true, Detail: "BaseHarbor runtime HTTPS API"},
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -305,9 +305,9 @@ func (a *app) traceAction(w http.ResponseWriter, r *http.Request) {
 	span.End()
 	sc := span.SpanContext()
 	writeJSON(w, http.StatusOK, map[string]any{
-		"trace_id": sc.TraceID().String(),
+		"trace_id":          sc.TraceID().String(),
 		"export_configured": os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") != "",
-		"context_active": ctx != nil,
+		"context_active":    ctx != nil,
 	})
 }
 
@@ -348,13 +348,13 @@ func (a *app) runtimeResourceAction(w http.ResponseWriter, r *http.Request) {
 	client := &http.Client{
 		Timeout: 10 * time.Second,
 		Transport: &http.Transport{TLSClientConfig: &tls.Config{
-			MinVersion: tls.VersionTLS12,
-			RootCAs: pool,
+			MinVersion:   tls.VersionTLS12,
+			RootCAs:      pool,
 			Certificates: []tls.Certificate{cert},
 		}},
 	}
 	name := "demo-runtime-" + strconv.FormatInt(time.Now().Unix(), 10)
-	payload, _ := json.Marshal(map[string]string{"capability":"object-storage.s3/v1","name":name})
+	payload, _ := json.Marshal(map[string]string{"capability": "object-storage.s3/v1", "name": name})
 	req, _ := http.NewRequestWithContext(r.Context(), http.MethodPost, strings.TrimRight(apiURL, "/")+"/runtime/v1/resources", bytes.NewReader(payload))
 	req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(string(token)))
 	req.Header.Set("Content-Type", "application/json")
