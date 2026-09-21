@@ -27,7 +27,8 @@ rm -rf "$DEMO_ROOT/.baseharbor" "$DEMO_ROOT/baseharbor.yaml"
 
 (
   cd "$DEMO_ROOT"
-  "$BAHA" app init baseharbor-demo     --environment dev     --postgres     --redis     --require-secret APP_SECRET     --input tls_mode=local     --yes
+  "$BAHA" app init baseharbor-demo     --environment dev     --postgres     --redis     --require-secret APP_SECRET
+  "$BAHA" app init --input tls_mode=local --yes
 
   set +e
   "$BAHA" up --yes > "$ARTIFACT_DIR/backup-safe-first-up.txt" 2>&1
