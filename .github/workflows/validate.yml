@@ -1,0 +1,48 @@
+name: validate
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.25.x"
+
+      - name: Verify pristine consumer repository
+        run: |
+          test ! -e baseharbor.yaml
+          test ! -e .baseharbor
+          test ! -e companion-app/baseharbor.yaml
+
+      - name: Validate demo app
+        working-directory: demo-app
+        run: |
+          go test ./...
+          go vet ./...
+          test -z "$(gofmt -d .)"
+
+      - name: Validate companion app
+        working-directory: companion-app
+        run: |
+          go test ./...
+          go vet ./...
+          test -z "$(gofmt -d .)"
+
+      - name: Validate Compose models
+        run: |
+          docker compose config >/dev/null
+          docker compose --profile standalone config >/dev/null
+          docker compose -f companion-app/compose.yaml config >/dev/null
+
+      - name: Build demo images
+        run: |
+          docker compose build demo-app
+          docker compose -f companion-app/compose.yaml build companion-app
