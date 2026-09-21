@@ -24,7 +24,8 @@ async function refresh() {
   }
 }
 async function act(name) {
-  const card = document.querySelector('[data-cap="'+(name === 'object' ? 'object_storage' : name)+'"]');
+  const key = name === 'object' ? 'object_storage' : (name === 'runtime-resource' ? 'runtime_resource' : name);
+  const card = document.querySelector('[data-cap="'+key+'"]');
   const out = card ? card.querySelector('.result') : null;
   try {
     const r = await json('/api/'+name, {method:'POST'});
@@ -37,7 +38,7 @@ async function act(name) {
 async function scenario() {
   const out = document.getElementById('scenario');
   out.textContent = 'running...';
-  const steps = ['sql','cache','object','trace'];
+  const steps = ['sql','cache','object','trace','runtime-resource'];
   const lines = [];
   for (const step of steps) {
     try { await json('/api/'+step,{method:'POST'}); lines.push(step.toUpperCase()+' PASS'); }
