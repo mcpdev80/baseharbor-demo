@@ -53,6 +53,10 @@ telemetry:
     signals:
       - traces
 
+logs:
+  collect:
+    - application
+
 runtime:
   permissions:
     - capability: object-storage.s3/v1
