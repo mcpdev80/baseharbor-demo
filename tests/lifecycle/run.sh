@@ -75,7 +75,8 @@ pass "Plan" "human + JSON"
 
 (
   cd "$DEMO_ROOT"
-  "$BAHA" up --control-plane-only --yes --recovery-file "$ARTIFACT_DIR/openbao-recovery.json" | tee "$ARTIFACT_DIR/control-plane-bootstrap.txt"
+  "$BAHA" up --control-plane-only --yes | tee "$ARTIFACT_DIR/control-plane-bootstrap.txt"
+  "$BAHA" openbao bootstrap --recovery-file "$ARTIFACT_DIR/openbao-recovery.json" | tee "$ARTIFACT_DIR/openbao-bootstrap.txt"
   "$BAHA" openbao status | tee "$ARTIFACT_DIR/openbao-status.txt"
 )
 grep -q "AppRole login succeeded" "$ARTIFACT_DIR/openbao-status.txt"
