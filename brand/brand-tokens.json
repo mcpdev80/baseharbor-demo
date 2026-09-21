@@ -1,0 +1,19 @@
+{
+  "brand": "BaseHarbor",
+  "version": "CI v1.0",
+  "colors": {
+    "harbor_navy": "#0B152A",
+    "deep_navy": "#0F192A",
+    "ocean_blue": "#0068E9",
+    "signal_blue": "#0583FB",
+    "harbor_orange": "#F96509",
+    "mist": "#E3EAF1",
+    "steel": "#1D2B47",
+    "white": "#FFFFFF"
+  },
+  "typography": {
+    "primary": "Inter",
+    "code": "JetBrains Mono"
+  },
+  "tagline": "Build. Run. Control. Everywhere."
+}
