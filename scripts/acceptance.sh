@@ -11,7 +11,7 @@ mkdir -p "$ARTIFACT_DIR" "$BASEHARBOR_INSTALL_DIR"
 if [ -n "${BASEHARBOR_SOURCE_REF:-}" ]; then
   export BASEHARBOR_RUNTIME_IMAGE=baseharbor-runtime:demo-candidate
 fi
-"$DEMO_ROOT/scripts/install-baseharbor.sh"
+bash "$DEMO_ROOT/scripts/install-baseharbor.sh"
 export BAHA="$BASEHARBOR_INSTALL_DIR/baha"
 export BASEHARBOR_STATE_DIR="${BASEHARBOR_STATE_DIR:-/tmp/baseharbor-demo-platform-state}"
 
