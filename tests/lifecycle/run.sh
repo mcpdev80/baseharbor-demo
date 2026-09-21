@@ -91,6 +91,7 @@ set +e
 ) >"$ARTIFACT_DIR/apply-missing-secret.txt" 2>&1
 rc=$?
 set -e
+cat "$ARTIFACT_DIR/apply-missing-secret.txt"
 test "$rc" -ne 0
 grep -q "required secrets check failed" "$ARTIFACT_DIR/apply-missing-secret.txt"
 pass "Required Secret Gate" "first apply materialized secret scope and failed closed before workload start"
