@@ -1,0 +1,6 @@
+.baseharbor/
+baseharbor.yaml
+envs/*/baseharbor.yaml
+artifacts/
+*.log
+.DS_Store
