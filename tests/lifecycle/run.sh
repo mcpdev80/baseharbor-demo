@@ -36,6 +36,11 @@ clean_generated_state
 
 cat >> "$DEMO_ROOT/baseharbor.yaml" <<'EOF'
 
+workload:
+  compose: compose.yaml
+  services:
+    - demo-app
+
 metrics:
   sources:
     - name: application
