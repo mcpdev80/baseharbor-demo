@@ -73,16 +73,18 @@ pass "Application Init Deterministic" "full portable contract built by CLI plus 
 )
 pass "Plan" "human + JSON"
 
-# First startup is expected to fail closed because APP_SECRET is required.
+# First apply is expected to materialize runtime + secret scope, then fail closed
+# because APP_SECRET is required before workload start.
 set +e
 (
   cd "$DEMO_ROOT"
-  BASEHARBOR_METRICS_ENABLED=true BASEHARBOR_LOGS_ENABLED=true BASEHARBOR_TRACES_ENABLED=true     "$BAHA" up --yes
-) >"$ARTIFACT_DIR/up-missing-secret.txt" 2>&1
+  BASEHARBOR_METRICS_ENABLED=true BASEHARBOR_LOGS_ENABLED=true BASEHARBOR_TRACES_ENABLED=true     "$BAHA" app apply
+) >"$ARTIFACT_DIR/apply-missing-secret.txt" 2>&1
 rc=$?
 set -e
 test "$rc" -ne 0
-pass "Required Secret Gate" "missing secret failed closed"
+grep -q "required secrets check failed" "$ARTIFACT_DIR/apply-missing-secret.txt"
+pass "Required Secret Gate" "first apply materialized secret scope and failed closed before workload start"
 
 (
   cd "$DEMO_ROOT"
