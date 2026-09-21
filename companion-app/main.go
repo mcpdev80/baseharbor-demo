@@ -19,8 +19,8 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"message": "Hello from the BaseHarbor companion app",
-			"time": time.Now().UTC().Format(time.RFC3339),
-			"caller": r.RemoteAddr,
+			"time":    time.Now().UTC().Format(time.RFC3339),
+			"caller":  r.RemoteAddr,
 		})
 	})
 	log.Printf("companion-app listening on :%s", port)
