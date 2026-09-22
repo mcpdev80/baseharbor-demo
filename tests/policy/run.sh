@@ -14,8 +14,9 @@ pass "Policy" "explain + check + JSON"
 before="$(sha256sum "$DEMO_ROOT/baseharbor.yaml" | awk '{print $1}')"
 (
   cd "$DEMO_ROOT"
-  "$BAHA" status -e dev -o json > "$ARTIFACT_DIR/status-dev.json"
+  "$BAHA" policy check -e dev -o json > "$ARTIFACT_DIR/policy-dev.json"
 )
 after="$(sha256sum "$DEMO_ROOT/baseharbor.yaml" | awk '{print $1}')"
 test "$before" = "$after"
-pass "Environment Handling" "-e does not rewrite portable intent"
+jq -e '.environment=="dev"' "$ARTIFACT_DIR/policy-dev.json" >/dev/null
+pass "Environment Handling" "-e resolves deployment context without rewriting portable intent"
