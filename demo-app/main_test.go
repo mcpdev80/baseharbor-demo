@@ -88,8 +88,8 @@ func TestStatusPublishesSafeDeveloperLinks(t *testing.T) {
 }
 
 func TestServerTransportDefaultsToHTTPForStandalone(t *testing.T) {
-	t.Setenv("BASEHARBOR_TLS_CERT_FILE", "")
-	t.Setenv("BASEHARBOR_TLS_KEY_FILE", "")
+	t.Setenv("TLS_CERT_FILE", "")
+	t.Setenv("TLS_KEY_FILE", "")
 
 	mode, cert, key, err := serverTransport()
 	if err != nil {
@@ -100,9 +100,19 @@ func TestServerTransportDefaultsToHTTPForStandalone(t *testing.T) {
 	}
 }
 
+func TestServerTransportFailsClosedForManagedAppWithoutTLS(t *testing.T) {
+	t.Setenv("TLS_CERT_FILE", "")
+	t.Setenv("TLS_KEY_FILE", "")
+	t.Setenv("BASEHARBOR_RUNTIME_API_URL", "https://baseharbor-runtime:8443")
+
+	if _, _, _, err := serverTransport(); err == nil {
+		t.Fatal("expected BaseHarbor-managed app without TLS bindings to fail closed")
+	}
+}
+
 func TestServerTransportRequiresCompleteTLSBinding(t *testing.T) {
-	t.Setenv("BASEHARBOR_TLS_CERT_FILE", "/tmp/cert.pem")
-	t.Setenv("BASEHARBOR_TLS_KEY_FILE", "")
+	t.Setenv("TLS_CERT_FILE", "/tmp/cert.pem")
+	t.Setenv("TLS_KEY_FILE", "")
 
 	if _, _, _, err := serverTransport(); err == nil {
 		t.Fatal("expected incomplete TLS binding to fail")
@@ -119,8 +129,8 @@ func TestServerTransportUsesManagedTLSFiles(t *testing.T) {
 	if err := os.WriteFile(key, []byte("key"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("BASEHARBOR_TLS_CERT_FILE", cert)
-	t.Setenv("BASEHARBOR_TLS_KEY_FILE", key)
+	t.Setenv("TLS_CERT_FILE", cert)
+	t.Setenv("TLS_KEY_FILE", key)
 
 	mode, gotCert, gotKey, err := serverTransport()
 	if err != nil {
