@@ -192,7 +192,8 @@ func (a *app) status(w http.ResponseWriter, r *http.Request) {
 		"bindings": []string{
 			"DATABASE_URL", "REDIS_URL/VALKEY_URL", "S3_ENDPOINT/AWS_ENDPOINT_URL",
 			"S3_BUCKET", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "APP_SECRET",
-			"OTEL_EXPORTER_OTLP_ENDPOINT",
+			"OTEL_EXPORTER_OTLP_ENDPOINT", "TLS_CERT_FILE", "TLS_KEY_FILE",
+			"BASEHARBOR_RUNTIME_DOCS_URL",
 		},
 	})
 }
@@ -469,13 +470,17 @@ func runtimeResourceConfigured() bool {
 }
 
 func serverTransport() (mode, certFile, keyFile string, err error) {
-	certFile = strings.TrimSpace(os.Getenv("BASEHARBOR_TLS_CERT_FILE"))
-	keyFile = strings.TrimSpace(os.Getenv("BASEHARBOR_TLS_KEY_FILE"))
+	certFile = strings.TrimSpace(os.Getenv("TLS_CERT_FILE"))
+	keyFile = strings.TrimSpace(os.Getenv("TLS_KEY_FILE"))
+	managed := strings.TrimSpace(os.Getenv("BASEHARBOR_RUNTIME_API_URL")) != "" ||
+		strings.TrimSpace(os.Getenv("BASEHARBOR_RUNTIME_TOKEN_FILE")) != ""
 	switch {
+	case certFile == "" && keyFile == "" && managed:
+		return "", "", "", fmt.Errorf("BaseHarbor-managed demo requires TLS_CERT_FILE and TLS_KEY_FILE")
 	case certFile == "" && keyFile == "":
 		return "http", "", "", nil
 	case certFile == "" || keyFile == "":
-		return "", "", "", fmt.Errorf("BaseHarbor TLS requires both BASEHARBOR_TLS_CERT_FILE and BASEHARBOR_TLS_KEY_FILE")
+		return "", "", "", fmt.Errorf("BaseHarbor TLS requires both TLS_CERT_FILE and TLS_KEY_FILE")
 	default:
 		if _, statErr := os.Stat(certFile); statErr != nil {
 			return "", "", "", fmt.Errorf("inspect BaseHarbor TLS certificate: %w", statErr)
