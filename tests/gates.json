@@ -1,0 +1,12 @@
+[
+  {"name":"init","requires":[]},
+  {"name":"lifecycle","requires":["init"]},
+  {"name":"policy","requires":["init"]},
+  {"name":"capabilities","requires":["lifecycle"]},
+  {"name":"connectivity","requires":["lifecycle"]},
+  {"name":"security","requires":["init"]},
+  {"name":"reconciliation","requires":["lifecycle"]},
+  {"name":"machine","requires":["init"]},
+  {"name":"failure","requires":["lifecycle"]},
+  {"name":"recovery","requires":["lifecycle"]}
+]
