@@ -20,6 +20,11 @@ on:
         description: BaseHarbor release tag for release mode, for example v0.4.14
         required: false
         type: string
+      groups:
+        description: Comma-separated demo groups, empty means full acceptance
+        required: false
+        default: ""
+        type: string
   repository_dispatch:
     types:
       - baseharbor_release
@@ -35,6 +40,7 @@ jobs:
       ACCEPTANCE_MODE: ${{ github.event_name == 'repository_dispatch' && 'release' || inputs.mode }}
       BASEHARBOR_SOURCE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'candidate' && inputs.source_ref || '' }}
       BASEHARBOR_VERSION: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.version || (github.event_name == 'workflow_dispatch' && inputs.mode == 'release' && inputs.version || '') }}
+      DEMO_GROUPS: ${{ github.event_name == 'workflow_dispatch' && inputs.groups || '' }}
 
     steps:
       - uses: actions/checkout@v7.0.1
