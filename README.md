@@ -66,6 +66,17 @@ The UI provides real interactive operations for:
 
 The application uses only standard application-facing interfaces. Concrete BaseHarbor reference providers are not application dependencies.
 
+The web UI keeps capability execution results in one persistent activity history. Capability cards show current readiness only; action responses are never overwritten by status refreshes. Developer links expose health, metrics and the Runtime API Swagger URL when BaseHarbor provides it.
+
+For BaseHarbor-managed execution the demo is fail-closed on transport security. The application consumes the canonical file bindings:
+
+```text
+TLS_CERT_FILE
+TLS_KEY_FILE
+```
+
+and serves HTTPS when they are present. If BaseHarbor runtime identity is present but these TLS bindings are missing, the demo refuses to start instead of silently downgrading to HTTP. Standalone Compose remains independently usable over HTTP because it is outside the BaseHarbor-managed exposure path.
+
 ## Run without BaseHarbor
 
 The repository remains understandable as a normal Compose project.
