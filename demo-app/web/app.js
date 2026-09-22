@@ -85,17 +85,18 @@ function setDeveloperLinks(links = {}) {
     health: links.health,
   };
   Object.entries(definitions).forEach(([name, href]) => {
-    const link = document.querySelector('[data-link="' + name + '"]');
-    if (!link) return;
-    if (href) {
-      link.href = href;
-      link.classList.remove("disabled");
-      link.removeAttribute("aria-disabled");
-    } else {
-      link.removeAttribute("href");
-      link.classList.add("disabled");
-      link.setAttribute("aria-disabled", "true");
-    }
+    const links = document.querySelectorAll('[data-link="' + name + '"]');
+    links.forEach((link) => {
+      if (href) {
+        link.href = href;
+        link.classList.remove("disabled");
+        link.removeAttribute("aria-disabled");
+      } else {
+        link.removeAttribute("href");
+        link.classList.add("disabled");
+        link.setAttribute("aria-disabled", "true");
+      }
+    });
   });
 }
 
