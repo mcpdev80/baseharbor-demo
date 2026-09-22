@@ -12,7 +12,7 @@ pass "Secret Leak Checks" "no acceptance secret in captured output"
 set +e
 (
   cd "$DEMO_ROOT"
-  BASEHARBOR_PROVIDER_PROMETHEUS_SCOPE=external "$BAHA" app preflight
+  BASEHARBOR_PROVIDER_PROMETHEUS_SCOPE=external "$BAHA" app apply
 ) >"$ARTIFACT_DIR/unsupported-placement.txt" 2>&1
 rc=$?
 set -e
