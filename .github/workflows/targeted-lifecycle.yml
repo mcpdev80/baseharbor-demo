@@ -15,6 +15,7 @@ jobs:
     env:
       ARTIFACT_DIR: /tmp/baseharbor-demo-targeted
       BASEHARBOR_SOURCE_REF: ${{ vars.BASEHARBOR_TARGET_REF || 'develop' }}
+      BASEHARBOR_TEST_RUNTIME: docker
 
     steps:
       - uses: actions/checkout@v7.0.1
@@ -33,26 +34,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          export DEMO_ROOT="$GITHUB_WORKSPACE"
-          export ARTIFACT_DIR
-          export BASEHARBOR_INSTALL_DIR="$RUNNER_TEMP/baseharbor-demo-bin"
-          export BASEHARBOR_STATE_DIR="$RUNNER_TEMP/baseharbor-demo-platform-state"
-          mkdir -p "$ARTIFACT_DIR" "$BASEHARBOR_INSTALL_DIR"
-          : > "$ARTIFACT_DIR/results.tsv"
-          export BASEHARBOR_RUNTIME_IMAGE=baseharbor-runtime:demo-candidate
-          bash scripts/install-baseharbor.sh
-          export BAHA="$BASEHARBOR_INSTALL_DIR/baha"
-
-          cleanup() {
-            set +e
-            cd "$DEMO_ROOT"
-            "$BAHA" app destroy --yes >/dev/null 2>&1 || true
-            docker ps -q | xargs -r docker unpause >/dev/null 2>&1
-          }
-          trap cleanup EXIT
-
-          rm -rf "$BASEHARBOR_STATE_DIR"
-          bash tests/lifecycle/run.sh
+          rm -rf "$ARTIFACT_DIR"
+          bash scripts/acceptance.sh lifecycle
 
       - name: Upload lifecycle evidence
         if: always()
