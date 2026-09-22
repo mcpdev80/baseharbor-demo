@@ -19,8 +19,13 @@ pass "Cache" "set + get + ttl"
 curl -fsS -X POST "$base/api/object" | tee "$ARTIFACT_DIR/object.json" | jq -e '.bucket|length>0' >/dev/null
 pass "Object Storage" "S3 put"
 
+curl -fsS -X POST "$base/api/secret" | tee "$ARTIFACT_DIR/secret.json" | jq -e '.present==true and .value_exposed==false' >/dev/null
+! grep -Fq 'acceptance-secret-value' "$ARTIFACT_DIR/secret.json"
+pass "Secrets" "dedicated binding verification without value exposure"
+
 curl -fsS "$base/metrics" | tee "$ARTIFACT_DIR/metrics.txt" | grep -q '^baseharbor_demo_requests_total '
-pass "Metrics" "OpenMetrics endpoint"
+curl -fsS -X POST "$base/api/metrics/verify" | tee "$ARTIFACT_DIR/metrics-verify.json" | jq -e '.present==true and .metric=="baseharbor_demo_requests_total"' >/dev/null
+pass "Metrics" "OpenMetrics endpoint + application verification action"
 
 curl -fsS -X POST "$base/api/trace" | tee "$ARTIFACT_DIR/trace.json" | jq -e '.export_configured==true' >/dev/null
 pass "Telemetry / Traces" "real OpenTelemetry span emitted"
@@ -30,7 +35,6 @@ pass "Runtime Resources" "application-time resource request accepted through mTL
 
 jq -e '.capabilities.secrets.ready==true' "$ARTIFACT_DIR/demo-status.json" >/dev/null
 ! grep -Fq 'acceptance-secret-value' "$ARTIFACT_DIR/demo-status.json"
-pass "Secrets" "binding present without value exposure"
 
 "$BAHA" app logs demo-app > "$ARTIFACT_DIR/app-logs.txt"
 grep -q '"event":"request"' "$ARTIFACT_DIR/app-logs.txt"
