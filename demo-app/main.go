@@ -175,11 +175,11 @@ func (a *app) status(w http.ResponseWriter, r *http.Request) {
 		"sql":              a.sqlStatus(ctx),
 		"cache":            a.cacheStatus(ctx),
 		"object_storage":   a.s3Status(ctx),
-		"secrets":          {Ready: os.Getenv("APP_SECRET") != "", Detail: "APP_SECRET binding present"},
+		"secrets":          secretCapabilityStatus(),
 		"metrics":          {Ready: true, Detail: "OpenMetrics endpoint /metrics"},
-		"telemetry":        {Ready: os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") != "", Optional: true, Detail: "standard OTLP endpoint"},
-		"companion":        {Ready: a.companion != "", Optional: true, Detail: "cross-app target"},
-		"runtime_resource": {Ready: runtimeResourceConfigured(), Optional: true, Detail: "BaseHarbor runtime HTTPS API"},
+		"telemetry":        optionalCapabilityStatus(os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") != "", "standard OTLP endpoint", "OTLP endpoint not configured"),
+		"companion":        optionalCapabilityStatus(a.companion != "", "cross-app target configured", "companion not configured"),
+		"runtime_resource": optionalCapabilityStatus(runtimeResourceConfigured(), "BaseHarbor runtime HTTPS API", "runtime resource API bindings missing"),
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"service":      "baseharbor-demo",
@@ -452,6 +452,20 @@ func (a *app) companionAction(w http.ResponseWriter, r *http.Request) {
 		result = string(body)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"status": resp.StatusCode, "response": result})
+}
+
+func secretCapabilityStatus() capabilityState {
+	if os.Getenv("APP_SECRET") == "" {
+		return capabilityState{Detail: "APP_SECRET binding missing"}
+	}
+	return capabilityState{Ready: true, Detail: "APP_SECRET binding present"}
+}
+
+func optionalCapabilityStatus(ready bool, readyDetail, missingDetail string) capabilityState {
+	if ready {
+		return capabilityState{Ready: true, Optional: true, Detail: readyDetail}
+	}
+	return capabilityState{Optional: true, Detail: missingDetail}
 }
 
 func runtimeResourceConfigured() bool {
