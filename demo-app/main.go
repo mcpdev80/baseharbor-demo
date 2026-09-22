@@ -65,6 +65,8 @@ func main() {
 	mux.HandleFunc("/api/sql", a.sqlAction)
 	mux.HandleFunc("/api/cache", a.cacheAction)
 	mux.HandleFunc("/api/object", a.objectAction)
+	mux.HandleFunc("/api/secret", a.secretAction)
+	mux.HandleFunc("/api/metrics/verify", a.metricsVerifyAction)
 	mux.HandleFunc("/api/trace", a.traceAction)
 	mux.HandleFunc("/api/companion", a.companionAction)
 	mux.HandleFunc("/api/runtime-resource", a.runtimeResourceAction)
@@ -72,7 +74,14 @@ func main() {
 
 	port := env("PORT", "8080")
 	server := &http.Server{Addr: ":" + port, Handler: requestLog(mux), ReadHeaderTimeout: 5 * time.Second}
-	log.Printf(`{"level":"info","event":"demo_started","port":%q}`, port)
+	mode, certFile, keyFile, err := serverTransport()
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf(`{"level":"info","event":"demo_started","port":%q,"transport":%q}`, port, mode)
+	if mode == "https" {
+		log.Fatal(server.ListenAndServeTLS(certFile, keyFile))
+	}
 	log.Fatal(server.ListenAndServe())
 }
 
@@ -167,13 +176,19 @@ func (a *app) status(w http.ResponseWriter, r *http.Request) {
 		"cache":            a.cacheStatus(ctx),
 		"object_storage":   a.s3Status(ctx),
 		"secrets":          {Ready: os.Getenv("APP_SECRET") != "", Detail: "APP_SECRET binding present"},
+		"metrics":          {Ready: true, Detail: "OpenMetrics endpoint /metrics"},
 		"telemetry":        {Ready: os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") != "", Optional: true, Detail: "standard OTLP endpoint"},
 		"companion":        {Ready: a.companion != "", Optional: true, Detail: "cross-app target"},
-		"runtime_resource": {Ready: os.Getenv("BASEHARBOR_RUNTIME_API_URL") != "", Optional: true, Detail: "BaseHarbor runtime HTTPS API"},
+		"runtime_resource": {Ready: runtimeResourceConfigured(), Optional: true, Detail: "BaseHarbor runtime HTTPS API"},
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"service":      "baseharbor-demo",
 		"capabilities": caps,
+		"links": map[string]string{
+			"swagger": strings.TrimSpace(os.Getenv("BASEHARBOR_RUNTIME_DOCS_URL")),
+			"metrics": "/metrics",
+			"health":  "/healthz",
+		},
 		"bindings": []string{
 			"DATABASE_URL", "REDIS_URL/VALKEY_URL", "S3_ENDPOINT/AWS_ENDPOINT_URL",
 			"S3_BUCKET", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "APP_SECRET",
@@ -294,6 +309,36 @@ func (a *app) objectAction(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"bucket": a.s3Bucket, "object": name, "bytes": len(body)})
 }
 
+func (a *app) secretAction(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w)
+		return
+	}
+	present := os.Getenv("APP_SECRET") != ""
+	if !present {
+		writeError(w, "APP_SECRET binding missing")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"name":          "APP_SECRET",
+		"present":       true,
+		"value_exposed": false,
+	})
+}
+
+func (a *app) metricsVerifyAction(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"endpoint": "/metrics",
+		"metric":   "baseharbor_demo_requests_total",
+		"present":  true,
+		"value":    a.requests.Load(),
+	})
+}
+
 func (a *app) traceAction(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		methodNotAllowed(w)
@@ -321,7 +366,7 @@ func (a *app) runtimeResourceAction(w http.ResponseWriter, r *http.Request) {
 	caFile := os.Getenv("BASEHARBOR_RUNTIME_CA_FILE")
 	certFile := os.Getenv("BASEHARBOR_RUNTIME_CLIENT_CERT_FILE")
 	keyFile := os.Getenv("BASEHARBOR_RUNTIME_CLIENT_KEY_FILE")
-	if apiURL == "" || tokenFile == "" || caFile == "" || certFile == "" || keyFile == "" {
+	if !runtimeResourceConfigured() {
 		writeError(w, "runtime resource API bindings missing")
 		return
 	}
@@ -406,6 +451,40 @@ func (a *app) companionAction(w http.ResponseWriter, r *http.Request) {
 		result = string(body)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"status": resp.StatusCode, "response": result})
+}
+
+func runtimeResourceConfigured() bool {
+	for _, name := range []string{
+		"BASEHARBOR_RUNTIME_API_URL",
+		"BASEHARBOR_RUNTIME_TOKEN_FILE",
+		"BASEHARBOR_RUNTIME_CA_FILE",
+		"BASEHARBOR_RUNTIME_CLIENT_CERT_FILE",
+		"BASEHARBOR_RUNTIME_CLIENT_KEY_FILE",
+	} {
+		if strings.TrimSpace(os.Getenv(name)) == "" {
+			return false
+		}
+	}
+	return true
+}
+
+func serverTransport() (mode, certFile, keyFile string, err error) {
+	certFile = strings.TrimSpace(os.Getenv("BASEHARBOR_TLS_CERT_FILE"))
+	keyFile = strings.TrimSpace(os.Getenv("BASEHARBOR_TLS_KEY_FILE"))
+	switch {
+	case certFile == "" && keyFile == "":
+		return "http", "", "", nil
+	case certFile == "" || keyFile == "":
+		return "", "", "", fmt.Errorf("BaseHarbor TLS requires both BASEHARBOR_TLS_CERT_FILE and BASEHARBOR_TLS_KEY_FILE")
+	default:
+		if _, statErr := os.Stat(certFile); statErr != nil {
+			return "", "", "", fmt.Errorf("inspect BaseHarbor TLS certificate: %w", statErr)
+		}
+		if _, statErr := os.Stat(keyFile); statErr != nil {
+			return "", "", "", fmt.Errorf("inspect BaseHarbor TLS private key: %w", statErr)
+		}
+		return "https", certFile, keyFile, nil
+	}
 }
 
 func static(w http.ResponseWriter, r *http.Request) {
