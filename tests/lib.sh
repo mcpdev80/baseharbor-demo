@@ -54,7 +54,27 @@ assert_no_secret_leak() {
 
 run_json() {
   local name="$1"; shift
-  "$@" > "$ARTIFACT_DIR/$name.json"
-  jq -e . "$ARTIFACT_DIR/$name.json" >/dev/null
-  assert_no_secret_leak "$ARTIFACT_DIR/$name.json"
+  local stdout_file="$ARTIFACT_DIR/$name.json"
+  local stderr_file="$ARTIFACT_DIR/$name.stderr.txt"
+  local rc
+
+  set +e
+  "$@" >"$stdout_file" 2>"$stderr_file"
+  rc=$?
+  set -e
+
+  if [ "$rc" -ne 0 ]; then
+    printf 'run_json %s failed with exit code %s\n' "$name" "$rc" >&2
+    cat "$stderr_file" >&2 || true
+    return "$rc"
+  fi
+
+  if ! jq -e . "$stdout_file" >/dev/null; then
+    printf 'run_json %s produced invalid JSON\n' "$name" >&2
+    cat "$stdout_file" >&2 || true
+    cat "$stderr_file" >&2 || true
+    return 1
+  fi
+
+  assert_no_secret_leak "$stdout_file"
 }
