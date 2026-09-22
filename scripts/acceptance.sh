@@ -7,6 +7,7 @@ export ARTIFACT_DIR="${ARTIFACT_DIR:-$DEMO_ROOT/artifacts}"
 export BASEHARBOR_INSTALL_DIR="${BASEHARBOR_INSTALL_DIR:-$DEMO_ROOT/.tools/bin}"
 mkdir -p "$ARTIFACT_DIR" "$BASEHARBOR_INSTALL_DIR"
 : > "$ARTIFACT_DIR/results.tsv"
+: > "$ARTIFACT_DIR/groups.tsv"
 
 if [ -n "${BASEHARBOR_SOURCE_REF:-}" ]; then
   export BASEHARBOR_RUNTIME_IMAGE=baseharbor-runtime:demo-candidate
@@ -115,7 +116,7 @@ run_group() {
       bash "$DEMO_ROOT/tests/reconciliation/run.sh"
       ;;
     machine)
-      bash "$DEMO_ROOT/tests/agent/run.sh"
+      bash "$DEMO_ROOT/tests/agent/run.sh" || return $?
       bash "$DEMO_ROOT/tests/mcp/run.sh"
       ;;
     failure)
@@ -130,7 +131,14 @@ run_group() {
 for group in init lifecycle policy capabilities connectivity security reconciliation machine failure recovery; do
   if [ "${selected[$group]:-0}" = "1" ]; then
     printf '\n>>> demo-%s\n' "$group"
-    run_group "$group"
+    if run_group "$group"; then
+      printf '%s\tPASS\tselected acceptance group passed\n' "$group" >> "$ARTIFACT_DIR/groups.tsv"
+    else
+      rc=$?
+      printf '%s\tFAIL\tselected acceptance group failed\n' "$group" >> "$ARTIFACT_DIR/groups.tsv"
+      bash "$DEMO_ROOT/scripts/report.sh" "$ARTIFACT_DIR/results.tsv"
+      exit "$rc"
+    fi
   fi
 done
 
