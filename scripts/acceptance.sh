@@ -14,6 +14,8 @@ fi
 bash "$DEMO_ROOT/scripts/install-baseharbor.sh"
 export BAHA="$BASEHARBOR_INSTALL_DIR/baha"
 export BASEHARBOR_STATE_DIR="${BASEHARBOR_STATE_DIR:-/tmp/baseharbor-demo-platform-state}"
+export BASEHARBOR_TEST_RUNTIME="${BASEHARBOR_TEST_RUNTIME:-docker}"
+command -v "$BASEHARBOR_TEST_RUNTIME" >/dev/null 2>&1
 
 cleanup() {
   status=$?
@@ -22,7 +24,7 @@ cleanup() {
   "$BAHA" app destroy --yes >/dev/null 2>&1 || true
   cd "$DEMO_ROOT/companion-app"
   "$BAHA" app destroy --yes >/dev/null 2>&1 || true
-  docker ps -q | xargs -r docker unpause >/dev/null 2>&1
+  "$BASEHARBOR_TEST_RUNTIME" ps -q | xargs -r "$BASEHARBOR_TEST_RUNTIME" unpause >/dev/null 2>&1
   exit "$status"
 }
 trap cleanup EXIT
