@@ -5,9 +5,20 @@ DEMO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export DEMO_ROOT
 export ARTIFACT_DIR="${ARTIFACT_DIR:-$DEMO_ROOT/artifacts}"
 export BASEHARBOR_INSTALL_DIR="${BASEHARBOR_INSTALL_DIR:-$DEMO_ROOT/.tools/bin}"
+GATE_REGISTRY="$DEMO_ROOT/tests/gates.json"
+
 mkdir -p "$ARTIFACT_DIR" "$BASEHARBOR_INSTALL_DIR"
 : > "$ARTIFACT_DIR/results.tsv"
 : > "$ARTIFACT_DIR/groups.tsv"
+
+jq -e '
+  type == "array" and length > 0 and
+  all(.[];
+    (.name | type == "string" and length > 0) and
+    (.requires | type == "array") and
+    all(.requires[]; type == "string" and length > 0)
+  )
+' "$GATE_REGISTRY" >/dev/null
 
 if [ -n "${BASEHARBOR_SOURCE_REF:-}" ]; then
   export BASEHARBOR_RUNTIME_IMAGE=baseharbor-runtime:demo-candidate
@@ -32,115 +43,73 @@ trap cleanup EXIT
 
 rm -rf "$BASEHARBOR_STATE_DIR"
 
-declare -A requested=()
 declare -A selected=()
 
-add_group() {
-  case "$1" in
-    init|lifecycle|policy|capabilities|connectivity|security|reconciliation|machine|failure|recovery)
-      requested["$1"]=1
-      ;;
-    *)
-      echo "Unknown demo acceptance group: $1" >&2
-      exit 2
-      ;;
-  esac
+gate_exists() {
+  jq -e --arg gate "$1" 'any(.[]; .name == $gate)' "$GATE_REGISTRY" >/dev/null
+}
+
+select_gate() {
+  local gate="$1"
+  gate_exists "$gate" || {
+    echo "Unknown demo acceptance gate: $gate" >&2
+    exit 2
+  }
+  selected["$gate"]=1
 }
 
 if [ "$#" -eq 0 ] && [ -z "${DEMO_GROUPS:-}" ]; then
-  for group in init lifecycle policy capabilities connectivity security reconciliation machine failure recovery; do
-    requested["$group"]=1
-  done
+  while IFS= read -r gate; do
+    select_gate "$gate"
+  done < <(jq -r '.[].name' "$GATE_REGISTRY")
 else
   if [ -n "${DEMO_GROUPS:-}" ]; then
     IFS=',' read -r -a env_groups <<< "$DEMO_GROUPS"
-    for group in "${env_groups[@]}"; do
-      add_group "$group"
+    for gate in "${env_groups[@]}"; do
+      select_gate "$gate"
     done
   fi
-  for group in "$@"; do
-    add_group "$group"
+  for gate in "$@"; do
+    select_gate "$gate"
   done
 fi
 
-for group in "${!requested[@]}"; do
-  case "$group" in
-    init)
-      selected[init]=1
-      ;;
-    lifecycle)
-      selected[init]=1
-      selected[lifecycle]=1
-      ;;
-    policy)
-      selected[init]=1
-      selected[policy]=1
-      ;;
-    security)
-      selected[init]=1
-      selected[security]=1
-      ;;
-    machine)
-      selected[init]=1
-      selected[machine]=1
-      ;;
-    capabilities|connectivity|reconciliation|failure|recovery)
-      selected[init]=1
-      selected[lifecycle]=1
-      selected["$group"]=1
-      ;;
-  esac
+changed=1
+while [ "$changed" -eq 1 ]; do
+  changed=0
+  for gate in "${!selected[@]}"; do
+    while IFS= read -r dependency; do
+      [ -n "$dependency" ] || continue
+      gate_exists "$dependency" || {
+        echo "Gate $gate requires unknown gate $dependency" >&2
+        exit 2
+      }
+      if [ "${selected[$dependency]:-0}" != "1" ]; then
+        selected["$dependency"]=1
+        changed=1
+      fi
+    done < <(jq -r --arg gate "$gate" '.[] | select(.name == $gate) | .requires[]' "$GATE_REGISTRY")
+  done
 done
 
-run_group() {
-  case "$1" in
-    init)
-      bash "$DEMO_ROOT/tests/init/run.sh"
-      ;;
-    lifecycle)
-      bash "$DEMO_ROOT/tests/lifecycle/run.sh"
-      ;;
-    policy)
-      bash "$DEMO_ROOT/tests/policy/run.sh"
-      ;;
-    capabilities)
-      bash "$DEMO_ROOT/tests/capabilities/run.sh"
-      ;;
-    connectivity)
-      bash "$DEMO_ROOT/tests/connectivity/run.sh"
-      ;;
-    security)
-      bash "$DEMO_ROOT/tests/security/run.sh"
-      ;;
-    reconciliation)
-      bash "$DEMO_ROOT/tests/reconciliation/run.sh"
-      ;;
-    machine)
-      bash "$DEMO_ROOT/tests/agent/run.sh" || return $?
-      bash "$DEMO_ROOT/tests/mcp/run.sh"
-      ;;
-    failure)
-      bash "$DEMO_ROOT/tests/failure/run.sh"
-      ;;
-    recovery)
-      bash "$DEMO_ROOT/tests/backup-restore/run.sh"
-      ;;
-  esac
-}
+while IFS= read -r gate; do
+  [ "${selected[$gate]:-0}" = "1" ] || continue
+  script="$DEMO_ROOT/tests/$gate/run.sh"
+  test -x "$script" || test -f "$script" || {
+    echo "Demo gate script missing: $script" >&2
+    exit 2
+  }
 
-for group in init lifecycle policy capabilities connectivity security reconciliation machine failure recovery; do
-  if [ "${selected[$group]:-0}" = "1" ]; then
-    printf '\n>>> demo-%s\n' "$group"
-    if run_group "$group"; then
-      printf '%s\tPASS\tselected acceptance group passed\n' "$group" >> "$ARTIFACT_DIR/groups.tsv"
-    else
-      rc=$?
-      printf '%s\tFAIL\tselected acceptance group failed\n' "$group" >> "$ARTIFACT_DIR/groups.tsv"
-      bash "$DEMO_ROOT/scripts/report.sh" "$ARTIFACT_DIR/results.tsv"
-      exit "$rc"
-    fi
+  printf '\n>>> demo-%s\n' "$gate"
+  if bash "$script"; then
+    printf '%s\tPASS\tselected acceptance gate passed\n' "$gate" >> "$ARTIFACT_DIR/groups.tsv"
+  else
+    rc=$?
+    printf '%s\tFAIL\tselected acceptance gate failed\n' "$gate" >> "$ARTIFACT_DIR/groups.tsv"
+    bash "$DEMO_ROOT/scripts/report.sh" "$ARTIFACT_DIR/results.tsv"
+    exit "$rc"
   fi
-done
+done < <(jq -r '.[].name' "$GATE_REGISTRY")
 
 bash "$DEMO_ROOT/scripts/report.sh" "$ARTIFACT_DIR/results.tsv"
 trap - EXIT
