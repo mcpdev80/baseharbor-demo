@@ -90,6 +90,8 @@ func TestStatusPublishesSafeDeveloperLinks(t *testing.T) {
 func TestServerTransportDefaultsToHTTPForStandalone(t *testing.T) {
 	t.Setenv("TLS_CERT_FILE", "")
 	t.Setenv("TLS_KEY_FILE", "")
+	t.Setenv("BASEHARBOR_RUNTIME_API_URL", "")
+	t.Setenv("BASEHARBOR_RUNTIME_TOKEN_FILE", "")
 
 	mode, cert, key, err := serverTransport()
 	if err != nil {
