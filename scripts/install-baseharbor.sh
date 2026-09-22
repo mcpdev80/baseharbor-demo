@@ -4,6 +4,17 @@ set -euo pipefail
 install_dir="${BASEHARBOR_INSTALL_DIR:-$PWD/.tools/bin}"
 source_ref="${BASEHARBOR_SOURCE_REF:-}"
 version="${BASEHARBOR_VERSION:-}"
+container_cli="${BASEHARBOR_TEST_RUNTIME:-}"
+if [ -z "$container_cli" ]; then
+  if command -v docker >/dev/null 2>&1; then
+    container_cli=docker
+  elif command -v podman >/dev/null 2>&1; then
+    container_cli=podman
+  else
+    echo "Neither docker nor podman is available." >&2
+    exit 1
+  fi
+fi
 mkdir -p "$install_dir"
 
 if [ -n "$source_ref" ]; then
@@ -20,7 +31,7 @@ if [ -n "$source_ref" ]; then
     mkdir -p /tmp/baseharbor-runtime-image
     cp "$install_dir/baha" /tmp/baseharbor-runtime-image/baha
     cp deploy/control-plane/Dockerfile.binary /tmp/baseharbor-runtime-image/Dockerfile
-    docker build --pull -t baseharbor-runtime:demo-candidate /tmp/baseharbor-runtime-image
+    "$container_cli" build --pull -t baseharbor-runtime:demo-candidate /tmp/baseharbor-runtime-image
   )
 
   export BASEHARBOR_RUNTIME_IMAGE=baseharbor-runtime:demo-candidate
