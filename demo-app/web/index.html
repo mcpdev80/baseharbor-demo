@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="/assets/styles.css">
 </head>
 <body>
-<header>
+<header class="site-header">
   <div class="mark"><img src="https://raw.githubusercontent.com/mcpdev80/baseharbor/main/docs/brand/baseharbor-icon-64.png" alt="BaseHarbor"></div>
   <div class="brand">
     <h1>BaseHarbor Demo</h1>
@@ -17,56 +17,23 @@
 </header>
 
 <main>
-  <section class="hero">
-    <div class="panel">
+  <section class="overview panel">
+    <div class="overview-copy">
       <div class="eyebrow">Reference application</div>
       <h2>A normal Compose app. Portable infrastructure underneath.</h2>
-      <p>This repository starts without BaseHarbor-specific files. BaseHarbor discovers the application, creates the contract and provides standard bindings. The app itself only speaks PostgreSQL, Redis, S3, HTTPS and OTLP.</p>
-      <div class="hero-actions">
-        <span class="badge" id="overall">CHECKING</span>
-        <a class="link-button" data-link="swagger" target="_blank" rel="noopener noreferrer">Open Swagger</a>
-        <a class="link-button secondary" data-link="metrics" target="_blank" rel="noopener noreferrer">Open Metrics</a>
-      </div>
+      <p>BaseHarbor discovers the app, provides portable managed capabilities and keeps the application code provider-neutral.</p>
     </div>
-
-    <div class="panel flow">ordinary compose repo
-        ↓
-baha app inspect
-        ↓
-baha app init
-        ↓
-plan / policy / preflight
-        ↓
-apply / verify / reconcile
-        ↓
-real application</div>
-  </section>
-
-  <section class="panel developer">
-    <div>
-      <div class="eyebrow">Developer endpoints</div>
-      <h3>Runtime and application endpoints</h3>
-    </div>
-    <div class="developer-links">
-      <a data-link="swagger" target="_blank" rel="noopener noreferrer">Runtime API / Swagger</a>
-      <a data-link="metrics" target="_blank" rel="noopener noreferrer">Metrics</a>
-      <a data-link="health" target="_blank" rel="noopener noreferrer">Health</a>
+    <div class="overview-actions">
+      <span class="badge" id="overall">CHECKING</span>
+      <button type="button" onclick="scenario()">Run demo scenario</button>
+      <a class="link-button" data-link="swagger" target="_blank" rel="noopener noreferrer">Swagger</a>
+      <a class="link-button secondary" data-link="metrics" target="_blank" rel="noopener noreferrer">Metrics</a>
+      <a class="link-button secondary" data-link="health" target="_blank" rel="noopener noreferrer">Health</a>
     </div>
   </section>
 
-  <section class="panel activity-panel">
-    <div class="activity-header">
-      <div>
-        <div class="eyebrow">Activity</div>
-        <h3>Capability history</h3>
-      </div>
-      <button class="secondary" type="button" onclick="clearHistory()">Clear history</button>
-    </div>
-    <div id="history" class="history" aria-live="polite"></div>
-  </section>
-
-  <section class="grid">
-    <article class="card" data-cap="sql">
+  <section class="dashboard" aria-label="Capability dashboard">
+    <article class="card pos-sql" data-cap="sql">
       <h3>SQL</h3>
       <div class="status"><span class="dot"></span><span>checking</span></div>
       <div class="meta">DATABASE_URL</div>
@@ -74,7 +41,7 @@ real application</div>
       <div class="actions"><button data-action="sql" onclick="runAction('sql','/api/sql','SQL')">Create record</button></div>
     </article>
 
-    <article class="card" data-cap="cache">
+    <article class="card pos-cache" data-cap="cache">
       <h3>Cache</h3>
       <div class="status"><span class="dot"></span><span>checking</span></div>
       <div class="meta">REDIS_URL / VALKEY_URL</div>
@@ -82,7 +49,7 @@ real application</div>
       <div class="actions"><button data-action="cache" onclick="runAction('cache','/api/cache','Cache')">Set + read key</button></div>
     </article>
 
-    <article class="card" data-cap="object_storage">
+    <article class="card pos-object" data-cap="object_storage">
       <h3>Object Storage</h3>
       <div class="status"><span class="dot"></span><span>checking</span></div>
       <div class="meta">S3-compatible API</div>
@@ -90,42 +57,37 @@ real application</div>
       <div class="actions"><button data-action="object_storage" onclick="runAction('object_storage','/api/object','Object Storage')">Upload object</button></div>
     </article>
 
-    <article class="card" data-cap="secrets">
+    <article class="card pos-secrets" data-cap="secrets">
       <h3>Secrets</h3>
       <div class="status"><span class="dot"></span><span>checking</span></div>
-      <div class="meta">Presence only — values never shown</div>
+      <div class="meta">Values never exposed</div>
       <div class="cap-detail"></div>
       <div class="actions"><button data-action="secrets" onclick="runAction('secrets','/api/secret','Secrets')">Verify binding</button></div>
     </article>
 
-    <article class="card" data-cap="telemetry">
+    <article class="card pos-telemetry" data-cap="telemetry">
       <h3>Telemetry / Traces</h3>
       <div class="status"><span class="dot"></span><span>checking</span></div>
-      <div class="meta">OTEL_EXPORTER_OTLP_ENDPOINT</div>
+      <div class="meta">OTLP</div>
       <div class="cap-detail"></div>
       <div class="actions"><button data-action="telemetry" onclick="runAction('telemetry','/api/trace','Telemetry / Traces')">Emit trace</button></div>
     </article>
 
-    <article class="card" data-cap="companion">
-      <h3>Cross-App Connectivity</h3>
-      <div class="status"><span class="dot"></span><span>checking</span></div>
-      <div class="meta">COMPANION_URL</div>
-      <div class="cap-detail"></div>
-      <div class="actions"><button data-action="companion" onclick="runAction('companion','/api/companion','Cross-App Connectivity')">Call companion</button></div>
-    </article>
+    <section class="panel activity-panel" aria-label="Capability history">
+      <div class="activity-header">
+        <div>
+          <div class="eyebrow">Activity</div>
+          <h3>Capability history</h3>
+        </div>
+        <button class="secondary compact" type="button" onclick="clearHistory()">Clear history</button>
+      </div>
+      <div id="history" class="history" aria-live="polite"></div>
+    </section>
 
-    <article class="card" data-cap="runtime_resource">
-      <h3>Runtime Resource API</h3>
-      <div class="status"><span class="dot"></span><span>checking</span></div>
-      <div class="meta">Application-time S3 resource</div>
-      <div class="cap-detail"></div>
-      <div class="actions"><button data-action="runtime_resource" onclick="runAction('runtime_resource','/api/runtime-resource','Runtime Resource')">Create resource</button></div>
-    </article>
-
-    <article class="card" data-cap="metrics">
+    <article class="card pos-metrics" data-cap="metrics">
       <h3>Metrics</h3>
       <div class="status"><span class="dot"></span><span>checking</span></div>
-      <div class="meta">OpenMetrics at /metrics</div>
+      <div class="meta">OpenMetrics /metrics</div>
       <div class="cap-detail"></div>
       <div class="actions">
         <button data-action="metrics" onclick="runAction('metrics','/api/metrics/verify','Metrics')">Verify metrics</button>
@@ -133,16 +95,24 @@ real application</div>
       </div>
     </article>
 
-    <article class="card">
-      <h3>Demo Scenario</h3>
-      <div class="status ready"><span class="dot"></span><span>interactive</span></div>
-      <div class="meta">Runs all currently available capability operations</div>
-      <div class="cap-detail">Unavailable optional capabilities are skipped and recorded.</div>
-      <div class="actions"><button onclick="scenario()">Run demo scenario</button></div>
+    <article class="card pos-companion" data-cap="companion">
+      <h3>Cross-App Connectivity</h3>
+      <div class="status"><span class="dot"></span><span>checking</span></div>
+      <div class="meta">COMPANION_URL</div>
+      <div class="cap-detail"></div>
+      <div class="actions"><button data-action="companion" onclick="runAction('companion','/api/companion','Cross-App Connectivity')">Call companion</button></div>
+    </article>
+
+    <article class="card pos-runtime" data-cap="runtime_resource">
+      <h3>Runtime Resource API</h3>
+      <div class="status"><span class="dot"></span><span>checking</span></div>
+      <div class="meta">Application-time resource</div>
+      <div class="cap-detail"></div>
+      <div class="actions"><button data-action="runtime_resource" onclick="runAction('runtime_resource','/api/runtime-resource','Runtime Resource')">Create resource</button></div>
     </article>
   </section>
 
-  <div class="footer">BaseHarbor Demo · provider-neutral application code · optimized for release acceptance and live demonstrations</div>
+  <div class="footer">BaseHarbor Demo · provider-neutral application code · release acceptance and live demonstration</div>
 </main>
 
 <script src="/assets/app.js"></script>
