@@ -40,6 +40,26 @@ def root_compose_response(match, text):
             return number + "\n"
     raise RuntimeError("root compose.yaml was not offered by guided init")
 
+def capability_selection_response(match, text):
+    clean = ANSI_ESCAPE.sub("", text)
+    if "Use ↑/↓ to move, Space to toggle, Enter to confirm." not in clean:
+        return "1,2,3,4,5,6,7\n"
+
+    choices = {}
+    for mark, number in re.findall(r"\[([ x])\]\s+(\d+)\.\s+[^\r\n]+", clean):
+        choices[int(number)] = mark == "x"
+    if len(choices) < 7:
+        raise RuntimeError("capability picker did not render all seven choices")
+
+    keys = []
+    for number in range(1, 8):
+        if not choices[number]:
+            keys.append(" ")
+        if number < 7:
+            keys.append("\x1b[B")
+    keys.append("\r")
+    return "".join(keys)
+
 def run_tty(name, argv, rules, env=None, timeout=900):
     log_path = ARTIFACT_DIR / f"{name}.txt"
     merged_env = os.environ.copy()
@@ -125,7 +145,7 @@ init_rules = [
     Rule(r"Application name \[[^\]]+\]:\s*$", "\n"),
     Rule(r"Environment \[[^\]]+\]:\s*$", "\n"),
     Rule(r"Multiple Compose files were detected\..*?>\s*$", callback=root_compose_response),
-    Rule(r"Select application capabilities .*?>\s*$", "1,2,3,4,5,6,7\n"),
+    Rule(r"Select application capabilities.*?7\. Application logs", callback=capability_selection_response),
     Rule(r"PostgreSQL instances \[[^\]]+\]:\s*$", "\n"),
     Rule(r"Valkey / Redis instances \[[^\]]+\]:\s*$", "\n"),
     Rule(r"S3 buckets \[[^\]]+\]:\s*$", "uploads\n"),
