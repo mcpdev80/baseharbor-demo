@@ -2,27 +2,15 @@
 set -euo pipefail
 source "$DEMO_ROOT/tests/lib.sh"
 
-section "Application lifecycle"
+section "Application lifecycle after guided adoption"
 
-# First apply is expected to materialize runtime + secret scope, then fail closed
-# because APP_SECRET is required before workload start.
-set +e
-(
-  cd "$DEMO_ROOT"
-  BASEHARBOR_METRICS_ENABLED=true BASEHARBOR_LOGS_ENABLED=true BASEHARBOR_TRACES_ENABLED=true     "$BAHA" app apply
-) >"$ARTIFACT_DIR/apply-missing-secret.txt" 2>&1
-rc=$?
-set -e
-cat "$ARTIFACT_DIR/apply-missing-secret.txt"
-test "$rc" -ne 0
-grep -q "required secrets check failed" "$ARTIFACT_DIR/apply-missing-secret.txt"
-pass "Required Secret Gate" "first apply materialized secret scope and failed closed before workload start"
+test -s "$DEMO_ROOT/baseharbor.yaml"
 
 (
   cd "$DEMO_ROOT"
-  printf '%s' 'acceptance-secret-value' | "$BAHA" app secret set APP_SECRET --stdin
+  "$BAHA" plan | tee "$ARTIFACT_DIR/plan.txt"
+  run_json plan "$BAHA" plan -o json
   "$BAHA" app preflight | tee "$ARTIFACT_DIR/preflight.txt"
-  BASEHARBOR_METRICS_ENABLED=true BASEHARBOR_LOGS_ENABLED=true BASEHARBOR_TRACES_ENABLED=true     "$BAHA" app apply | tee "$ARTIFACT_DIR/apply.txt"
   "$BAHA" status | tee "$ARTIFACT_DIR/status.txt"
   "$BAHA" doctor | tee "$ARTIFACT_DIR/doctor.txt"
   run_json status "$BAHA" status -o json
@@ -32,19 +20,20 @@ pass "Required Secret Gate" "first apply materialized secret scope and failed cl
 grep -q '^READY' "$ARTIFACT_DIR/doctor.txt"
 assert_no_secret_leak "$ARTIFACT_DIR/status.txt"
 assert_no_secret_leak "$ARTIFACT_DIR/doctor.txt"
-pass "Apply / Status / Doctor" "verified application lifecycle"
+pass "Plan / Preflight / Status / Doctor" "advanced read-only diagnostics remain available after the normal happy path"
 
 (
   cd "$DEMO_ROOT"
   "$BAHA" app down
-  "$BAHA" app up
-  "$BAHA" app doctor | tee "$ARTIFACT_DIR/doctor-after-resume.txt"
+  BASEHARBOR_TRACES_ENABLED=true "$BAHA" up | tee "$ARTIFACT_DIR/up-after-down.txt"
+  "$BAHA" doctor | tee "$ARTIFACT_DIR/doctor-after-resume.txt"
 )
 grep -q '^READY' "$ARTIFACT_DIR/doctor-after-resume.txt"
-pass "Down / Up" "persistent runtime resumed"
+pass "Down / Up" "recommended repository command resumes persistent runtime"
 
 (
   cd "$DEMO_ROOT"
-  "$BAHA" app apply > "$ARTIFACT_DIR/apply-idempotent.txt"
+  BASEHARBOR_TRACES_ENABLED=true "$BAHA" up > "$ARTIFACT_DIR/up-idempotent.txt"
 )
-pass "Idempotency" "second apply converged"
+grep -Eq 'already READY|No changes|READY' "$ARTIFACT_DIR/up-idempotent.txt"
+pass "Idempotency" "second baha up converged without manual repair"

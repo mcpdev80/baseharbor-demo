@@ -1,12 +1,13 @@
 [
+  {"name":"guided","requires":[]},
   {"name":"init","requires":[]},
-  {"name":"lifecycle","requires":["init"]},
-  {"name":"policy","requires":["init"]},
+  {"name":"lifecycle","requires":["guided"]},
+  {"name":"policy","requires":["guided"]},
   {"name":"capabilities","requires":["lifecycle"]},
   {"name":"connectivity","requires":["lifecycle"]},
-  {"name":"security","requires":["init"]},
+  {"name":"security","requires":["guided"]},
   {"name":"reconciliation","requires":["lifecycle"]},
-  {"name":"machine","requires":["init"]},
+  {"name":"machine","requires":["lifecycle"]},
   {"name":"failure","requires":["lifecycle"]},
   {"name":"recovery","requires":["lifecycle"]}
 ]
