@@ -40,6 +40,29 @@ def root_compose_response(match, text):
             return number + "\n"
     raise RuntimeError("root compose.yaml was not offered by guided init")
 
+def all_capabilities_response(match, text):
+    clean = ANSI_ESCAPE.sub("", text)
+    choices = re.findall(
+        r"(?m)^\s*>?\s*\[([ x])\]\s+(\d+)\.\s+"
+        r"(SQL Database \(PostgreSQL-compatible evidence\)|"
+        r"Cache \(Redis/Valkey-compatible evidence\)|"
+        r"Object Storage \(S3-compatible\)|Managed Secrets|"
+        r"Metrics \(/metrics\)|OTLP telemetry|Application logs)\s*$",
+        clean,
+    )
+    latest = choices[-7:]
+    if len(latest) != 7 or [int(number) for _, number, _ in latest] != list(range(1, 8)):
+        raise RuntimeError("capability checkbox state could not be parsed")
+
+    keys = []
+    for index, (mark, _, _) in enumerate(latest):
+        if mark != "x":
+            keys.append(" ")
+        if index < len(latest) - 1:
+            keys.append("\x1b[B")
+    keys.append("\r")
+    return "".join(keys)
+
 def capability_selection_response(match, text):
     clean = ANSI_ESCAPE.sub("", text)
     if "Use ↑/↓ to move, Space to toggle, Enter to confirm." not in clean:
