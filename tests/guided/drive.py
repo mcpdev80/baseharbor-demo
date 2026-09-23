@@ -30,8 +30,11 @@ class Rule:
             return self.callback(match, text)
         return self.response
 
+ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+
 def root_compose_response(match, text):
-    candidates = re.findall(r"(?m)^\s*(\d+)\.\s+([^\r\n]+compose\.ya?ml)\s*$", text)
+    clean = ANSI_ESCAPE.sub("", text)
+    candidates = re.findall(r"(?m)^\s*(\d+)[.)]\s+([^\r\n]*?compose\.ya?ml)\s*$", clean)
     for number, path in candidates:
         if path.strip() == "compose.yaml":
             return number + "\n"
