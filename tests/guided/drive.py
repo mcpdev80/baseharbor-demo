@@ -42,6 +42,9 @@ def root_compose_response(match, text):
 
 def capability_selection_response(match, text):
     clean = ANSI_ESCAPE.sub("", text)
+    if "Use ↑/↓ to move, Space to toggle, Enter to confirm." not in clean:
+        return "1,2,3,4,5,6,7\n"
+
     choices = {}
     for mark, number in re.findall(r"\[([ x])\]\s+(\d+)\.\s+[^\r\n]+", clean):
         choices[int(number)] = mark == "x"
