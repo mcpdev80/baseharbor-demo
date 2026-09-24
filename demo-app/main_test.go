@@ -1,13 +1,21 @@
 package main
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
+	"encoding/pem"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestSecretActionDoesNotExposeValue(t *testing.T) {
@@ -141,6 +149,54 @@ func TestServerTransportUsesManagedTLSFiles(t *testing.T) {
 	if mode != "https" || gotCert != cert || gotKey != key {
 		t.Fatalf("got mode=%q cert=%q key=%q", mode, gotCert, gotKey)
 	}
+}
+
+func TestTLSConfigFromCAFile(t *testing.T) {
+	dir := t.TempDir()
+	caPath := filepath.Join(dir, "ca.pem")
+	if err := os.WriteFile(caPath, testCAPEM(t), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	config, err := tlsConfigFromCAFile(caPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.RootCAs == nil || config.MinVersion == 0 {
+		t.Fatalf("unexpected TLS config: %+v", config)
+	}
+}
+
+func TestTLSConfigFromCAFileRejectsInvalidPEM(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "ca.pem")
+	if err := os.WriteFile(path, []byte("not-a-certificate"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tlsConfigFromCAFile(path); err == nil {
+		t.Fatal("expected invalid CA file to fail")
+	}
+}
+
+func testCAPEM(t *testing.T) []byte {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	template := &x509.Certificate{
+		SerialNumber:          big.NewInt(now.UnixNano()),
+		Subject:               pkix.Name{CommonName: "baseharbor-demo-test-ca"},
+		NotBefore:             now.Add(-time.Minute),
+		NotAfter:              now.Add(time.Hour),
+		IsCA:                  true,
+		BasicConstraintsValid: true,
+		KeyUsage:              x509.KeyUsageCertSign,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
 }
 
 func TestEmbeddedUIContainsPersistentHistoryAndSwaggerLink(t *testing.T) {
