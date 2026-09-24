@@ -81,7 +81,7 @@ def capability_selection_response(match, text):
         if number < 7:
             keys.append("\x1b[B")
     keys.append("\n")
-    return "".join(keys)
+    return keys
 
 def run_tty(name, argv, rules, env=None, timeout=900):
     log_path = ARTIFACT_DIR / f"{name}.txt"
@@ -138,7 +138,12 @@ def run_tty(name, argv, rules, env=None, timeout=900):
                                 continue
                             value = rule.value(match, buffer)
                             if value is not None:
-                                os.write(master, value.encode())
+                                if isinstance(value, (list, tuple)):
+                                    for key in value:
+                                        os.write(master, key.encode())
+                                        time.sleep(0.05)
+                                else:
+                                    os.write(master, value.encode())
                             rule.used += 1
                             cursor += match.end()
                             search_text = buffer[cursor:]
