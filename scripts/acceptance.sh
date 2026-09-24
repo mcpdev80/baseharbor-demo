@@ -44,6 +44,8 @@ trap cleanup EXIT
 rm -rf "$BASEHARBOR_STATE_DIR"
 
 declare -A selected=()
+declare -A gate_status=()
+full_suite=0
 
 gate_exists() {
   jq -e --arg gate "$1" 'any(.[]; .name == $gate)' "$GATE_REGISTRY" >/dev/null
@@ -59,6 +61,7 @@ select_gate() {
 }
 
 if [ "$#" -eq 0 ] && [ -z "${DEMO_GROUPS:-}" ]; then
+  full_suite=1
   while IFS= read -r gate; do
     select_gate "$gate"
   done < <(jq -r '.[].name' "$GATE_REGISTRY")
@@ -92,6 +95,55 @@ while [ "$changed" -eq 1 ]; do
   done
 done
 
+record_group() {
+  local gate="$1"
+  local status="$2"
+  local detail="$3"
+  gate_status["$gate"]="$status"
+  printf '%s\t%s\t%s\n' "$gate" "$status" "$detail" >> "$ARTIFACT_DIR/groups.tsv"
+}
+
+mark_remaining_blocked() {
+  local failed_gate="$1"
+  local seen_failed=0
+  local gate
+  while IFS= read -r gate; do
+    [ "${selected[$gate]:-0}" = "1" ] || continue
+    if [ "$gate" = "$failed_gate" ]; then
+      seen_failed=1
+      continue
+    fi
+    [ "$seen_failed" -eq 1 ] || continue
+    [ -z "${gate_status[$gate]:-}" ] || continue
+    record_group "$gate" BLOCKED "not executed because the acceptance environment became unusable after $failed_gate"
+  done < <(jq -r '.[].name' "$GATE_REGISTRY")
+}
+
+environment_is_usable() {
+  local status_file="$ARTIFACT_DIR/environment-after-failure.json"
+  local stderr_file="$ARTIFACT_DIR/environment-after-failure.stderr.txt"
+
+  [ -s "$DEMO_ROOT/baseharbor.yaml" ] || return 1
+
+  set +e
+  (
+    cd "$DEMO_ROOT"
+    "$BAHA" status -o json >"$status_file" 2>"$stderr_file"
+  )
+  set -e
+
+  [ -s "$status_file" ] || return 1
+  jq -e '.state == "running"' "$status_file" >/dev/null 2>&1
+}
+
+report_and_exit() {
+  local rc="$1"
+  set +e
+  bash "$DEMO_ROOT/scripts/report.sh" "$ARTIFACT_DIR/results.tsv"
+  set -e
+  exit "$rc"
+}
+
 while IFS= read -r gate; do
   [ "${selected[$gate]:-0}" = "1" ] || continue
   script="$DEMO_ROOT/tests/$gate/run.sh"
@@ -100,17 +152,46 @@ while IFS= read -r gate; do
     exit 2
   }
 
+  # Dependencies define selection and execution order. A failed prerequisite does
+  # not suppress later diagnostics as long as the shared runtime is still usable.
+  while IFS= read -r dependency; do
+    [ -n "$dependency" ] || continue
+    if [ -z "${gate_status[$dependency]:-}" ]; then
+      echo "Gate order is invalid: $gate requires $dependency before it has run" >&2
+      exit 2
+    fi
+  done < <(jq -r --arg gate "$gate" '.[] | select(.name == $gate) | .requires[]' "$GATE_REGISTRY")
+
   printf '\n>>> demo-%s\n' "$gate"
-  if bash "$script"; then
-    printf '%s\tPASS\tselected acceptance gate passed\n' "$gate" >> "$ARTIFACT_DIR/groups.tsv"
-  else
-    rc=$?
-    printf '%s\tFAIL\tselected acceptance gate failed\n' "$gate" >> "$ARTIFACT_DIR/groups.tsv"
-    bash "$DEMO_ROOT/scripts/report.sh" "$ARTIFACT_DIR/results.tsv"
-    exit "$rc"
+  set +e
+  bash "$script"
+  rc=$?
+  set -e
+
+  if [ "$rc" -eq 0 ]; then
+    record_group "$gate" PASS "selected acceptance gate passed"
+    continue
   fi
+
+  if [ "$full_suite" -ne 1 ]; then
+    record_group "$gate" FAIL "selected acceptance gate failed (exit $rc)"
+    report_and_exit "$rc"
+  fi
+
+  if environment_is_usable; then
+    record_group "$gate" FAIL "selected acceptance gate failed (exit $rc); shared runtime remains usable"
+    echo "demo-$gate failed, but the shared application runtime is still running; continuing full acceptance." >&2
+    continue
+  fi
+
+  record_group "$gate" ERROR "gate failed (exit $rc) and the shared acceptance runtime is no longer usable"
+  mark_remaining_blocked "$gate"
+  echo "demo-$gate failed and the shared acceptance runtime is not usable; aborting remaining gates." >&2
+  report_and_exit 70
 done < <(jq -r '.[].name' "$GATE_REGISTRY")
 
+set +e
 bash "$DEMO_ROOT/scripts/report.sh" "$ARTIFACT_DIR/results.tsv"
-trap - EXIT
-cleanup
+report_rc=$?
+set -e
+exit "$report_rc"
