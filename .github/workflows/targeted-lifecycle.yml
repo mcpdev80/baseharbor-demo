@@ -35,7 +35,7 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf "$ARTIFACT_DIR"
-          bash scripts/acceptance.sh lifecycle
+          bash scripts/acceptance.sh lifecycle capabilities
 
       - name: Upload lifecycle evidence
         if: always()
