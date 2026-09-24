@@ -197,7 +197,7 @@ except FileNotFoundError:
 
 up_rules = [
     Rule(r"Public FQDN \(example: mailflow\.example\.com\) \[[^\]]+\]:\s*$", "\n"),
-    Rule(r"TLS:.*?3\. Local development certificate.*?>\s*$", "3\n"),
+    Rule(r"TLS:.*?3\. Local development certificate.*?>\s*$", "3\n", optional=True),
     Rule(r"PostgreSQL host port \[\d+\]:\s*$", "\n", optional=True),
     Rule(r"OpenBao host port \[\d+\]:\s*$", "\n", optional=True),
     Rule(r"Accept\? \[Y/n\]:\s*$", "\n", optional=True),
