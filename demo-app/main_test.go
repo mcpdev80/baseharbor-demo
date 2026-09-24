@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"encoding/pem"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -84,6 +85,31 @@ func TestStatusPublishesSafeDeveloperLinks(t *testing.T) {
 	}
 	if strings.Contains(body, "super-secret-value") {
 		t.Fatalf("secret value leaked in status: %s", body)
+	}
+}
+
+func TestClientTLSConfigLoadsInjectedCAFile(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	defer server.Close()
+
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.Certificate().Raw})
+	caFile := filepath.Join(t.TempDir(), "ca.pem")
+	if err := os.WriteFile(caFile, certPEM, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := clientTLSConfig(caFile, "", "", "localhost")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.RootCAs == nil || cfg.ServerName != "localhost" {
+		t.Fatalf("unexpected TLS config: %#v", cfg)
+	}
+}
+
+func TestClientTLSConfigRequiresCompleteClientIdentity(t *testing.T) {
+	if _, err := clientTLSConfig("", "/run/tls/client.pem", "", "service"); err == nil {
+		t.Fatal("expected incomplete client identity to fail closed")
 	}
 }
 
