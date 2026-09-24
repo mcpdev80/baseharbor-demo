@@ -177,16 +177,16 @@ init_rules = [
     Rule(r"PostgreSQL instances \(comma-separated\) \[[^\]]+\]:\s*$", "\n"),
     Rule(r"Valkey / Redis instances \(comma-separated\) \[[^\]]+\]:\s*$", "\n"),
     Rule(r"S3 buckets instances \(comma-separated\) \[[^\]]+\]:\s*$", "uploads\n"),
-    Rule(r"Manage this application secret with BaseHarbor\? \[Y/n\]:\s*$", "\n"),
+    Rule(r"Manage this application secret with BaseHarbor\? \[Y/n\]\s*$", "\n"),
     Rule(r"BaseHarbor secret name \[APP_SECRET\]:\s*$", "\n"),
-    Rule(r"Required for application startup\? \[Y/n\]:\s*$", "\n"),
+    Rule(r"Required for application startup\? \[Y/n\]\s*$", "\n"),
     Rule(r"Selection \[1\]:\s*$", "\n"),
     Rule(r"Additional application secret names .*?:\s*$", "\n"),
     Rule(r"Metrics workload service \[[^\]]+\]:\s*$", "demo-app\n", optional=True),
     Rule(r"Metrics container port.*?:\s*$", "8080\n", optional=True),
     Rule(r"OTLP signals .*?\[[^\]]+\]:\s*$", "\n"),
     Rule(r"Workload services allowed to use detected Runtime API operations .*?:\s*$", "demo-app\n", optional=True),
-    Rule(r"Write baseharbor\.yaml\? \[Y/n\]:\s*$", "\n"),
+    Rule(r"Write baseharbor\.yaml\? \[Y/n\]\s*$", "\n"),
 ]
 
 recovery_file = ARTIFACT_DIR / "openbao-recovery.json"
