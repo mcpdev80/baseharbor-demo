@@ -1,0 +1,43 @@
+name: recovery-targeted
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - tests/backup-restore/run.sh
+      - .github/workflows/recovery-targeted.yml
+
+permissions:
+  contents: read
+
+jobs:
+  recovery:
+    runs-on: [self-hosted, Linux, X64, baseharbor, docker]
+    timeout-minutes: 45
+    env:
+      BASEHARBOR_TEST_RUNTIME: docker
+      ARTIFACT_DIR: /tmp/baseharbor-demo-recovery-targeted
+      BASEHARBOR_SOURCE_REF: fd30abd87e3187e6de5c52749bd6afa811006d8c
+    steps:
+      - name: Checkout demo
+        uses: actions/checkout@v7.0.1
+
+      - name: Reset runtime state
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$ARTIFACT_DIR"
+          git clone --depth 1 https://github.com/mcpdev80/baseharbor.git "$RUNNER_TEMP/baseharbor-reset"
+          bash "$RUNNER_TEMP/baseharbor-reset/scripts/ci-runtime-reset.sh" docker
+
+      - name: Run targeted recovery gate
+        shell: bash
+        run: bash scripts/acceptance.sh recovery
+
+      - name: Cleanup runtime state
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          bash "$RUNNER_TEMP/baseharbor-reset/scripts/ci-runtime-reset.sh" docker
