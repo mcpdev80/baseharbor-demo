@@ -27,6 +27,27 @@ That's the normal developer path.
 
 On the first run BaseHarbor can ask for required setup such as the OpenBao recovery location and application-owned secrets. After that, the application should be ready.
 
+## TLS and certificate handoff
+
+The application never receives PEM contents through `.env`.
+
+BaseHarbor keeps certificate material as file bindings and injects only standard connection values and file paths into the workload environment. For example:
+
+```text
+DATABASE_URL=postgresql://...?...&sslrootcert=/run/baseharbor/tls/postgres/default/ca.pem
+DATABASE_CA_FILE=/run/baseharbor/tls/postgres/default/ca.pem
+
+REDIS_URL=rediss://...
+REDIS_CA_FILE=/run/baseharbor/tls/valkey/default/ca.pem
+
+AWS_CA_BUNDLE=/run/baseharbor/tls/s3/ca.pem
+OTEL_EXPORTER_OTLP_CERTIFICATE=/run/baseharbor/tls/otlp/ca.pem
+```
+
+The referenced files are mounted read-only into the container by BaseHarbor's runtime realization. The source `compose.yaml` stays provider-neutral and standalone-capable; it does not contain BaseHarbor-specific certificate mounts.
+
+The demo consumes those paths through the native TLS configuration of pgx/PostgreSQL, go-redis, the MinIO/S3 HTTP transport and OpenTelemetry. This same boundary can later be realized by Kubernetes Secrets/ConfigMaps/CSI mounts without changing the application contract.
+
 ## Check the application
 
 ```bash
