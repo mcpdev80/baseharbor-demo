@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   recovery:
-    runs-on: [self-hosted, Linux, X64, baseharbor, docker]
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
       BASEHARBOR_TEST_RUNTIME: docker
