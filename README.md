@@ -27,6 +27,39 @@ That's the normal developer path.
 
 On the first run BaseHarbor can ask for required setup such as the OpenBao recovery location and application-owned secrets. After that, the application should be ready.
 
+## Contexts and deployment targets
+
+BaseHarbor is designed to manage more than one deployment target from the same installed CLI.
+
+A deployment is identified by three independent dimensions:
+
+```text
+context + application + environment
+```
+
+For example, the same application may exist at the same time as:
+
+```text
+local    / baseharbor-demo / dev
+k3s      / baseharbor-demo / dev
+k8s-prod / mailflow        / prod
+```
+
+The repository continues to describe portable application intent. The selected BaseHarbor **context** describes where BaseHarbor operates: runtime provider, runtime access reference and target scope. The **environment** remains application/deployment policy and is not inferred from the runtime target.
+
+This separation is intentional so local Docker/Podman operation and later Kubernetes/OpenShift targets use the same BaseHarbor model.
+
+The active context is intended to be shell-local, similar to a Python virtual environment, so multiple terminals can safely target different contexts at the same time. Optional prompt integration can keep the target visible before a command is entered, for example:
+
+```text
+[k3s] ~/projects/baseharbor-demo $
+[k8s-prod PROD] ~/projects/mailflow $
+```
+
+Prompt presentation is configurable: compact or detailed, text-only or color-assisted, before/after the path (and right-prompt where supported). Production must remain recognizable without relying on color alone.
+
+The concrete v0.4.15 context/deployment-registry implementation is tracked in BaseHarbor issue #408. Kubernetes/OpenShift runtime implementations remain later work; the point of the v0.4.15 foundation is that they can be added without changing the portable application contract.
+
 ## Check the application
 
 ```bash
