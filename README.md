@@ -48,6 +48,37 @@ The demo UI exercises real integrations for:
 - BaseHarbor Runtime Resources
 - cross-application connectivity
 
+## TLS and trust bindings
+
+BaseHarbor keeps transport configuration and certificate material separate.
+
+The workload receives URLs and file paths through environment variables, while certificate and trust material is mounted read-only as files inside the container. PEM data is not embedded in `.env` values.
+
+The demo consumes the same runtime contract a normal application receives:
+
+```text
+DATABASE_URL
+DATABASE_CA_FILE
+
+REDIS_URL / VALKEY_URL
+REDIS_CA_FILE / VALKEY_CA_FILE
+
+S3_ENDPOINT / AWS_ENDPOINT_URL
+AWS_CA_BUNDLE
+
+OTEL_EXPORTER_OTLP_ENDPOINT
+OTEL_EXPORTER_OTLP_CERTIFICATE
+
+TLS_CERT_FILE
+TLS_KEY_FILE
+
+BASEHARBOR_RUNTIME_CA_FILE
+BASEHARBOR_RUNTIME_CLIENT_CERT_FILE
+BASEHARBOR_RUNTIME_CLIENT_KEY_FILE
+```
+
+For example, `DATABASE_CA_FILE=/run/baseharbor/.../ca.pem` is only a path reference. BaseHarbor mounts the referenced CA into the workload container read-only. This keeps the application contract portable and avoids multiline certificate data or private keys in environment files.
+
 ## Backup and restore
 
 Interactive backup:
