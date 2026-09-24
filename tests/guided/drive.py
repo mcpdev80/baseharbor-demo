@@ -187,9 +187,6 @@ init_rules = [
     Rule(r"OTLP signals .*?\[[^\]]+\]:\s*$", "\n"),
     Rule(r"Workload services allowed to use detected Runtime API operations .*?:\s*$", "demo-app\n", optional=True),
     Rule(r"Write baseharbor\.yaml\? \[Y/n\]\s*$", "\n"),
-    Rule(r"PostgreSQL host port \[\d+\]:\s*$", "\n"),
-    Rule(r"OpenBao host port \[\d+\]:\s*$", "\n"),
-    Rule(r"Accept\? \[Y/n\]:\s*$", "\n"),
 ]
 
 recovery_file = ARTIFACT_DIR / "openbao-recovery.json"
@@ -199,6 +196,9 @@ except FileNotFoundError:
     pass
 
 up_rules = [
+    Rule(r"PostgreSQL host port \[\d+\]:\s*$", "\n", optional=True),
+    Rule(r"OpenBao host port \[\d+\]:\s*$", "\n", optional=True),
+    Rule(r"Accept\? \[Y/n\]:\s*$", "\n", optional=True),
     Rule(r"Use \d+ instead\? \[Y/n\]:\s*$", "\n", repeat=True, optional=True),
     Rule(r"OpenBao-recovery-key[^\n]*:\s*$", str(recovery_file) + "\n"),
     Rule(r"Configure now\? \[Y/n\]:\s*$", "\n"),
