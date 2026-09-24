@@ -205,6 +205,7 @@ up_rules = [
     Rule(r"OpenBao-recovery-key:[^\n]*\$\s*$", str(recovery_file) + "\n"),
     Rule(r"Configure now\? \[Y/n\]\s*$", "\n"),
     Rule(r"APP_SECRET value:\s*$", "acceptance-secret-value\n"),
+    Rule(r"Install the BaseHarbor CA into the host trust store\? \[y/N\]:\s*$", "n\n", optional=True),
 ]
 
 run_tty("guided-init", [BAHA, "app", "init"], init_rules)
