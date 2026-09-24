@@ -505,6 +505,38 @@ func optionalCapabilityStatus(ready bool, readyDetail, missingDetail string) cap
 	return capabilityState{Optional: true, Detail: missingDetail}
 }
 
+func clientTLSConfig(caFile, certFile, keyFile, serverName string) (*tls.Config, error) {
+	roots, err := x509.SystemCertPool()
+	if err != nil || roots == nil {
+		roots = x509.NewCertPool()
+	}
+	if strings.TrimSpace(caFile) != "" {
+		caPEM, readErr := os.ReadFile(caFile)
+		if readErr != nil {
+			return nil, fmt.Errorf("read CA bundle %s: %w", caFile, readErr)
+		}
+		if !roots.AppendCertsFromPEM(caPEM) {
+			return nil, fmt.Errorf("CA bundle %s contains no certificates", caFile)
+		}
+	}
+	cfg := &tls.Config{
+		MinVersion: tls.VersionTLS12,
+		RootCAs:    roots,
+		ServerName: strings.TrimSpace(serverName),
+	}
+	if (certFile == "") != (keyFile == "") {
+		return nil, fmt.Errorf("client TLS certificate and key must be provided together")
+	}
+	if certFile != "" {
+		cert, loadErr := tls.LoadX509KeyPair(certFile, keyFile)
+		if loadErr != nil {
+			return nil, fmt.Errorf("load client TLS identity: %w", loadErr)
+		}
+		cfg.Certificates = []tls.Certificate{cert}
+	}
+	return cfg, nil
+}
+
 func runtimeResourceConfigured() bool {
 	for _, name := range []string{
 		"BASEHARBOR_RUNTIME_API_URL",
