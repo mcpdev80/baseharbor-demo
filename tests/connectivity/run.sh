@@ -20,13 +20,12 @@ cp -a "$DEMO_ROOT/companion-app/." "$companion/"
 (
   cd "$companion"
   "$BAHA" app inspect . > "$ARTIFACT_DIR/companion-inspect.txt"
-  "$BAHA" app init companion-app --environment dev
-  "$BAHA" app init --input tls_mode=local --yes
-  "$BAHA" app apply > "$ARTIFACT_DIR/companion-apply.txt"
+  "$BAHA" app init --quick > "$ARTIFACT_DIR/companion-init.txt"
+  "$BAHA" up --yes > "$ARTIFACT_DIR/companion-up.txt"
   "$BAHA" app doctor > "$ARTIFACT_DIR/companion-doctor.txt"
 )
 grep -q '^READY' "$ARTIFACT_DIR/companion-doctor.txt"
-pass "Companion Adoption" "second ordinary Compose app adopted independently"
+pass "Companion Adoption" "second ordinary Compose app adopted through deterministic init + normal baha up"
 
 (
   cd "$DEMO_ROOT"
