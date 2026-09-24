@@ -44,6 +44,8 @@ trap cleanup EXIT
 rm -rf "$BASEHARBOR_STATE_DIR"
 
 declare -A selected=()
+declare -A gate_status=()
+full_suite=0
 
 gate_exists() {
   jq -e --arg gate "$1" 'any(.[]; .name == $gate)' "$GATE_REGISTRY" >/dev/null
@@ -59,6 +61,7 @@ select_gate() {
 }
 
 if [ "$#" -eq 0 ] && [ -z "${DEMO_GROUPS:-}" ]; then
+  full_suite=1
   while IFS= read -r gate; do
     select_gate "$gate"
   done < <(jq -r '.[].name' "$GATE_REGISTRY")
@@ -92,6 +95,22 @@ while [ "$changed" -eq 1 ]; do
   done
 done
 
+record_group() {
+  local gate="$1"
+  local status="$2"
+  local detail="$3"
+  gate_status["$gate"]="$status"
+  printf '%s\t%s\t%s\n' "$gate" "$status" "$detail" >> "$ARTIFACT_DIR/groups.tsv"
+}
+
+report_and_exit() {
+  local rc="$1"
+  set +e
+  bash "$DEMO_ROOT/scripts/report.sh" "$ARTIFACT_DIR/results.tsv"
+  set -e
+  exit "$rc"
+}
+
 while IFS= read -r gate; do
   [ "${selected[$gate]:-0}" = "1" ] || continue
   script="$DEMO_ROOT/tests/$gate/run.sh"
@@ -100,17 +119,52 @@ while IFS= read -r gate; do
     exit 2
   }
 
+  blocked_by=""
+  while IFS= read -r dependency; do
+    [ -n "$dependency" ] || continue
+    dependency_status="${gate_status[$dependency]:-}"
+    if [ -z "$dependency_status" ]; then
+      echo "Gate order is invalid: $gate requires $dependency before it has run" >&2
+      exit 2
+    fi
+    if [ "$dependency_status" != "PASS" ]; then
+      blocked_by="${blocked_by:+$blocked_by, }$dependency ($dependency_status)"
+    fi
+  done < <(jq -r --arg gate "$gate" '.[] | select(.name == $gate) | .requires[]' "$GATE_REGISTRY")
+
+  if [ -n "$blocked_by" ]; then
+    printf '\n>>> demo-%s BLOCKED by %s\n' "$gate" "$blocked_by"
+    record_group "$gate" BLOCKED "blocked by prerequisite: $blocked_by"
+    continue
+  fi
+
   printf '\n>>> demo-%s\n' "$gate"
-  if bash "$script"; then
-    printf '%s\tPASS\tselected acceptance gate passed\n' "$gate" >> "$ARTIFACT_DIR/groups.tsv"
-  else
-    rc=$?
-    printf '%s\tFAIL\tselected acceptance gate failed\n' "$gate" >> "$ARTIFACT_DIR/groups.tsv"
-    bash "$DEMO_ROOT/scripts/report.sh" "$ARTIFACT_DIR/results.tsv"
-    exit "$rc"
+  set +e
+  bash "$script"
+  rc=$?
+  set -e
+
+  if [ "$rc" -eq 0 ]; then
+    record_group "$gate" PASS "selected acceptance gate passed"
+    continue
+  fi
+
+  if [ "$rc" -eq 70 ]; then
+    record_group "$gate" ERROR "fatal acceptance infrastructure/bootstrap failure"
+    echo "Fatal acceptance infrastructure/bootstrap failure in demo-$gate; aborting remaining gates." >&2
+    report_and_exit "$rc"
+  fi
+
+  record_group "$gate" FAIL "selected acceptance gate failed (exit $rc)"
+  if [ "$full_suite" -ne 1 ]; then
+    report_and_exit "$rc"
   fi
 done < <(jq -r '.[].name' "$GATE_REGISTRY")
 
+set +e
 bash "$DEMO_ROOT/scripts/report.sh" "$ARTIFACT_DIR/results.tsv"
+report_rc=$?
+set -e
 trap - EXIT
 cleanup
+exit "$report_rc"
