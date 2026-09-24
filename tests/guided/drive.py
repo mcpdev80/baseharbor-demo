@@ -211,7 +211,7 @@ up_rules = [
 run_tty("guided-init", [BAHA, "app", "init"], init_rules)
 run_tty(
     "guided-up",
-    [BAHA, "up"],
+    [BAHA, "--verbose", "up"],
     up_rules,
     env={"BASEHARBOR_TRACES_ENABLED": "true"},
     timeout=1200,
