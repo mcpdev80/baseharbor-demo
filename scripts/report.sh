@@ -17,19 +17,25 @@ if [ -s "$groups" ]; then
   done < "$groups"
 fi
 
-if awk -F '\t' '$2=="FAIL"{found=1} END{exit !found}' "$results"; then
+if awk -F '\t' '$2=="FAIL" || $2=="BLOCKED" || $2=="ERROR"{found=1} END{exit !found}' "$results"; then
   overall=FAIL
-elif [ -s "$groups" ] && awk -F '\t' '$2=="FAIL"{found=1} END{exit !found}' "$groups"; then
+elif [ -s "$groups" ] && awk -F '\t' '$2=="FAIL" || $2=="BLOCKED" || $2=="ERROR"{found=1} END{exit !found}' "$groups"; then
   overall=FAIL
 else
   overall=PASS
 fi
 printf '\n%-28s %s\n' RESULT "$overall"
 
-jq -Rn   --arg version "$version"   --arg result "$overall"   '[inputs | split("\t") | {name:.[0], status:.[1], detail:(.[2] // "")}] | {baseharbor_version:$version,result:$result,checks:.}'   < "$results" > "$artifact_dir/acceptance.json"
+jq -Rn \
+  --arg version "$version" \
+  --arg result "$overall" \
+  '[inputs | split("\t") | {name:.[0], status:.[1], detail:(.[2] // "")}] | {baseharbor_version:$version,result:$result,checks:.}' \
+  < "$results" > "$artifact_dir/acceptance.json"
 
 if [ -s "$groups" ]; then
-  jq -Rn     '[inputs | split("\t") | {group:.[0], status:.[1], detail:(.[2] // "")}]'     < "$groups" > "$artifact_dir/acceptance-groups.json"
+  jq -Rn \
+    '[inputs | split("\t") | {group:.[0], status:.[1], detail:(.[2] // "")}]' \
+    < "$groups" > "$artifact_dir/acceptance-groups.json"
 else
   printf '[]\n' > "$artifact_dir/acceptance-groups.json"
 fi
