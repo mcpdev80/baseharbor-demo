@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   lifecycle:
-    runs-on: [self-hosted, Linux, X64, baseharbor, docker]
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
       ARTIFACT_DIR: /tmp/baseharbor-demo-targeted
