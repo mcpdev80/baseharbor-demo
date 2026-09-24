@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -108,6 +109,18 @@ func openCache() *redis.Client {
 		log.Printf(`{"level":"warn","event":"cache_init_failed","error":%q}`, err.Error())
 		return nil
 	}
+	caFile := firstEnv("REDIS_CA_FILE", "VALKEY_CA_FILE")
+	if caFile != "" {
+		tlsConfig, err := tlsConfigFromCAFile(caFile)
+		if err != nil {
+			log.Printf(`{"level":"warn","event":"cache_tls_init_failed","error":%q}`, err.Error())
+			return nil
+		}
+		if host, _, splitErr := net.SplitHostPort(opts.Addr); splitErr == nil {
+			tlsConfig.ServerName = host
+		}
+		opts.TLSConfig = tlsConfig
+	}
 	return redis.NewClient(opts)
 }
 
@@ -123,10 +136,24 @@ func openS3() (*minio.Client, string) {
 	if err != nil || u.Host == "" {
 		return nil, bucket
 	}
-	client, err := minio.New(u.Host, &minio.Options{
+	options := &minio.Options{
 		Creds:  credentials.NewStaticV4(access, secret, ""),
 		Secure: u.Scheme == "https",
-	})
+	}
+	if options.Secure {
+		if caFile := firstEnv("AWS_CA_BUNDLE", "S3_CA_FILE"); caFile != "" {
+			tlsConfig, err := tlsConfigFromCAFile(caFile)
+			if err != nil {
+				log.Printf(`{"level":"warn","event":"s3_tls_init_failed","error":%q}`, err.Error())
+				return nil, bucket
+			}
+			tlsConfig.ServerName = u.Hostname()
+			transport := http.DefaultTransport.(*http.Transport).Clone()
+			transport.TLSClientConfig = tlsConfig
+			options.Transport = transport
+		}
+	}
+	client, err := minio.New(u.Host, options)
 	if err != nil {
 		return nil, bucket
 	}
@@ -141,6 +168,16 @@ func configureTracing(ctx context.Context) func(context.Context) error {
 	opts := []otlptracehttp.Option{otlptracehttp.WithEndpointURL(endpoint)}
 	if strings.HasPrefix(endpoint, "http://") {
 		opts = append(opts, otlptracehttp.WithInsecure())
+	} else if caFile := strings.TrimSpace(os.Getenv("OTEL_EXPORTER_OTLP_CERTIFICATE")); caFile != "" {
+		tlsConfig, err := tlsConfigFromCAFile(caFile)
+		if err != nil {
+			log.Printf(`{"level":"warn","event":"otel_tls_init_failed","error":%q}`, err.Error())
+			return func(context.Context) error { return nil }
+		}
+		if u, parseErr := url.Parse(endpoint); parseErr == nil {
+			tlsConfig.ServerName = u.Hostname()
+		}
+		opts = append(opts, otlptracehttp.WithTLSClientConfig(tlsConfig))
 	}
 	exporter, err := otlptracehttp.New(ctx, opts...)
 	if err != nil {
@@ -190,9 +227,9 @@ func (a *app) status(w http.ResponseWriter, r *http.Request) {
 			"health":  "/healthz",
 		},
 		"bindings": []string{
-			"DATABASE_URL", "REDIS_URL/VALKEY_URL", "S3_ENDPOINT/AWS_ENDPOINT_URL",
-			"S3_BUCKET", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "APP_SECRET",
-			"OTEL_EXPORTER_OTLP_ENDPOINT", "TLS_CERT_FILE", "TLS_KEY_FILE",
+			"DATABASE_URL", "DATABASE_CA_FILE", "REDIS_URL/VALKEY_URL", "REDIS_CA_FILE/VALKEY_CA_FILE",
+			"S3_ENDPOINT/AWS_ENDPOINT_URL", "AWS_CA_BUNDLE", "S3_BUCKET", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "APP_SECRET",
+			"OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_CERTIFICATE", "TLS_CERT_FILE", "TLS_KEY_FILE",
 			"BASEHARBOR_RUNTIME_DOCS_URL",
 		},
 	})
@@ -551,6 +588,21 @@ func writeError(w http.ResponseWriter, message string) {
 
 func methodNotAllowed(w http.ResponseWriter) {
 	writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
+}
+
+func tlsConfigFromCAFile(path string) (*tls.Config, error) {
+	pemData, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read CA file %s: %w", path, err)
+	}
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM(pemData) {
+		return nil, fmt.Errorf("CA file %s contains no valid certificates", path)
+	}
+	return &tls.Config{
+		MinVersion: tls.VersionTLS12,
+		RootCAs:    roots,
+	}, nil
 }
 
 func env(name, fallback string) string {
