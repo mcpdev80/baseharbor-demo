@@ -26,10 +26,12 @@ test -s "$workdir/baseharbor.yaml"
 
 grep -q '^workload:' "$workdir/baseharbor.yaml"
 grep -q '^metrics:' "$workdir/baseharbor.yaml"
-grep -q '^telemetry:' "$workdir/baseharbor.yaml"
 grep -q '^runtime:' "$workdir/baseharbor.yaml"
 
-# Heuristic application-secret names are intentionally not promoted by --quick.
+# Suggested-only OTLP/log collection and heuristic secret names are intentionally
+# not promoted into the portable contract by --quick.
+! grep -q '^telemetry:' "$workdir/baseharbor.yaml"
+! grep -q '^logs:' "$workdir/baseharbor.yaml"
 ! grep -q '^secrets:' "$workdir/baseharbor.yaml"
 
 pass "Repository Inspection" "read-only human + JSON"
