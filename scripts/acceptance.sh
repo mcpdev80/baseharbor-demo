@@ -103,6 +103,39 @@ record_group() {
   printf '%s\t%s\t%s\n' "$gate" "$status" "$detail" >> "$ARTIFACT_DIR/groups.tsv"
 }
 
+mark_remaining_blocked() {
+  local failed_gate="$1"
+  local seen_failed=0
+  local gate
+  while IFS= read -r gate; do
+    [ "${selected[$gate]:-0}" = "1" ] || continue
+    if [ "$gate" = "$failed_gate" ]; then
+      seen_failed=1
+      continue
+    fi
+    [ "$seen_failed" -eq 1 ] || continue
+    [ -z "${gate_status[$gate]:-}" ] || continue
+    record_group "$gate" BLOCKED "not executed because the acceptance environment became unusable after $failed_gate"
+  done < <(jq -r '.[].name' "$GATE_REGISTRY")
+}
+
+environment_is_usable() {
+  local status_file="$ARTIFACT_DIR/environment-after-failure.json"
+  local stderr_file="$ARTIFACT_DIR/environment-after-failure.stderr.txt"
+
+  [ -s "$DEMO_ROOT/baseharbor.yaml" ] || return 1
+
+  set +e
+  (
+    cd "$DEMO_ROOT"
+    "$BAHA" status -o json >"$status_file" 2>"$stderr_file"
+  )
+  set -e
+
+  [ -s "$status_file" ] || return 1
+  jq -e '.state == "running"' "$status_file" >/dev/null 2>&1
+}
+
 report_and_exit() {
   local rc="$1"
   set +e
@@ -119,24 +152,15 @@ while IFS= read -r gate; do
     exit 2
   }
 
-  blocked_by=""
+  # Dependencies define selection and execution order. A failed prerequisite does
+  # not suppress later diagnostics as long as the shared runtime is still usable.
   while IFS= read -r dependency; do
     [ -n "$dependency" ] || continue
-    dependency_status="${gate_status[$dependency]:-}"
-    if [ -z "$dependency_status" ]; then
+    if [ -z "${gate_status[$dependency]:-}" ]; then
       echo "Gate order is invalid: $gate requires $dependency before it has run" >&2
       exit 2
     fi
-    if [ "$dependency_status" != "PASS" ]; then
-      blocked_by="${blocked_by:+$blocked_by, }$dependency ($dependency_status)"
-    fi
   done < <(jq -r --arg gate "$gate" '.[] | select(.name == $gate) | .requires[]' "$GATE_REGISTRY")
-
-  if [ -n "$blocked_by" ]; then
-    printf '\n>>> demo-%s BLOCKED by %s\n' "$gate" "$blocked_by"
-    record_group "$gate" BLOCKED "blocked by prerequisite: $blocked_by"
-    continue
-  fi
 
   printf '\n>>> demo-%s\n' "$gate"
   set +e
@@ -149,22 +173,25 @@ while IFS= read -r gate; do
     continue
   fi
 
-  if [ "$rc" -eq 70 ]; then
-    record_group "$gate" ERROR "fatal acceptance infrastructure/bootstrap failure"
-    echo "Fatal acceptance infrastructure/bootstrap failure in demo-$gate; aborting remaining gates." >&2
+  if [ "$full_suite" -ne 1 ]; then
+    record_group "$gate" FAIL "selected acceptance gate failed (exit $rc)"
     report_and_exit "$rc"
   fi
 
-  record_group "$gate" FAIL "selected acceptance gate failed (exit $rc)"
-  if [ "$full_suite" -ne 1 ]; then
-    report_and_exit "$rc"
+  if environment_is_usable; then
+    record_group "$gate" FAIL "selected acceptance gate failed (exit $rc); shared runtime remains usable"
+    echo "demo-$gate failed, but the shared application runtime is still running; continuing full acceptance." >&2
+    continue
   fi
+
+  record_group "$gate" ERROR "gate failed (exit $rc) and the shared acceptance runtime is no longer usable"
+  mark_remaining_blocked "$gate"
+  echo "demo-$gate failed and the shared acceptance runtime is not usable; aborting remaining gates." >&2
+  report_and_exit 70
 done < <(jq -r '.[].name' "$GATE_REGISTRY")
 
 set +e
 bash "$DEMO_ROOT/scripts/report.sh" "$ARTIFACT_DIR/results.tsv"
 report_rc=$?
 set -e
-trap - EXIT
-cleanup
 exit "$report_rc"
