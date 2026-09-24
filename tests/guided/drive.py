@@ -80,7 +80,7 @@ def capability_selection_response(match, text):
             keys.append(" ")
         if number < 7:
             keys.append("\x1b[B")
-    keys.append("\r")
+    keys.append("\n")
     return "".join(keys)
 
 def run_tty(name, argv, rules, env=None, timeout=900):
