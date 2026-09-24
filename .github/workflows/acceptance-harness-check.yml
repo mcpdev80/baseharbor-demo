@@ -1,6 +1,9 @@
 name: Acceptance Harness Check
 
 on:
+  push:
+    branches:
+      - feat/full-acceptance-collect-failures
   pull_request:
     branches: [main]
     paths:
