@@ -8,6 +8,13 @@ base="https://127.0.0.1:8080"
 curl -kfsS "$base/healthz" | jq -e '.status=="ok"' >/dev/null
 curl -kfsS "$base/api/status" > "$ARTIFACT_DIR/demo-status.json"
 jq -e '.capabilities.sql.ready==true' "$ARTIFACT_DIR/demo-status.json" >/dev/null
+jq -e '
+  (.bindings | index("DATABASE_CA_FILE")) != null and
+  (.bindings | index("REDIS_CA_FILE/VALKEY_CA_FILE")) != null and
+  (.bindings | index("AWS_CA_BUNDLE")) != null and
+  (.bindings | index("OTEL_EXPORTER_OTLP_CERTIFICATE")) != null
+' "$ARTIFACT_DIR/demo-status.json" >/dev/null
+pass "TLS File Bindings" "application consumes BaseHarbor-injected CA paths instead of PEM-in-env"
 pass "SQL" "application protocol ready"
 
 curl -kfsS -X POST "$base/api/sql" | tee "$ARTIFACT_DIR/sql.json" | jq -e '.records>=1' >/dev/null
