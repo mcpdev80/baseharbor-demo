@@ -187,6 +187,9 @@ init_rules = [
     Rule(r"OTLP signals .*?\[[^\]]+\]:\s*$", "\n"),
     Rule(r"Workload services allowed to use detected Runtime API operations .*?:\s*$", "demo-app\n", optional=True),
     Rule(r"Write baseharbor\.yaml\? \[Y/n\]\s*$", "\n"),
+    Rule(r"PostgreSQL host port \[\d+\]:\s*$", "\n"),
+    Rule(r"OpenBao host port \[\d+\]:\s*$", "\n"),
+    Rule(r"Accept\? \[Y/n\]:\s*$", "\n"),
 ]
 
 recovery_file = ARTIFACT_DIR / "openbao-recovery.json"
