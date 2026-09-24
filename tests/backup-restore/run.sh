@@ -31,11 +31,11 @@ rm -rf "$DEMO_ROOT/.baseharbor" "$DEMO_ROOT/baseharbor.yaml"
   "$BAHA" app init --tls local --yes
 
   set +e
-  "$BAHA" up --yes > "$ARTIFACT_DIR/backup-safe-first-up.txt" 2>&1
+  "$BAHA" --verbose up --yes > "$ARTIFACT_DIR/backup-safe-first-up.txt" 2>&1
   set -e
 
   printf '%s' 'acceptance-secret-value' | "$BAHA" app secret set APP_SECRET --stdin
-  "$BAHA" app apply > "$ARTIFACT_DIR/backup-safe-apply.txt"
+  "$BAHA" --verbose app apply > "$ARTIFACT_DIR/backup-safe-apply.txt" 2>&1
 )
 
 curl -fsS -X POST http://127.0.0.1:8080/api/sql > "$ARTIFACT_DIR/backup-seed.json"
