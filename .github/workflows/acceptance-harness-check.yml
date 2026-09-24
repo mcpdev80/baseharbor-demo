@@ -1,0 +1,43 @@
+name: Acceptance Harness Check
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "scripts/acceptance.sh"
+      - "scripts/report.sh"
+      - "tests/gates.json"
+      - ".github/workflows/acceptance-harness-check.yml"
+  workflow_dispatch:
+
+jobs:
+  harness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bash syntax
+        run: |
+          bash -n scripts/acceptance.sh
+          bash -n scripts/report.sh
+      - name: Report status semantics
+        run: |
+          tmp="$(mktemp -d)"
+          touch "$tmp/results.tsv"
+
+          printf 'guided\tPASS\tok\nrecovery\tFAIL\tbroken\n' > "$tmp/groups.tsv"
+          if ARTIFACT_DIR="$tmp" bash scripts/report.sh "$tmp/results.tsv"; then
+            echo "FAIL must make report fail" >&2
+            exit 1
+          fi
+          jq -e '.result == "FAIL"' "$tmp/acceptance.json"
+          jq -e 'any(.[]; .group == "recovery" and .status == "FAIL")' "$tmp/acceptance-groups.json"
+
+          printf 'guided\tPASS\tok\nrecovery\tERROR\tfatal\nmachine\tBLOCKED\tskipped\n' > "$tmp/groups.tsv"
+          if ARTIFACT_DIR="$tmp" bash scripts/report.sh "$tmp/results.tsv"; then
+            echo "ERROR/BLOCKED must make report fail" >&2
+            exit 1
+          fi
+
+          printf 'guided\tPASS\tok\nrecovery\tPASS\tok\n' > "$tmp/groups.tsv"
+          ARTIFACT_DIR="$tmp" bash scripts/report.sh "$tmp/results.tsv"
+          jq -e '.result == "PASS"' "$tmp/acceptance.json"
