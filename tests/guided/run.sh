@@ -5,7 +5,13 @@ source "$DEMO_ROOT/tests/lib.sh"
 section "Guided pristine-repository happy path"
 
 clean_generated_state
-rm -rf "$BASEHARBOR_STATE_DIR"
+rm -rf "$XDG_CONFIG_HOME/baseharbor" "$XDG_DATA_HOME/baseharbor"
+"$BAHA" target create "$BASEHARBOR_TARGET" \
+  --provider "$BASEHARBOR_TEST_RUNTIME" \
+  --access "local-$BASEHARBOR_TEST_RUNTIME" \
+  --reference local \
+  --scope default \
+  --default >/dev/null
 rm -f "$ARTIFACT_DIR/openbao-recovery.json"
 
 test ! -e "$DEMO_ROOT/baseharbor.yaml"
