@@ -25,9 +25,19 @@ if [ -n "${BASEHARBOR_SOURCE_REF:-}" ]; then
 fi
 bash "$DEMO_ROOT/scripts/install-baseharbor.sh"
 export BAHA="$BASEHARBOR_INSTALL_DIR/baha"
-export BASEHARBOR_STATE_DIR="${BASEHARBOR_STATE_DIR:-/tmp/baseharbor-demo-platform-state}"
 export BASEHARBOR_TEST_RUNTIME="${BASEHARBOR_TEST_RUNTIME:-docker}"
+export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-/tmp/baseharbor-demo-xdg/config}"
+export XDG_DATA_HOME="${XDG_DATA_HOME:-/tmp/baseharbor-demo-xdg/data}"
+export BASEHARBOR_TARGET="${BASEHARBOR_TARGET:-demo-${BASEHARBOR_TEST_RUNTIME}}"
 command -v "$BASEHARBOR_TEST_RUNTIME" >/dev/null 2>&1
+
+rm -rf "$XDG_CONFIG_HOME/baseharbor" "$XDG_DATA_HOME/baseharbor"
+"$BAHA" target create "$BASEHARBOR_TARGET" \
+  --provider "$BASEHARBOR_TEST_RUNTIME" \
+  --access "local-$BASEHARBOR_TEST_RUNTIME" \
+  --reference local \
+  --scope default \
+  --default >/dev/null
 
 cleanup() {
   status=$?
@@ -37,11 +47,11 @@ cleanup() {
   cd "$DEMO_ROOT/companion-app"
   "$BAHA" app destroy --yes >/dev/null 2>&1 || true
   "$BASEHARBOR_TEST_RUNTIME" ps -q | xargs -r "$BASEHARBOR_TEST_RUNTIME" unpause >/dev/null 2>&1
+  rm -rf "$XDG_CONFIG_HOME/baseharbor" "$XDG_DATA_HOME/baseharbor"
   exit "$status"
 }
 trap cleanup EXIT
 
-rm -rf "$BASEHARBOR_STATE_DIR"
 
 declare -A selected=()
 declare -A gate_status=()
