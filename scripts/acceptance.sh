@@ -43,11 +43,13 @@ cleanup() {
   status=$?
   set +e
   cd "$DEMO_ROOT"
-  "$BAHA" app destroy --yes >/dev/null 2>&1 || true
-  cd "$DEMO_ROOT/companion-app"
-  "$BAHA" app destroy --yes >/dev/null 2>&1 || true
   "$BASEHARBOR_TEST_RUNTIME" ps -q | xargs -r "$BASEHARBOR_TEST_RUNTIME" unpause >/dev/null 2>&1
-  rm -rf "$XDG_CONFIG_HOME/baseharbor" "$XDG_DATA_HOME/baseharbor"
+  if ! "$BAHA" destroy --all --yes >/dev/null 2>&1; then
+    "$BAHA" app destroy --yes >/dev/null 2>&1 || true
+    cd "$DEMO_ROOT/companion-app"
+    "$BAHA" app destroy --yes >/dev/null 2>&1 || true
+    rm -rf "$XDG_CONFIG_HOME/baseharbor" "$XDG_DATA_HOME/baseharbor"
+  fi
   exit "$status"
 }
 trap cleanup EXIT
