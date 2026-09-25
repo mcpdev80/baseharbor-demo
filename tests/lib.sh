@@ -52,6 +52,24 @@ assert_no_secret_leak() {
   ! grep -Eqi '(AWS_SECRET_ACCESS_KEY|APP_SECRET)=([^<]|$)' "$file"
 }
 
+container_id_for_service() {
+  local service="$1"
+  local project="${2:-}"
+  local id=""
+
+  if [ -n "$project" ]; then
+    id="$("$CONTAINER_CLI" ps -q       --filter "label=com.docker.compose.project=$project"       --filter "label=com.docker.compose.service=$service" | head -n1 || true)"
+  else
+    id="$("$CONTAINER_CLI" ps -q       --filter "label=com.docker.compose.service=$service" | head -n1 || true)"
+  fi
+
+  if [ -z "$id" ] && [ "$CONTAINER_CLI" = "podman" ]; then
+    id="$("$CONTAINER_CLI" ps --format '{{.ID}} {{.Names}}' | awk -v s="$service" '$2 ~ ("-" s "$") {print $1; exit}')"
+  fi
+
+  printf '%s\n' "$id"
+}
+
 run_json() {
   local name="$1"; shift
   local stdout_file="$ARTIFACT_DIR/$name.json"
