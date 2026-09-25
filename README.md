@@ -133,6 +133,15 @@ baha app destroy --yes
 
 The repository-owned Compose files stay untouched.
 
+To intentionally remove the complete BaseHarbor-managed installation state across all Targets while preserving application source repositories:
+
+```bash
+baha destroy --all
+baha destroy --all --yes
+```
+
+Without `--yes`, interactive use requires confirmation. The full acceptance suite exercises this cleanup as its final destructive gate.
+
 ## What this demo proves
 
 BaseHarbor adopts an existing application without rewriting its Compose model or leaking provider details into the application contract.
@@ -167,7 +176,7 @@ Against a candidate commit or ref:
 BASEHARBOR_SOURCE_REF=<commit-or-ref> bash scripts/acceptance.sh
 ```
 
-The suite validates the guided developer path plus deterministic lifecycle, capability, security, connectivity, reconciliation, failure and recovery scenarios on Docker and Podman/Quadlet.
+The suite validates the guided developer path plus deterministic lifecycle, capability, security, connectivity, reconciliation, failure, recovery and final full-installation destroy scenarios on Docker and Podman/Quadlet.
 
 Each acceptance run creates an isolated explicit BaseHarbor Target for the selected runtime and isolates BaseHarbor config/state through temporary XDG config/data roots. This proves the v0.4.15 Target boundary instead of relying on legacy repository-local platform state.
 
