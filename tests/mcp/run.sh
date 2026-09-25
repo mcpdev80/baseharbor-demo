@@ -25,7 +25,22 @@ try:
     data = {"initialize":init,"tools":tools}
     open(output, "w").write(json.dumps(data, indent=2))
     names = {t["name"] for t in tools["result"]["tools"]}
-    expected = {"baseharbor.inspect","baseharbor.plan","baseharbor.status","baseharbor.doctor","baseharbor.policy.check","baseharbor.policy.explain"}
+    expected = {
+        "baseharbor.target",
+        "baseharbor.inspect",
+        "baseharbor.plan",
+        "baseharbor.apply",
+        "baseharbor.status",
+        "baseharbor.doctor",
+        "baseharbor.observe",
+        "baseharbor.update",
+        "baseharbor.repair",
+        "baseharbor.backup",
+        "baseharbor.restore",
+        "baseharbor.destroy",
+        "baseharbor.policy.check",
+        "baseharbor.policy.explain",
+    }
     if names != expected:
         raise RuntimeError(f"unexpected MCP tools: {sorted(names)}")
 finally:
@@ -34,4 +49,4 @@ finally:
     except subprocess.TimeoutExpired: p.kill()
 PY
 assert_no_secret_leak "$ARTIFACT_DIR/mcp.json"
-pass "MCP" "bounded six-tool stdio surface"
+pass "MCP" "bounded semantic lifecycle stdio surface"
