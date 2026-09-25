@@ -32,10 +32,9 @@ rm -f "$tmp"
 
 section "TLS file binding boundary"
 
-workload_id="$("$CONTAINER_CLI" ps -q --filter label=com.docker.compose.service=demo-app | head -n1)"
-test -n "$workload_id"
-
-"$CONTAINER_CLI" exec "$workload_id" /bin/sh -ec '
+(
+  cd "$DEMO_ROOT"
+  "$BAHA" app exec demo-app /bin/sh -ec '
   test -n "$DATABASE_CA_FILE"
   test -n "$REDIS_CA_FILE"
   test -n "$AWS_CA_BUNDLE"
@@ -56,6 +55,7 @@ test -n "$workload_id"
   test -s "$BASEHARBOR_RUNTIME_CLIENT_CERT_FILE"
   test -s "$BASEHARBOR_RUNTIME_CLIENT_KEY_FILE"
 '
+)
 
 base="https://127.0.0.1:8080"
 curl -kfsS -X POST "$base/api/sql" | jq -e '.records>=1' >/dev/null
