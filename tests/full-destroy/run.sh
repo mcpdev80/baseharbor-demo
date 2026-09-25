@@ -17,10 +17,24 @@ grep -q 'REMOVED' "$ARTIFACT_DIR/full-destroy.txt"
 "$BAHA" app list --all-targets | tee "$ARTIFACT_DIR/full-destroy-after.txt"
 grep -q '^No deployments registered\.$' "$ARTIFACT_DIR/full-destroy-after.txt"
 
-test ! -e "$XDG_CONFIG_HOME/baseharbor"
-test ! -e "$XDG_DATA_HOME/baseharbor"
-test -s "$DEMO_ROOT/baseharbor.yaml"
-test -s "$DEMO_ROOT/companion-app/baseharbor.yaml"
+if [ -e "$XDG_CONFIG_HOME/baseharbor" ]; then
+  echo "BaseHarbor config state remains after full destroy: $XDG_CONFIG_HOME/baseharbor" >&2
+  find "$XDG_CONFIG_HOME/baseharbor" -maxdepth 3 -print >&2 || true
+  exit 1
+fi
+if [ -e "$XDG_DATA_HOME/baseharbor" ]; then
+  echo "BaseHarbor data state remains after full destroy: $XDG_DATA_HOME/baseharbor" >&2
+  find "$XDG_DATA_HOME/baseharbor" -maxdepth 4 -print >&2 || true
+  exit 1
+fi
+if [ ! -s "$DEMO_ROOT/baseharbor.yaml" ]; then
+  echo "Primary source manifest was removed by full destroy: $DEMO_ROOT/baseharbor.yaml" >&2
+  exit 1
+fi
+if [ ! -s "$DEMO_ROOT/companion-app/baseharbor.yaml" ]; then
+  echo "Companion source manifest was removed by full destroy: $DEMO_ROOT/companion-app/baseharbor.yaml" >&2
+  exit 1
+fi
 
 if "$BASEHARBOR_TEST_RUNTIME" ps -a --format '{{.Names}}' | grep -Eiq '^baseharbor-|baseharbor-demo'; then
   echo "BaseHarbor-managed/application containers remain after full destroy" >&2
