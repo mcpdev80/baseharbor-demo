@@ -10,7 +10,9 @@ section "Reconciliation"
 )
 pass "Reconciliation IN_SYNC -> NOOP" "repeated apply converged"
 
-project="baseharbor-workload-baseharbor-demo-dev"
+target="$("$BAHA" target -o json | jq -r '.target.name')"
+target_slug="${target//./-}"
+project="baseharbor-workload-${target_slug}-baseharbor-demo-dev"
 container="$("$CONTAINER_CLI" ps -q --filter "label=com.docker.compose.project=$project" --filter 'label=com.docker.compose.service=demo-app' | head -1)"
 test -n "$container"
 "$CONTAINER_CLI" rm -f "$container" >/dev/null
@@ -23,7 +25,8 @@ test -n "$container"
 grep -q '^READY' "$ARTIFACT_DIR/reconcile-missing-doctor.txt"
 pass "Reconciliation MISSING -> CREATE" "missing workload recreated"
 
-postgres="$("$CONTAINER_CLI" ps -q --filter label=com.docker.compose.project=baseharbor-baseharbor-demo-dev --filter label=com.docker.compose.service=postgres | head -1 || true)"
+managed_project="baseharbor-${target_slug}-baseharbor-demo-dev"
+postgres="$("$CONTAINER_CLI" ps -q --filter "label=com.docker.compose.project=$managed_project" --filter label=com.docker.compose.service=postgres | head -1 || true)"
 if [ -n "$postgres" ]; then
   "$CONTAINER_CLI" stop "$postgres" >/dev/null
   set +e
