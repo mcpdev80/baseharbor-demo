@@ -21,6 +21,20 @@ baha up
 
 That's the normal developer path.
 
+BaseHarbor v0.4.15 keeps the deployment destination separate from the repository intent. You can inspect the effective destination at any time with:
+
+```bash
+baha target
+baha target -o json
+```
+
+For explicit local targets, create and activate one before `baha up`, for example:
+
+```bash
+baha target create laptop-docker --provider docker --access local-docker --reference local --scope default --default
+eval "$(baha target activate laptop-docker)"
+```
+
 - `inspect` shows what BaseHarbor detects without changing the repository.
 - `init` turns the detected application intent into `baseharbor.yaml`.
 - `up` converges the managed services, secrets, runtime bindings and application workload.
@@ -154,6 +168,8 @@ BASEHARBOR_SOURCE_REF=<commit-or-ref> bash scripts/acceptance.sh
 ```
 
 The suite validates the guided developer path plus deterministic lifecycle, capability, security, connectivity, reconciliation, failure and recovery scenarios on Docker and Podman/Quadlet.
+
+Each acceptance run creates an isolated explicit BaseHarbor Target for the selected runtime and isolates BaseHarbor config/state through temporary XDG config/data roots. This proves the v0.4.15 Target boundary instead of relying on legacy repository-local platform state.
 
 Evidence is written below `artifacts/`.
 
