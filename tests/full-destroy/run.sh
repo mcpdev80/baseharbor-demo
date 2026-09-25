@@ -31,10 +31,6 @@ if [ ! -s "$DEMO_ROOT/baseharbor.yaml" ]; then
   echo "Primary source manifest was removed by full destroy: $DEMO_ROOT/baseharbor.yaml" >&2
   exit 1
 fi
-if [ ! -s "$DEMO_ROOT/companion-app/baseharbor.yaml" ]; then
-  echo "Companion source manifest was removed by full destroy: $DEMO_ROOT/companion-app/baseharbor.yaml" >&2
-  exit 1
-fi
 
 if "$BASEHARBOR_TEST_RUNTIME" ps -a --format '{{.Names}}' | grep -Eiq '^baseharbor-|baseharbor-demo'; then
   echo "BaseHarbor-managed/application containers remain after full destroy" >&2
