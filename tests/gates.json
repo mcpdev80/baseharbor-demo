@@ -9,5 +9,6 @@
   {"name":"reconciliation","requires":["lifecycle"]},
   {"name":"machine","requires":["lifecycle"]},
   {"name":"failure","requires":["lifecycle"]},
-  {"name":"recovery","requires":["lifecycle"]}
+  {"name":"recovery","requires":["lifecycle"]},
+  {"name":"full-destroy","requires":["lifecycle"]}
 ]
