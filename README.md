@@ -164,7 +164,7 @@ baha app restore ./<backup>.bhbackup
 
 BaseHarbor encrypts the recovery unit, verifies it before restore and only reports success after the restored application is healthy again.
 
-> Current recovery units cover managed SQL state and the application-owned secret scope. Managed S3 contents are not yet part of the recovery unit, so BaseHarbor intentionally fails closed when managed S3 resources are declared.
+BaseHarbor v0.4.16 recovery units can include managed SQL, the application-owned secret scope, managed S3 objects, BaseHarbor-owned workload volumes and selectable application log history. External data remains outside BaseHarbor ownership and unsupported state is reported explicitly instead of being silently omitted.
 
 ## Stop or remove it
 
