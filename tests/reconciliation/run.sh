@@ -12,7 +12,7 @@ pass "Reconciliation IN_SYNC -> NOOP" "repeated apply converged"
 
 target="$("$BAHA" target -o json | jq -r '.target.name')"
 target_slug="${target//./-}"
-project="baseharbor-workload-${target_slug}-baseharbor-demo-dev"
+project="bh-${target_slug}-baseharbor-demo-dev"
 container="$(container_id_for_service demo-app "$project")"
 test -n "$container"
 "$CONTAINER_CLI" rm -f "$container" >/dev/null
@@ -25,7 +25,7 @@ test -n "$container"
 grep -q '^READY' "$ARTIFACT_DIR/reconcile-missing-doctor.txt"
 pass "Reconciliation MISSING -> CREATE" "missing workload recreated"
 
-managed_project="baseharbor-${target_slug}-baseharbor-demo-dev"
+managed_project="$project"
 postgres="$(container_id_for_service postgres "$managed_project")"
 if [ -n "$postgres" ]; then
   "$CONTAINER_CLI" stop "$postgres" >/dev/null
