@@ -69,6 +69,7 @@ func main() {
 	mux.HandleFunc("/api/cache", a.cacheAction)
 	mux.HandleFunc("/api/object", a.objectAction)
 	mux.HandleFunc("/api/file", a.fileAction)
+	mux.HandleFunc("/api/log-marker", a.logMarkerAction)
 	mux.HandleFunc("/api/secret", a.secretAction)
 	mux.HandleFunc("/api/metrics/verify", a.metricsVerifyAction)
 	mux.HandleFunc("/api/trace", a.traceAction)
@@ -393,6 +394,16 @@ func (a *app) fileAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"path": filepath.Base(path), "records": bytes.Count(data, []byte{'\n'})})
+}
+
+func (a *app) logMarkerAction(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w)
+		return
+	}
+	const marker = "recovery-before-backup"
+	log.Printf(`{"level":"info","event":"recovery_marker","marker":%q}`, marker)
+	writeJSON(w, http.StatusOK, map[string]any{"marker": marker})
 }
 
 func (a *app) secretAction(w http.ResponseWriter, r *http.Request) {
