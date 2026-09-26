@@ -35,32 +35,17 @@ baha target create laptop-docker --provider docker --access local-docker --refer
 eval "$(baha target activate laptop-docker)"
 ```
 
-### Bash completion and Target-aware prompt
+### Optional shell integration
 
-BaseHarbor can integrate into the normal shell without replacing it.
-
-For the current Bash session:
+The normal demo does not require shell customization. If you want it afterwards:
 
 ```bash
 source <(baha completion bash)
 source <(baha shell-init bash)
-
-baha config prompt \
-  --enable \
-  --preset compact \
-  --position before-path \
-  --environment always \
-  --show-application \
-  --text-only
+baha config prompt
 ```
 
-The completion script adds command/value completion for `baha`. The shell integration adds Target activation helpers and renders the optional BaseHarbor prompt segment. The prompt is presentation only; it never changes Target identity or deployment ownership.
-
-To verify what BaseHarbor would render:
-
-```bash
-baha prompt --plain
-```
+`baha config prompt` opens the guided prompt wizard. Completion and prompt integration are optional developer conveniences and do not change Target identity or deployment ownership.
 
 - `inspect` shows what BaseHarbor detects without changing the repository.
 - `init` turns the detected application intent into `baseharbor.yaml`.
