@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -46,13 +47,14 @@ type app struct {
 	cache     *redis.Client
 	s3        *minio.Client
 	s3Bucket  string
+	dataFile  string
 	companion string
 	requests  atomic.Uint64
 }
 
 func main() {
 	ctx := context.Background()
-	a := &app{companion: os.Getenv("COMPANION_URL")}
+	a := &app{companion: os.Getenv("COMPANION_URL"), dataFile: os.Getenv("DEMO_DATA_FILE")}
 	a.db = openDB()
 	a.cache = openCache()
 	a.s3, a.s3Bucket = openS3()
@@ -66,6 +68,8 @@ func main() {
 	mux.HandleFunc("/api/sql", a.sqlAction)
 	mux.HandleFunc("/api/cache", a.cacheAction)
 	mux.HandleFunc("/api/object", a.objectAction)
+	mux.HandleFunc("/api/file", a.fileAction)
+	mux.HandleFunc("/api/log-marker", a.logMarkerAction)
 	mux.HandleFunc("/api/secret", a.secretAction)
 	mux.HandleFunc("/api/metrics/verify", a.metricsVerifyAction)
 	mux.HandleFunc("/api/trace", a.traceAction)
@@ -217,6 +221,7 @@ func (a *app) status(w http.ResponseWriter, r *http.Request) {
 		"telemetry":        optionalCapabilityStatus(os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") != "", "standard OTLP endpoint", "OTLP endpoint not configured"),
 		"companion":        optionalCapabilityStatus(a.companion != "", "cross-app target configured", "companion not configured"),
 		"runtime_resource": optionalCapabilityStatus(runtimeResourceConfigured(), "BaseHarbor runtime HTTPS API", "runtime resource API bindings missing"),
+		"persistent_file": optionalCapabilityStatus(a.dataFile != "", "persistent workload file binding", "DEMO_DATA_FILE not configured"),
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"service":      "baseharbor-demo",
@@ -230,7 +235,7 @@ func (a *app) status(w http.ResponseWriter, r *http.Request) {
 			"DATABASE_URL", "DATABASE_CA_FILE", "REDIS_URL/VALKEY_URL", "REDIS_CA_FILE/VALKEY_CA_FILE",
 			"S3_ENDPOINT/AWS_ENDPOINT_URL", "AWS_CA_BUNDLE", "S3_BUCKET", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "APP_SECRET",
 			"OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_CERTIFICATE", "TLS_CERT_FILE", "TLS_KEY_FILE",
-			"BASEHARBOR_RUNTIME_DOCS_URL",
+			"BASEHARBOR_RUNTIME_DOCS_URL", "DEMO_DATA_FILE",
 		},
 	})
 }
@@ -344,7 +349,61 @@ func (a *app) objectAction(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"bucket": a.s3Bucket, "object": name, "bytes": len(body)})
+	objects := 0
+	for object := range a.s3.ListObjects(ctx, a.s3Bucket, minio.ListObjectsOptions{Recursive: true}) {
+		if object.Err != nil {
+			writeError(w, object.Err.Error())
+			return
+		}
+		objects++
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"bucket": a.s3Bucket, "object": name, "bytes": len(body), "objects": objects})
+}
+
+func (a *app) fileAction(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w)
+		return
+	}
+	path := strings.TrimSpace(a.dataFile)
+	if path == "" {
+		writeError(w, "DEMO_DATA_FILE missing")
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		writeError(w, err.Error())
+		return
+	}
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		writeError(w, err.Error())
+		return
+	}
+	if _, err := fmt.Fprintln(file, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+		_ = file.Close()
+		writeError(w, err.Error())
+		return
+	}
+	if err := file.Close(); err != nil {
+		writeError(w, err.Error())
+		return
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		writeError(w, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"path": filepath.Base(path), "records": bytes.Count(data, []byte{'\n'})})
+}
+
+func (a *app) logMarkerAction(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w)
+		return
+	}
+	const marker = "recovery-before-backup"
+	log.Printf(`{"level":"info","event":"recovery_marker","marker":%q}`, marker)
+	writeJSON(w, http.StatusOK, map[string]any{"marker": marker})
 }
 
 func (a *app) secretAction(w http.ResponseWriter, r *http.Request) {

@@ -15,6 +15,9 @@ services:
       APP_SECRET: ${APP_SECRET:-standalone-demo-secret}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       COMPANION_URL: ${COMPANION_URL:-}
+      DEMO_DATA_FILE: ${DEMO_DATA_FILE:-/var/lib/baseharbor-demo/state.log}
+    volumes:
+      - demo-data:/var/lib/baseharbor-demo
     restart: unless-stopped
 
   postgres:
@@ -51,3 +54,6 @@ services:
       interval: 2s
       timeout: 2s
       retries: 20
+
+volumes:
+  demo-data:
