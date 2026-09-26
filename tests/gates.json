@@ -1,5 +1,6 @@
 [
   {"name":"guided","requires":[]},
+  {"name":"shell-ux","requires":["guided"]},
   {"name":"init","requires":[]},
   {"name":"lifecycle","requires":["guided"]},
   {"name":"policy","requires":["guided"]},

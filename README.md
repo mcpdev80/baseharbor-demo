@@ -35,6 +35,33 @@ baha target create laptop-docker --provider docker --access local-docker --refer
 eval "$(baha target activate laptop-docker)"
 ```
 
+### Bash completion and Target-aware prompt
+
+BaseHarbor can integrate into the normal shell without replacing it.
+
+For the current Bash session:
+
+```bash
+source <(baha completion bash)
+source <(baha shell-init bash)
+
+baha config prompt \
+  --enable \
+  --preset compact \
+  --position before-path \
+  --environment always \
+  --show-application \
+  --text-only
+```
+
+The completion script adds command/value completion for `baha`. The shell integration adds Target activation helpers and renders the optional BaseHarbor prompt segment. The prompt is presentation only; it never changes Target identity or deployment ownership.
+
+To verify what BaseHarbor would render:
+
+```bash
+baha prompt --plain
+```
+
 - `inspect` shows what BaseHarbor detects without changing the repository.
 - `init` turns the detected application intent into `baseharbor.yaml`.
 - `up` converges the managed services, secrets, runtime bindings and application workload.
@@ -61,6 +88,49 @@ The demo UI exercises real integrations for:
 - logs
 - BaseHarbor Runtime Resources
 - cross-application connectivity
+
+## Run the complete two-application demo
+
+The repository also contains `companion-app/`, a second ordinary Compose application. Deploying it proves that BaseHarbor can manage two independent applications on the same Target and then create an explicit directional connection between them.
+
+After the main demo is READY:
+
+```bash
+(
+  cd companion-app
+  baha app inspect .
+  baha app init --quick
+  baha up --yes
+  baha doctor
+)
+```
+
+The companion application listens on `http://localhost:8081` and exposes `/healthz` and `/hello`.
+
+Create the same directed connection used by the release acceptance suite:
+
+```bash
+baha connect baseharbor-demo/demo-app companion-app/companion-app
+baha connections
+curl http://localhost:8081/hello
+```
+
+Remove the connection again:
+
+```bash
+baha disconnect baseharbor-demo/demo-app companion-app/companion-app
+```
+
+When you are finished with the second app:
+
+```bash
+(
+  cd companion-app
+  baha app destroy --yes
+)
+```
+
+The full acceptance suite performs this companion adoption and connectivity flow automatically through the `connectivity` gate.
 
 ## TLS and trust bindings
 
@@ -176,7 +246,7 @@ Against a candidate commit or ref:
 BASEHARBOR_SOURCE_REF=<commit-or-ref> bash scripts/acceptance.sh
 ```
 
-The suite validates the guided developer path plus deterministic lifecycle, capability, security, connectivity, reconciliation, failure, recovery and final full-installation destroy scenarios on Docker and Podman/Quadlet.
+The suite validates the guided developer path, Bash completion/shell integration/Target-aware prompt, deterministic lifecycle, capability, security, the companion-app cross-application connectivity flow, reconciliation, failure, recovery and final full-installation destroy scenarios on Docker and Podman/Quadlet.
 
 Each acceptance run creates an isolated explicit BaseHarbor Target for the selected runtime and isolates BaseHarbor config/state through temporary XDG config/data roots. This proves the v0.4.15 Target boundary instead of relying on legacy repository-local platform state.
 
