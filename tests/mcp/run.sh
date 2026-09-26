@@ -33,6 +33,7 @@ try:
         "baseharbor.status",
         "baseharbor.doctor",
         "baseharbor.observe",
+        "baseharbor.evidence",
         "baseharbor.update",
         "baseharbor.repair",
         "baseharbor.backup",

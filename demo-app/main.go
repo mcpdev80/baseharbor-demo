@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -66,6 +67,7 @@ func main() {
 	mux.HandleFunc("/api/sql", a.sqlAction)
 	mux.HandleFunc("/api/cache", a.cacheAction)
 	mux.HandleFunc("/api/object", a.objectAction)
+	mux.HandleFunc("/api/file", a.fileAction)
 	mux.HandleFunc("/api/secret", a.secretAction)
 	mux.HandleFunc("/api/metrics/verify", a.metricsVerifyAction)
 	mux.HandleFunc("/api/trace", a.traceAction)
@@ -317,34 +319,88 @@ func (a *app) cacheAction(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *app) objectAction(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		methodNotAllowed(w)
-		return
-	}
 	if a.s3 == nil || a.s3Bucket == "" {
 		writeError(w, "S3 bindings missing")
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
-	exists, err := a.s3.BucketExists(ctx, a.s3Bucket)
-	if err != nil {
-		writeError(w, err.Error())
-		return
-	}
-	if !exists {
-		if err := a.s3.MakeBucket(ctx, a.s3Bucket, minio.MakeBucketOptions{}); err != nil {
+
+	switch r.Method {
+	case http.MethodPost:
+		exists, err := a.s3.BucketExists(ctx, a.s3Bucket)
+		if err != nil {
 			writeError(w, err.Error())
 			return
 		}
+		if !exists {
+			if err := a.s3.MakeBucket(ctx, a.s3Bucket, minio.MakeBucketOptions{}); err != nil {
+				writeError(w, err.Error())
+				return
+			}
+		}
+		name := "demo-" + strconv.FormatInt(time.Now().UnixNano(), 10) + ".txt"
+		body := []byte("BaseHarbor portable object storage demo\n")
+		if _, err := a.s3.PutObject(ctx, a.s3Bucket, name, bytes.NewReader(body), int64(len(body)), minio.PutObjectOptions{ContentType: "text/plain"}); err != nil {
+			writeError(w, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"bucket": a.s3Bucket, "object": name, "bytes": len(body)})
+	case http.MethodGet:
+		name := strings.TrimSpace(r.URL.Query().Get("name"))
+		if name == "" {
+			writeError(w, "object name query parameter is required")
+			return
+		}
+		object, err := a.s3.GetObject(ctx, a.s3Bucket, name, minio.GetObjectOptions{})
+		if err != nil {
+			writeError(w, err.Error())
+			return
+		}
+		defer object.Close()
+		body, err := io.ReadAll(io.LimitReader(object, 1<<20))
+		if err != nil {
+			writeError(w, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"bucket": a.s3Bucket, "object": name, "content": string(body)})
+	default:
+		methodNotAllowed(w)
 	}
-	name := "demo-" + strconv.FormatInt(time.Now().UnixNano(), 10) + ".txt"
-	body := []byte("BaseHarbor portable object storage demo\n")
-	if _, err := a.s3.PutObject(ctx, a.s3Bucket, name, bytes.NewReader(body), int64(len(body)), minio.PutObjectOptions{ContentType: "text/plain"}); err != nil {
-		writeError(w, err.Error())
-		return
+}
+
+func (a *app) fileAction(w http.ResponseWriter, r *http.Request) {
+	stateDir := env("APP_STATE_DIR", "/var/lib/baseharbor-demo")
+	statePath := filepath.Join(stateDir, "state.txt")
+	switch r.Method {
+	case http.MethodPost:
+		body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+		if err != nil {
+			writeError(w, err.Error())
+			return
+		}
+		if len(body) == 0 {
+			body = []byte("BaseHarbor durable workload state\n")
+		}
+		if err := os.MkdirAll(stateDir, 0o750); err != nil {
+			writeError(w, err.Error())
+			return
+		}
+		if err := os.WriteFile(statePath, body, 0o640); err != nil {
+			writeError(w, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"stored": true, "bytes": len(body)})
+	case http.MethodGet:
+		body, err := os.ReadFile(statePath)
+		if err != nil {
+			writeError(w, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"content": string(body), "bytes": len(body)})
+	default:
+		methodNotAllowed(w)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"bucket": a.s3Bucket, "object": name, "bytes": len(body)})
 }
 
 func (a *app) secretAction(w http.ResponseWriter, r *http.Request) {
