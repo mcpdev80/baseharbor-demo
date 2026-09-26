@@ -31,7 +31,7 @@ export XDG_DATA_HOME="${XDG_DATA_HOME:-/tmp/baseharbor-demo-xdg/data}"
 export BASEHARBOR_TARGET="${BASEHARBOR_TARGET:-demo-${BASEHARBOR_TEST_RUNTIME}}"
 command -v "$BASEHARBOR_TEST_RUNTIME" >/dev/null 2>&1
 
-rm -rf "$XDG_CONFIG_HOME/baseharbor" "$XDG_DATA_HOME/baseharbor"
+rm -rf "$XDG_CONFIG_HOME/baseharbor" "$XDG_DATA_HOME/baseharbor" "$XDG_DATA_HOME/baseharbor-recovery"
 "$BAHA" target create "$BASEHARBOR_TARGET" \
   --provider "$BASEHARBOR_TEST_RUNTIME" \
   --access "local-$BASEHARBOR_TEST_RUNTIME" \
@@ -48,7 +48,7 @@ cleanup() {
     "$BAHA" app destroy --yes >/dev/null 2>&1 || true
     cd "$DEMO_ROOT/companion-app"
     "$BAHA" app destroy --yes >/dev/null 2>&1 || true
-    rm -rf "$XDG_CONFIG_HOME/baseharbor" "$XDG_DATA_HOME/baseharbor"
+    rm -rf "$XDG_CONFIG_HOME/baseharbor" "$XDG_DATA_HOME/baseharbor" "$XDG_DATA_HOME/baseharbor-recovery"
   fi
   exit "$status"
 }

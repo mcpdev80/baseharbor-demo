@@ -189,12 +189,6 @@ init_rules = [
     Rule(r"Write baseharbor\.yaml\? \[Y/n\]\s*$", "\n"),
 ]
 
-recovery_file = ARTIFACT_DIR / "openbao-recovery.json"
-try:
-    recovery_file.unlink()
-except FileNotFoundError:
-    pass
-
 up_rules = [
     Rule(r"Public FQDN \(example: mailflow\.example\.com\) \[[^\]]+\]:\s*$", "\n"),
     Rule(r"TLS:.*?3\. Local development certificate.*?>\s*$", "3\n", optional=True),
@@ -202,7 +196,7 @@ up_rules = [
     Rule(r"OpenBao host port \[\d+\]:\s*$", "\n", optional=True),
     Rule(r"Accept\? \[Y/n\]:\s*$", "\n", optional=True),
     Rule(r"Use \d+ instead\? \[Y/n\]:\s*$", "\n", repeat=True, optional=True),
-    Rule(r"OpenBao-recovery-key:[^\n]*\$\s*$", str(recovery_file) + "\n"),
+    Rule(r"OpenBao recovery file \[[^\]]+\]:\s*$", "\n"),
     Rule(r"Configure now\? \[Y/n\]\s*$", "\n"),
     Rule(r"APP_SECRET value:\s*$", "acceptance-secret-value\n"),
     Rule(r"Install the BaseHarbor CA into the host trust store\? \[y/N\]:\s*$", "n\n", optional=True),
