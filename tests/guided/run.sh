@@ -29,6 +29,8 @@ grep -q '^metrics:' "$DEMO_ROOT/baseharbor.yaml"
 grep -q '^telemetry:' "$DEMO_ROOT/baseharbor.yaml"
 grep -q '^logs:' "$DEMO_ROOT/baseharbor.yaml"
 grep -q '^runtime:' "$DEMO_ROOT/baseharbor.yaml"
+grep -q '^identity:' "$DEMO_ROOT/baseharbor.yaml"
+grep -q 'management_ui' "$DEMO_ROOT/baseharbor.yaml"
 grep -q 'APP_SECRET' "$DEMO_ROOT/baseharbor.yaml"
 grep -q 'uploads' "$DEMO_ROOT/baseharbor.yaml"
 
