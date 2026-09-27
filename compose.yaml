@@ -4,6 +4,8 @@ services:
       context: ./demo-app
     ports:
       - "${DEMO_HTTP_PORT:-8080}:8080"
+    labels:
+      io.baseharbor.workload.protocol: "https"
     environment:
       PORT: "8080"
       DATABASE_URL: ${DATABASE_URL:-postgres://demo:demo@postgres:5432/demo?sslmode=disable}
