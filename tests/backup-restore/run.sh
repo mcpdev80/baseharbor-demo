@@ -26,14 +26,13 @@ rm -rf "$DEMO_ROOT/.baseharbor" "$DEMO_ROOT/baseharbor.yaml"
   cd "$DEMO_ROOT"
   "$BAHA" app init --quick
 
+  # Quick init already promotes detected Runtime API object-storage creation
+  # into the portable permission contract. Verify it instead of appending a
+  # duplicate capability entry to the generated manifest.
+  grep -q 'capability: object-storage.s3/v1' baseharbor.yaml
+  grep -q 'runtime.create' baseharbor.yaml
+
   cat >> baseharbor.yaml <<'EOF'
-runtime:
-  permissions:
-    - capability: object-storage.s3/v1
-      services:
-        - demo-app
-      operations:
-        - runtime.create
 logs:
   collect:
     - application
