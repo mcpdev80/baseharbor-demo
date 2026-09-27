@@ -66,16 +66,19 @@ canonical_hosts=(
   metrics.baha.localhost
 )
 
+gateway_port="$(dev_gateway_port)"
 for host in "${canonical_hosts[@]}"; do
-  grep -q "https://$host" "$ARTIFACT_DIR/guided-status.txt"
-  code="$(curl -sS --cacert "$gateway_ca" --resolve "$host:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$host/")"
+  url="$(dev_gateway_url "$host")"
+  grep -q "$url" "$ARTIFACT_DIR/guided-status.txt"
+  code="$(curl -sS --cacert "$gateway_ca" --resolve "$host:$gateway_port:127.0.0.1" -o /dev/null -w '%{http_code}' "$url/")"
   test "$code" -ge 200
   test "$code" -lt 500
 done
 
 swagger_host="demo.baha.localhost"
-grep -q "https://$swagger_host/swagger/" "$ARTIFACT_DIR/guided-status.txt"
-swagger_code="$(curl -sS --cacert "$gateway_ca" --resolve "$swagger_host:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$swagger_host/swagger/")"
+swagger_url="$(dev_gateway_url "$swagger_host")/swagger/"
+grep -q "$swagger_url" "$ARTIFACT_DIR/guided-status.txt"
+swagger_code="$(curl -sS --cacert "$gateway_ca" --resolve "$swagger_host:$gateway_port:127.0.0.1" -o /dev/null -w '%{http_code}' "$swagger_url")"
 test "$swagger_code" -ge 200
 test "$swagger_code" -lt 400
 
