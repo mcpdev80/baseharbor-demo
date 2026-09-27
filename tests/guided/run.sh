@@ -18,6 +18,7 @@ test ! -e "$DEMO_ROOT/.baseharbor"
 
 compose_before="$(sha256sum "$DEMO_ROOT/compose.yaml" | awk '{print $1}')"
 
+echo "[phase] guided: initialize and converge application"
 python3 "$DEMO_ROOT/tests/guided/drive.py"
 
 test -s "$DEMO_ROOT/baseharbor.yaml"
@@ -36,7 +37,9 @@ grep -q 'uploads' "$DEMO_ROOT/baseharbor.yaml"
 
 (
   cd "$DEMO_ROOT"
+  echo "[phase] guided status: collect application readiness"
   "$BAHA" status | tee "$ARTIFACT_DIR/guided-status.txt"
+  echo "[phase] guided doctor: verify provider and workload health"
   "$BAHA" doctor | tee "$ARTIFACT_DIR/guided-doctor.txt"
 )
 
