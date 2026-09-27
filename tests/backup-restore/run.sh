@@ -5,10 +5,11 @@ source "$DEMO_ROOT/tests/lib.sh"
 section "Backup and restore"
 
 api_host="demo.baha.localhost"
-base="https://$api_host"
+gateway_port="$(dev_gateway_port)"
+base="$(dev_gateway_url "$api_host")"
 gateway_ca="$XDG_DATA_HOME/baseharbor/targets/$BASEHARBOR_TARGET/developer-access/dev/gateway/runtime/ca.pem"
 test -s "$gateway_ca"
-curl_dev=(curl -fsS --cacert "$gateway_ca" --resolve "$api_host:443:127.0.0.1")
+curl_dev=(curl -fsS --cacert "$gateway_ca" --resolve "$api_host:$gateway_port:127.0.0.1")
 
 printf '%s' 'acceptance-backup-password' > "$ARTIFACT_DIR/backup.pass"
 chmod 600 "$ARTIFACT_DIR/backup.pass"
@@ -60,7 +61,7 @@ jq -r '.object' "$ARTIFACT_DIR/recovery-s3-seed.json" > "$ARTIFACT_DIR/recovery-
 "${curl_dev[@]}" -X POST "$base"/api/secret \
   | jq -e '.present==true and .value_exposed==false' >/dev/null
 
-curl -sS --cacert "$gateway_ca" --resolve "$api_host:443:127.0.0.1" -o /dev/null "$base/recovery-marker-v0417" || true
+curl -sS --cacert "$gateway_ca" --resolve "$api_host:$gateway_port:127.0.0.1" -o /dev/null "$base/recovery-marker-v0417" || true
 
 (
   cd "$DEMO_ROOT"
