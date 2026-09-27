@@ -52,8 +52,7 @@ EOF
 "${curl_dev[@]}" -X POST "$base"/api/object > "$ARTIFACT_DIR/recovery-s3-seed.json"
 jq -r '.object' "$ARTIFACT_DIR/recovery-s3-seed.json" > "$ARTIFACT_DIR/recovery-s3-object.txt"
 
-printf '%s' 'durable-workload-state-v0417' \
-  | curl -fsS -X POST --data-binary @- http://127.0.0.1:8080/api/file \
+"${curl_dev[@]}" -X POST --data-binary 'durable-workload-state-v0417' "$base/api/file" \
   > "$ARTIFACT_DIR/recovery-volume-seed.json"
 
 "${curl_dev[@]}" -X POST "$base"/api/secret \
