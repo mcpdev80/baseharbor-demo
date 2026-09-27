@@ -1,0 +1,7 @@
+services:
+  demo-app:
+    environment:
+      TLS_CERT_FILE: /run/demo-tls/tls.crt
+      TLS_KEY_FILE: /run/demo-tls/tls.key
+    volumes:
+      - ${DEMO_TLS_DIR:-./.demo-tls}:/run/demo-tls:ro
