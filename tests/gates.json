@@ -5,6 +5,7 @@
   {"name":"lifecycle","requires":["guided"]},
   {"name":"policy","requires":["guided"]},
   {"name":"capabilities","requires":["lifecycle"]},
+  {"name":"identity","requires":["lifecycle"]},
   {"name":"connectivity","requires":["lifecycle"]},
   {"name":"security","requires":["guided"]},
   {"name":"reconciliation","requires":["lifecycle"]},
