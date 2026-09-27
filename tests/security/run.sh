@@ -151,10 +151,22 @@ jq -e '
 }
 
 scan_file="$ARTIFACT_DIR/security-insecure-tls-scan.txt"
-set +e
-grep -R -n -E 'tls_insecure_skip_verify|insecure_skip_verify'   "${XDG_DATA_HOME:-$HOME/.local/share}/baseharbor"   "$DEMO_ROOT/.baseharbor" >"$scan_file" 2>"$ARTIFACT_DIR/security-insecure-tls-scan.stderr.txt"
-grep_rc=$?
-set -e
+scan_roots=()
+for candidate in "${XDG_DATA_HOME:-$HOME/.local/share}/baseharbor" "$DEMO_ROOT/.baseharbor"; do
+  if [ -e "$candidate" ]; then
+    scan_roots+=("$candidate")
+  fi
+done
+
+grep_rc=1
+: >"$scan_file"
+: >"$ARTIFACT_DIR/security-insecure-tls-scan.stderr.txt"
+if [ "${#scan_roots[@]}" -gt 0 ]; then
+  set +e
+  grep -R -n -E 'tls_insecure_skip_verify|insecure_skip_verify' "${scan_roots[@]}" >"$scan_file" 2>"$ARTIFACT_DIR/security-insecure-tls-scan.stderr.txt"
+  grep_rc=$?
+  set -e
+fi
 case "$grep_rc" in
   0)
     echo "canonical development routing contains an insecure TLS bypass" >&2
