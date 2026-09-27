@@ -81,6 +81,7 @@ test "$swagger_code" -lt 400
 
 jq -e '.checks[] | select(.name == "canonical-development-urls" and .ok == true)' "$ARTIFACT_DIR/guided-status.json" >/dev/null
 jq -e '.checks[] | select(.name == "postgres" and .ok == true and (.detail | contains("shared Target provider")))' "$ARTIFACT_DIR/guided-status.json" >/dev/null
+jq -e '.checks[] | select(.name == "postgres/isolation" and .ok == true and (.detail | contains("cross-application access isolation verified")))' "$ARTIFACT_DIR/guided-status.json" >/dev/null
 jq -e '.checks[] | select(.name == "valkey" and .ok == true and (.detail | contains("shared Target provider")))' "$ARTIFACT_DIR/guided-status.json" >/dev/null
 
 if grep -Eq 'https://(127\.0\.0\.1|localhost):[0-9]+' "$ARTIFACT_DIR/guided-status.txt"; then
