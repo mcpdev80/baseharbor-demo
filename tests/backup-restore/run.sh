@@ -27,6 +27,13 @@ rm -rf "$DEMO_ROOT/.baseharbor" "$DEMO_ROOT/baseharbor.yaml"
   "$BAHA" app init --quick
 
   cat >> baseharbor.yaml <<'EOF'
+runtime:
+  permissions:
+    - capability: object-storage.s3/v1
+      services:
+        - demo-app
+      operations:
+        - runtime.create
 logs:
   collect:
     - application
