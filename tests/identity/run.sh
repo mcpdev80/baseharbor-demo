@@ -4,7 +4,7 @@ source "$DEMO_ROOT/tests/lib.sh"
 
 section "Managed identity and provider management surfaces"
 
-base="https://127.0.0.1:8080"
+base="https://baseharbor-demo-api.baseharbor.localhost"
 
 curl -kfsS "$base/api/status" > "$ARTIFACT_DIR/identity-demo-status.json"
 jq -e '.capabilities.identity.ready == true' "$ARTIFACT_DIR/identity-demo-status.json" >/dev/null
@@ -34,13 +34,20 @@ pass "OIDC Discovery" "issuer, client, confidential credential file and managed 
   "$BAHA" status -o json > "$ARTIFACT_DIR/identity-baha-status.json"
 )
 
-jq -e '.checks[] | select(.name == "identity" and .ok == true)' "$ARTIFACT_DIR/identity-baha-status.json" >/dev/null
+jq -e '.checks[] | select(.name == "identity/oidc" and .ok == true)' "$ARTIFACT_DIR/identity-baha-status.json" >/dev/null
 
 for surface in sql cache object-storage secrets identity-login identity-admin observability; do
   jq -e --arg surface "$surface" '
     any(.management_ui[]?; .service == $surface and (.url | startswith("https://")))
   ' "$ARTIFACT_DIR/identity-baha-status.json" >/dev/null
 done
+
+jq -e '
+  all(.management_ui[]?;
+    (.url | startswith("https://")) and
+    ((.url | test("127\\.0\\.0\\.1|localhost:[0-9]+")) | not)
+  )
+' "$ARTIFACT_DIR/identity-baha-status.json" >/dev/null
 
 jq -e 'any(.management_ui[]?; .service == "identity-login" and .purpose == "user-facing")' "$ARTIFACT_DIR/identity-baha-status.json" >/dev/null
 jq -e 'any(.management_ui[]?; .service == "identity-admin" and .purpose == "administration")' "$ARTIFACT_DIR/identity-baha-status.json" >/dev/null
