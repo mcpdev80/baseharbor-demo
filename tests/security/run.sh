@@ -63,7 +63,7 @@ section "TLS file binding boundary"
 
 api_host="baseharbor-demo-api.baseharbor.localhost"
 base="https://$api_host"
-curl_dev=("${curl_dev[@]}" --resolve "$api_host:443:127.0.0.1")
+curl_dev=(curl -kfsS --resolve "$api_host:443:127.0.0.1")
 "${curl_dev[@]}" -X POST "$base/api/sql" | jq -e '.records>=1' >/dev/null
 "${curl_dev[@]}" -X POST "$base/api/cache" | jq -e '.value=="portable-cache-value"' >/dev/null
 "${curl_dev[@]}" -X POST "$base/api/object" | jq -e '.bucket|length>0' >/dev/null
