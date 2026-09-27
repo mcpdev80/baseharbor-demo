@@ -8,8 +8,9 @@ api_host="demo.baha.localhost"
 identity_host="auth.baha.localhost"
 gateway_ca="$XDG_DATA_HOME/baseharbor/targets/$BASEHARBOR_TARGET/developer-access/dev/gateway/runtime/ca.pem"
 test -s "$gateway_ca"
-base="https://$api_host"
-curl_dev=(curl -fsS --cacert "$gateway_ca" --resolve "$api_host:443:127.0.0.1")
+gateway_port="$(dev_gateway_port)"
+base="$(dev_gateway_url "$api_host")"
+curl_dev=(curl -fsS --cacert "$gateway_ca" --resolve "$api_host:$gateway_port:127.0.0.1")
 
 "${curl_dev[@]}" "$base/api/status" > "$ARTIFACT_DIR/identity-demo-status.json"
 jq -e '.capabilities.identity.ready == true' "$ARTIFACT_DIR/identity-demo-status.json" >/dev/null
@@ -64,7 +65,7 @@ jq -e 'any(.management_ui[]?; .service == "observability" and .purpose == "obser
 jq -e '.checks[] | select(.name == "canonical-development-urls" and .ok == true)' "$ARTIFACT_DIR/identity-baha-status.json" >/dev/null
 
 discovery_url="https://$identity_host/realms/bh-demo-dev/.well-known/openid-configuration"
-curl -fsS --cacert "$gateway_ca" --resolve "$identity_host:443:127.0.0.1" "$discovery_url" > "$ARTIFACT_DIR/identity-canonical-discovery.json"
+curl -fsS --cacert "$gateway_ca" --resolve "$identity_host:$gateway_port:127.0.0.1" "$discovery_url" > "$ARTIFACT_DIR/identity-canonical-discovery.json"
 jq -e --arg prefix "https://$identity_host/realms/" '.issuer | startswith($prefix)' "$ARTIFACT_DIR/identity-canonical-discovery.json" >/dev/null
 if jq -e '.issuer | test(":[0-9]+")' "$ARTIFACT_DIR/identity-canonical-discovery.json" >/dev/null; then
   echo "OIDC issuer exposed an implementation-detail port" >&2
