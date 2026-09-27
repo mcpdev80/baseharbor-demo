@@ -5,7 +5,7 @@ source "$DEMO_ROOT/tests/lib.sh"
 section "Application-facing capabilities"
 api_host="baseharbor-demo-api.baseharbor.localhost"
 base="https://$api_host"
-curl_dev=("${curl_dev[@]}" --resolve "$api_host:443:127.0.0.1")
+curl_dev=(curl -kfsS --resolve "$api_host:443:127.0.0.1")
 
 "${curl_dev[@]}" "$base/healthz" | jq -e '.status=="ok"' >/dev/null
 "${curl_dev[@]}" "$base/api/status" > "$ARTIFACT_DIR/demo-status.json"
