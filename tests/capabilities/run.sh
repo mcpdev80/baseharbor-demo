@@ -6,8 +6,9 @@ section "Application-facing capabilities"
 api_host="demo.baha.localhost"
 gateway_ca="$XDG_DATA_HOME/baseharbor/targets/$BASEHARBOR_TARGET/developer-access/dev/gateway/runtime/ca.pem"
 test -s "$gateway_ca"
-base="https://$api_host"
-curl_dev=(curl -fsS --cacert "$gateway_ca" --resolve "$api_host:443:127.0.0.1")
+gateway_port="$(dev_gateway_port)"
+base="$(dev_gateway_url "$api_host")"
+curl_dev=(curl -fsS --cacert "$gateway_ca" --resolve "$api_host:$gateway_port:127.0.0.1")
 
 "${curl_dev[@]}" "$base/healthz" | jq -e '.status=="ok"' >/dev/null
 "${curl_dev[@]}" "$base/api/status" > "$ARTIFACT_DIR/demo-status.json"
