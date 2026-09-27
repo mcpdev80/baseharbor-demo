@@ -651,24 +651,16 @@ func runtimeResourceConfigured() bool {
 func serverTransport() (mode, certFile, keyFile string, err error) {
 	certFile = strings.TrimSpace(os.Getenv("TLS_CERT_FILE"))
 	keyFile = strings.TrimSpace(os.Getenv("TLS_KEY_FILE"))
-	managed := strings.TrimSpace(os.Getenv("BASEHARBOR_RUNTIME_API_URL")) != "" ||
-		strings.TrimSpace(os.Getenv("BASEHARBOR_RUNTIME_TOKEN_FILE")) != ""
-	switch {
-	case certFile == "" && keyFile == "" && managed:
-		return "", "", "", fmt.Errorf("BaseHarbor-managed demo requires TLS_CERT_FILE and TLS_KEY_FILE")
-	case certFile == "" && keyFile == "":
-		return "http", "", "", nil
-	case certFile == "" || keyFile == "":
-		return "", "", "", fmt.Errorf("BaseHarbor TLS requires both TLS_CERT_FILE and TLS_KEY_FILE")
-	default:
-		if _, statErr := os.Stat(certFile); statErr != nil {
-			return "", "", "", fmt.Errorf("inspect BaseHarbor TLS certificate: %w", statErr)
-		}
-		if _, statErr := os.Stat(keyFile); statErr != nil {
-			return "", "", "", fmt.Errorf("inspect BaseHarbor TLS private key: %w", statErr)
-		}
-		return "https", certFile, keyFile, nil
+	if certFile == "" || keyFile == "" {
+		return "", "", "", fmt.Errorf("BaseHarbor demo requires TLS_CERT_FILE and TLS_KEY_FILE; plaintext HTTP is intentionally unsupported")
 	}
+	if _, statErr := os.Stat(certFile); statErr != nil {
+		return "", "", "", fmt.Errorf("inspect BaseHarbor TLS certificate: %w", statErr)
+	}
+	if _, statErr := os.Stat(keyFile); statErr != nil {
+		return "", "", "", fmt.Errorf("inspect BaseHarbor TLS private key: %w", statErr)
+	}
+	return "https", certFile, keyFile, nil
 }
 
 func static(w http.ResponseWriter, r *http.Request) {
