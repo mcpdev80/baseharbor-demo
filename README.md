@@ -64,8 +64,8 @@ baha doctor
 
 The demo UI exercises real integrations for:
 
-- SQL
-- cache
+- shared PostgreSQL with an application-isolated database and role
+- shared Valkey provider lifecycle with an application-isolated cache service
 - S3-compatible object storage
 - secrets
 - metrics
@@ -170,7 +170,9 @@ OIDC_CA_FILE
 
 The application calls the issuer's standard `/.well-known/openid-configuration` endpoint with the provided trust file. It does not call Keycloak administration APIs and does not depend on a BaseHarbor authentication SDK.
 
-The guided v0.4.17 demo also selects the optional management surfaces. In local dev, `baha status` reports their HTTPS URLs and semantic purpose:
+The guided v0.4.17 demo deliberately uses **shared placement for every managed provider except the application workload**. PostgreSQL is one Target-owned provider with application-isolated databases/roles. Valkey uses one Target-owned provider lifecycle with isolated per-application cache resources so normal Redis/Valkey clients keep working without cross-application key access.
+
+The guided demo also selects the optional management surfaces. In local dev, `baha status` reports their HTTPS URLs and semantic purpose:
 
 - PostgreSQL -> pgAdmin
 - cache -> Redis Commander
@@ -184,15 +186,15 @@ Provider-admin credentials are not projected into the demo application.
 For local development, BaseHarbor derives canonical browser URLs from one Target-scoped development domain. With the default domain the demo uses addresses such as:
 
 ```text
-https://baseharbor-demo-api.baseharbor.localhost
-https://baseharbor-demo-api.baseharbor.localhost/swagger/
-https://baseharbor-demo-pgadmin.baseharbor.localhost
-https://baseharbor-demo-cache.baseharbor.localhost
-https://baseharbor-demo-identity.baseharbor.localhost
-https://baseharbor-demo-identity-admin.baseharbor.localhost
-https://shared-storage.baseharbor.localhost
-https://shared-openbao.baseharbor.localhost
-https://shared-prometheus.baseharbor.localhost
+https://baseharbor-demo.baha.localhost
+https://baseharbor-demo.baha.localhost/swagger/
+https://pgadmin.baha.localhost
+https://cache.baha.localhost
+https://auth.baha.localhost
+https://auth-admin.baha.localhost
+https://storage.baha.localhost
+https://secrets.baha.localhost
+https://metrics.baha.localhost
 ```
 
 Random loopback ports remain runtime implementation detail. The domain can be inspected or changed with `baha dev domain [DOMAIN]`.
