@@ -185,11 +185,12 @@ For local development, BaseHarbor derives canonical browser URLs from one Target
 
 ```text
 https://baseharbor-demo-api.baseharbor.localhost
+https://baseharbor-demo-api.baseharbor.localhost/swagger/
 https://baseharbor-demo-pgadmin.baseharbor.localhost
 https://baseharbor-demo-cache.baseharbor.localhost
 https://baseharbor-demo-identity.baseharbor.localhost
 https://baseharbor-demo-identity-admin.baseharbor.localhost
-https://baseharbor-demo-storage.baseharbor.localhost
+https://shared-storage.baseharbor.localhost
 https://shared-openbao.baseharbor.localhost
 https://shared-prometheus.baseharbor.localhost
 ```
