@@ -4,8 +4,8 @@ source "$DEMO_ROOT/tests/lib.sh"
 
 section "Managed identity and provider management surfaces"
 
-api_host="baseharbor-demo-api.baseharbor.localhost"
-identity_host="baseharbor-demo-identity.baseharbor.localhost"
+api_host="baseharbor-demo.baha.localhost"
+identity_host="auth.baha.localhost"
 gateway_ca="$XDG_DATA_HOME/baseharbor/targets/$BASEHARBOR_TARGET/developer-access/dev/gateway/runtime/ca.pem"
 test -s "$gateway_ca"
 base="https://$api_host"
@@ -29,7 +29,7 @@ pass "OIDC Discovery" "issuer, client, confidential credential file and managed 
   "$BAHA" app exec demo-app /bin/sh -ec '
     test -n "$OIDC_ISSUER"
     case "$OIDC_ISSUER" in
-      https://baseharbor-demo-identity.baseharbor.localhost/realms/*) ;;
+      https://auth.baha.localhost/realms/*) ;;
       *) echo "unexpected canonical OIDC issuer: $OIDC_ISSUER" >&2; exit 1 ;;
     esac
     test -n "$OIDC_CLIENT_ID"
