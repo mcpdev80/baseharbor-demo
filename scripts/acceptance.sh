@@ -23,8 +23,10 @@ jq -e '
 if [ -n "${BASEHARBOR_SOURCE_REF:-}" ]; then
   export BASEHARBOR_RUNTIME_IMAGE=baseharbor-runtime:demo-candidate
 fi
+printf '[acceptance] install: preparing BaseHarbor candidate\n'
 bash "$DEMO_ROOT/scripts/install-baseharbor.sh"
 export BAHA="$BASEHARBOR_INSTALL_DIR/baha"
+printf '[acceptance] install: candidate ready (%s)\n' "$("$BAHA" version | head -n1)"
 export BASEHARBOR_TEST_RUNTIME="${BASEHARBOR_TEST_RUNTIME:-docker}"
 export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-/tmp/baseharbor-demo-xdg/config}"
 export XDG_DATA_HOME="${XDG_DATA_HOME:-/tmp/baseharbor-demo-xdg/data}"
@@ -32,24 +34,30 @@ export BASEHARBOR_TARGET="${BASEHARBOR_TARGET:-demo-${BASEHARBOR_TEST_RUNTIME}}"
 command -v "$BASEHARBOR_TEST_RUNTIME" >/dev/null 2>&1
 
 rm -rf "$XDG_CONFIG_HOME/baseharbor" "$XDG_DATA_HOME/baseharbor" "$XDG_DATA_HOME/baseharbor-recovery"
+printf '[acceptance] target: creating %s on %s\n' "$BASEHARBOR_TARGET" "$BASEHARBOR_TEST_RUNTIME"
 "$BAHA" target create "$BASEHARBOR_TARGET" \
   --provider "$BASEHARBOR_TEST_RUNTIME" \
   --access "local-$BASEHARBOR_TEST_RUNTIME" \
   --reference local \
   --scope default \
   --default >/dev/null
+printf '[acceptance] target: ready\n'
 
 cleanup() {
   status=$?
   set +e
   cd "$DEMO_ROOT"
+  printf '[acceptance] cleanup: begin (exit=%s)\n' "$status" >&2
   "$BASEHARBOR_TEST_RUNTIME" ps -q | xargs -r "$BASEHARBOR_TEST_RUNTIME" unpause >/dev/null 2>&1
-  if ! "$BAHA" destroy --all --yes >/dev/null 2>&1; then
-    "$BAHA" app destroy --yes >/dev/null 2>&1 || true
+  printf '[acceptance] cleanup: destroy registered BaseHarbor state\n' >&2
+  if ! timeout --signal=TERM --kill-after=5s 90s "$BAHA" destroy --all --yes >/dev/null 2>&1; then
+    printf '[acceptance] cleanup: full destroy did not finish cleanly; falling back to app cleanup\n' >&2
+    timeout --signal=TERM --kill-after=5s 45s "$BAHA" app destroy --yes >/dev/null 2>&1 || true
     cd "$DEMO_ROOT/companion-app"
-    "$BAHA" app destroy --yes >/dev/null 2>&1 || true
+    timeout --signal=TERM --kill-after=5s 45s "$BAHA" app destroy --yes >/dev/null 2>&1 || true
     rm -rf "$XDG_CONFIG_HOME/baseharbor" "$XDG_DATA_HOME/baseharbor" "$XDG_DATA_HOME/baseharbor-recovery"
   fi
+  printf '[acceptance] cleanup: complete\n' >&2
   exit "$status"
 }
 trap cleanup EXIT
