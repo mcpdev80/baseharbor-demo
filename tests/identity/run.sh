@@ -4,7 +4,9 @@ source "$DEMO_ROOT/tests/lib.sh"
 
 section "Managed identity and provider management surfaces"
 
-base="https://baseharbor-demo-api.baseharbor.localhost"
+api_host="baseharbor-demo-api.baseharbor.localhost"
+base="https://$api_host"
+curl_dev=(curl -kfsS --resolve "$api_host:443:127.0.0.1")
 
 "${curl_dev[@]}" "$base/api/status" > "$ARTIFACT_DIR/identity-demo-status.json"
 jq -e '.capabilities.identity.ready == true' "$ARTIFACT_DIR/identity-demo-status.json" >/dev/null
