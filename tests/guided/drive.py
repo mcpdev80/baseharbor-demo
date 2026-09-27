@@ -102,6 +102,8 @@ def run_tty(name, argv, rules, env=None, timeout=900):
     os.close(slave)
 
     started = time.monotonic()
+    last_output = started
+    last_heartbeat = started
     buffer = ""
     cursor = 0
     with log_path.open("wb") as log:
@@ -117,6 +119,7 @@ def run_tty(name, argv, rules, env=None, timeout=900):
                 except OSError:
                     chunk = b""
                 if chunk:
+                    last_output = time.monotonic()
                     log.write(chunk)
                     log.flush()
                     sys.stdout.buffer.write(chunk)
@@ -149,6 +152,13 @@ def run_tty(name, argv, rules, env=None, timeout=900):
                             search_text = buffer[cursor:]
                             responded = True
                             break
+
+            now = time.monotonic()
+            if now - last_heartbeat >= 15:
+                elapsed = int(now - started)
+                silent = int(now - last_output)
+                print(f"\n[progress] {name}: still running · elapsed={elapsed}s · no-output={silent}s", flush=True)
+                last_heartbeat = now
 
             rc = proc.poll()
             if rc is not None:
@@ -208,7 +218,9 @@ up_rules = [
     Rule(r"Install the BaseHarbor CA into the host trust store\? \[y/N\]:\s*$", "n\n", optional=True),
 ]
 
+print("[phase] guided init: interactive capability selection", flush=True)
 run_tty("guided-init", [BAHA, "app", "init"], init_rules)
+print("[phase] guided up: provision providers, bindings and workload", flush=True)
 run_tty(
     "guided-up",
     [BAHA, "--verbose", "up"],
@@ -216,3 +228,5 @@ run_tty(
     env={"BASEHARBOR_TRACES_ENABLED": "true"},
     timeout=1200,
 )
+
+print("[phase] guided up: READY reached; returning to acceptance gate", flush=True)
