@@ -58,8 +58,11 @@ cleanup() {
       name=$("$BASEHARBOR_TEST_RUNTIME" inspect --format '{{.Name}}' "$id" 2>/dev/null | sed 's#^/##')
       [ -n "$name" ] || name="$id"
       safe_name=$(printf '%s' "$name" | tr '/: ' '___')
-      "$BASEHARBOR_TEST_RUNTIME" inspect "$id" >"$diagnostics/$safe_name.inspect.json" 2>&1 || true
-      "$BASEHARBOR_TEST_RUNTIME" logs --tail 300 "$id" >"$diagnostics/$safe_name.log" 2>&1 || true
+      "$BASEHARBOR_TEST_RUNTIME" inspect --format '{{json .State}}' "$id" >"$diagnostics/$safe_name.state.json" 2>&1 || true
+      "$BASEHARBOR_TEST_RUNTIME" inspect --format 'image={{.Config.Image}} name={{.Name}}' "$id" >"$diagnostics/$safe_name.identity.txt" 2>&1 || true
+      "$BASEHARBOR_TEST_RUNTIME" logs --tail 300 "$id" 2>&1 \
+        | sed -E 's/([Pp]assword|[Ss]ecret|[Tt]oken|[Aa]ccess[_-]?[Kk]ey)([=: ]+)[^[:space:]]+/\1\2<redacted>/g' \
+        >"$diagnostics/$safe_name.log" || true
     done
     printf '[acceptance] cleanup: captured runtime diagnostics\n' >&2
   fi
