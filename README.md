@@ -121,6 +121,15 @@ The full acceptance suite performs this companion adoption and connectivity flow
 
 ## TLS and trust bindings
 
+The reference workload itself is HTTPS-only. Its Compose service declares:
+
+```yaml
+labels:
+  io.baseharbor.workload.protocol: "https"
+```
+
+BaseHarbor uses that declaration for the canonical development route, verifies the workload certificate with the BaseHarbor-issued workload CA, and sends the workload service name as TLS SNI. The demo intentionally has no plaintext HTTP fallback.
+
 BaseHarbor keeps transport configuration and certificate material separate.
 
 The workload receives URLs and file paths through environment variables, while certificate and trust material is mounted read-only as files inside the container. PEM data is not embedded in `.env` values.
@@ -294,16 +303,27 @@ Evidence is written below `artifacts/`.
 
 ## Run without BaseHarbor
 
-The demo is still a normal Compose application:
+The demo remains HTTPS-only even in standalone mode. Create a local development certificate first:
 
 ```bash
-docker compose --profile standalone up --build
+mkdir -p .demo-tls
+openssl req -x509 -newkey rsa:2048 -nodes -days 30 \
+  -keyout .demo-tls/tls.key \
+  -out .demo-tls/tls.crt \
+  -subj "/CN=localhost" \
+  -addext "subjectAltName=DNS:localhost,IP:127.0.0.1"
+```
+
+Then start the normal Compose file plus the standalone TLS override:
+
+```bash
+docker compose -f compose.yaml -f compose.standalone.yaml --profile standalone up --build
 ```
 
 Open:
 
 ```text
-http://localhost:8080
+https://localhost:8080
 ```
 
-The standalone profile starts local backing services only for standalone demo use.
+The certificate is intentionally local/self-signed in standalone mode. Under BaseHarbor, certificate issuance, projection and trust are managed by BaseHarbor instead.
