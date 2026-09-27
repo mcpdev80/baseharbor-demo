@@ -48,14 +48,14 @@ curl -fsS -X POST http://127.0.0.1:8080/api/sql > "$ARTIFACT_DIR/recovery-sql-se
 curl -fsS -X POST http://127.0.0.1:8080/api/object > "$ARTIFACT_DIR/recovery-s3-seed.json"
 jq -r '.object' "$ARTIFACT_DIR/recovery-s3-seed.json" > "$ARTIFACT_DIR/recovery-s3-object.txt"
 
-printf '%s' 'durable-workload-state-v0416' \
+printf '%s' 'durable-workload-state-v0417' \
   | curl -fsS -X POST --data-binary @- http://127.0.0.1:8080/api/file \
   > "$ARTIFACT_DIR/recovery-volume-seed.json"
 
 curl -fsS -X POST http://127.0.0.1:8080/api/secret \
   | jq -e '.present==true and .value_exposed==false' >/dev/null
 
-curl -sS -o /dev/null http://127.0.0.1:8080/recovery-marker-v0416 || true
+curl -sS -o /dev/null http://127.0.0.1:8080/recovery-marker-v0417 || true
 
 (
   cd "$DEMO_ROOT"
@@ -98,12 +98,12 @@ curl -fsS "http://127.0.0.1:8080/api/object?name=$object_name" \
   | jq -e '.content=="BaseHarbor portable object storage demo\n"' >/dev/null
 
 curl -fsS http://127.0.0.1:8080/api/file \
-  | jq -e '.content=="durable-workload-state-v0416"' >/dev/null
+  | jq -e '.content=="durable-workload-state-v0417"' >/dev/null
 
 curl -fsS -X POST http://127.0.0.1:8080/api/secret \
   | jq -e '.present==true and .value_exposed==false' >/dev/null
 
-grep -q 'recovery-marker-v0416' "$ARTIFACT_DIR/recovery-logs-after-restore.txt"
+grep -q 'recovery-marker-v0417' "$ARTIFACT_DIR/recovery-logs-after-restore.txt"
 
 jq -e '
   any(.recovery.contributors[]; .state_class=="database.sql" and .verified==true) and
