@@ -49,6 +49,21 @@ cleanup() {
   cd "$DEMO_ROOT"
   printf '[acceptance] cleanup: begin (exit=%s)\n' "$status" >&2
   "$BASEHARBOR_TEST_RUNTIME" ps -q | xargs -r "$BASEHARBOR_TEST_RUNTIME" unpause >/dev/null 2>&1
+
+  if [ "$status" -ne 0 ]; then
+    diagnostics="$ARTIFACT_DIR/runtime-diagnostics"
+    mkdir -p "$diagnostics"
+    "$BASEHARBOR_TEST_RUNTIME" ps -a --format '{{.ID}}\t{{.Names}}\t{{.Status}}\t{{.Image}}' >"$diagnostics/containers.tsv" 2>&1 || true
+    for id in $("$BASEHARBOR_TEST_RUNTIME" ps -aq 2>/dev/null); do
+      name=$("$BASEHARBOR_TEST_RUNTIME" inspect --format '{{.Name}}' "$id" 2>/dev/null | sed 's#^/##')
+      [ -n "$name" ] || name="$id"
+      safe_name=$(printf '%s' "$name" | tr '/: ' '___')
+      "$BASEHARBOR_TEST_RUNTIME" inspect "$id" >"$diagnostics/$safe_name.inspect.json" 2>&1 || true
+      "$BASEHARBOR_TEST_RUNTIME" logs --tail 300 "$id" >"$diagnostics/$safe_name.log" 2>&1 || true
+    done
+    printf '[acceptance] cleanup: captured runtime diagnostics\n' >&2
+  fi
+
   printf '[acceptance] cleanup: destroy registered BaseHarbor state\n' >&2
   if ! timeout --signal=TERM --kill-after=5s 90s "$BAHA" destroy --all --yes >/dev/null 2>&1; then
     printf '[acceptance] cleanup: full destroy did not finish cleanly; falling back to app cleanup\n' >&2
