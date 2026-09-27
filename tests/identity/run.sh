@@ -6,11 +6,11 @@ section "Managed identity and provider management surfaces"
 
 base="https://baseharbor-demo-api.baseharbor.localhost"
 
-curl -kfsS "$base/api/status" > "$ARTIFACT_DIR/identity-demo-status.json"
+"${curl_dev[@]}" "$base/api/status" > "$ARTIFACT_DIR/identity-demo-status.json"
 jq -e '.capabilities.identity.ready == true' "$ARTIFACT_DIR/identity-demo-status.json" >/dev/null
 pass "Managed Identity" "application consumed standard OIDC discovery and client bindings"
 
-curl -kfsS -X POST "$base/api/identity/verify" > "$ARTIFACT_DIR/identity-verify.json"
+"${curl_dev[@]}" -X POST "$base/api/identity/verify" > "$ARTIFACT_DIR/identity-verify.json"
 jq -e '
   .discovery_verified == true and
   .client_id_present == true and
