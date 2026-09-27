@@ -4,9 +4,11 @@ source "$DEMO_ROOT/tests/lib.sh"
 
 section "Backup and restore"
 
-api_host="baseharbor-demo-api.baseharbor.localhost"
+api_host="baseharbor-demo.baha.localhost"
 base="https://$api_host"
-curl_dev=(curl -kfsS --resolve "$api_host:443:127.0.0.1")
+gateway_ca="$XDG_DATA_HOME/baseharbor/targets/$BASEHARBOR_TARGET/developer-access/dev/gateway/runtime/ca.pem"
+test -s "$gateway_ca"
+curl_dev=(curl -fsS --cacert "$gateway_ca" --resolve "$api_host:443:127.0.0.1")
 
 printf '%s' 'acceptance-backup-password' > "$ARTIFACT_DIR/backup.pass"
 chmod 600 "$ARTIFACT_DIR/backup.pass"
@@ -58,7 +60,7 @@ jq -r '.object' "$ARTIFACT_DIR/recovery-s3-seed.json" > "$ARTIFACT_DIR/recovery-
 "${curl_dev[@]}" -X POST "$base"/api/secret \
   | jq -e '.present==true and .value_exposed==false' >/dev/null
 
-curl -ksS --resolve "$api_host:443:127.0.0.1" -o /dev/null "$base/recovery-marker-v0417" || true
+curl -sS --cacert "$gateway_ca" --resolve "$api_host:443:127.0.0.1" -o /dev/null "$base/recovery-marker-v0417" || true
 
 (
   cd "$DEMO_ROOT"
@@ -77,7 +79,9 @@ curl -ksS --resolve "$api_host:443:127.0.0.1" -o /dev/null "$base/recovery-marke
     any(.recovery.contributors[]; .state_class=="secrets" and .selected==true) and
     any(.recovery.contributors[]; .state_class=="object-storage.s3" and .selected==true) and
     any(.recovery.contributors[]; .state_class=="workload.storage" and .selected==true) and
-    any(.recovery.contributors[]; .state_class=="observability.logs" and .selected==true)
+    any(.recovery.contributors[]; .state_class=="observability.logs" and .selected==true) and
+    any(.observed[]; .id=="status:postgres/isolation" and .status=="ready") and
+    any(.verified[]; .id=="doctor:postgres shared isolation" and .status=="verified")
   ' "$ARTIFACT_DIR/recovery-evidence-before-destroy.json" >/dev/null
 
   "$BAHA" app destroy --yes
@@ -114,9 +118,13 @@ jq -e '
   any(.recovery.contributors[]; .state_class=="object-storage.s3" and .verified==true) and
   any(.recovery.contributors[]; .state_class=="workload.storage" and .verified==true) and
   any(.recovery.contributors[]; .state_class=="observability.logs" and .verified==true) and
-  any(.audit_events[]; .operation=="restore" and .outcome=="success")
+  any(.audit_events[]; .operation=="restore" and .outcome=="success") and
+  any(.observed[]; .id=="status:postgres/isolation" and .status=="ready") and
+  any(.verified[]; .id=="doctor:postgres shared isolation" and .status=="verified")
 ' "$ARTIFACT_DIR/recovery-evidence-after-restore.json" >/dev/null
 
+! grep -Fq 'baseharbor_admin' "$ARTIFACT_DIR/recovery-evidence-before-destroy.json"
+! grep -Fq 'baseharbor_admin' "$ARTIFACT_DIR/recovery-evidence-after-restore.json"
 assert_no_secret_leak "$ARTIFACT_DIR/recovery-evidence-before-destroy.json"
 assert_no_secret_leak "$ARTIFACT_DIR/recovery-evidence-after-restore.json"
 
