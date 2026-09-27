@@ -44,6 +44,9 @@ section "TLS file binding boundary"
   test -n "$BASEHARBOR_RUNTIME_CA_FILE"
   test -n "$BASEHARBOR_RUNTIME_CLIENT_CERT_FILE"
   test -n "$BASEHARBOR_RUNTIME_CLIENT_KEY_FILE"
+  test -n "$OIDC_ISSUER"
+  test -n "$OIDC_CLIENT_ID"
+  test -n "$OIDC_CA_FILE"
 
   test -s "$DATABASE_CA_FILE"
   test -s "$REDIS_CA_FILE"
@@ -54,6 +57,7 @@ section "TLS file binding boundary"
   test -s "$BASEHARBOR_RUNTIME_CA_FILE"
   test -s "$BASEHARBOR_RUNTIME_CLIENT_CERT_FILE"
   test -s "$BASEHARBOR_RUNTIME_CLIENT_KEY_FILE"
+  test -s "$OIDC_CA_FILE"
 '
 )
 
