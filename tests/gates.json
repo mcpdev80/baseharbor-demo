@@ -32,12 +32,6 @@
     ]
   },
   {
-    "name": "backup-restore",
-    "requires": [
-      "lifecycle"
-    ]
-  },
-  {
     "name": "identity",
     "requires": [
       "guided"
@@ -69,6 +63,12 @@
   },
   {
     "name": "failure",
+    "requires": [
+      "lifecycle"
+    ]
+  },
+  {
+    "name": "backup-restore",
     "requires": [
       "lifecycle"
     ]
