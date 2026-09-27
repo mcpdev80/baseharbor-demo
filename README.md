@@ -183,6 +183,8 @@ The guided demo also selects the optional management surfaces. In local dev, `ba
 
 Provider-admin credentials are not projected into the demo application.
 
+For shared PostgreSQL this boundary is explicit: `baseharbor_admin` belongs only to the BaseHarbor control plane. The demo workload receives an application-specific PostgreSQL role, password and database through its normal Service Binding. The guided/security gates require `postgres/isolation` verification and fail if `baseharbor_admin` appears in the workload binding or status evidence.
+
 For local development, BaseHarbor derives canonical browser URLs from one Target-scoped development domain. With the default domain the demo uses addresses such as:
 
 ```text
