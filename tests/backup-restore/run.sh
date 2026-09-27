@@ -4,7 +4,7 @@ source "$DEMO_ROOT/tests/lib.sh"
 
 section "Backup and restore"
 
-api_host="baseharbor-demo.baha.localhost"
+api_host="demo.baha.localhost"
 base="https://$api_host"
 gateway_ca="$XDG_DATA_HOME/baseharbor/targets/$BASEHARBOR_TARGET/developer-access/dev/gateway/runtime/ca.pem"
 test -s "$gateway_ca"
@@ -23,7 +23,7 @@ rm -rf "$DEMO_ROOT/.baseharbor" "$DEMO_ROOT/baseharbor.yaml"
 
 (
   cd "$DEMO_ROOT"
-  "$BAHA" app init baseharbor-demo \
+  "$BAHA" app init demo \
     --environment dev \
     --sql \
     --cache \
