@@ -25,8 +25,8 @@ test -n "$container"
 grep -q '^READY' "$ARTIFACT_DIR/reconcile-missing-doctor.txt"
 pass "Reconciliation MISSING -> CREATE" "missing workload recreated"
 
-managed_project="$project"
-postgres="$(container_id_for_service postgres "$managed_project")"
+shared_project="bh-${target_slug}-shared"
+postgres="$(container_id_for_service shared-postgres-dev "$shared_project")"
 if [ -n "$postgres" ]; then
   "$CONTAINER_CLI" stop "$postgres" >/dev/null
   set +e
@@ -35,7 +35,9 @@ if [ -n "$postgres" ]; then
   set -e
   test "$degraded_rc" -ne 0
   (cd "$DEMO_ROOT" && "$BAHA" app apply > "$ARTIFACT_DIR/reconcile-degraded-repair.txt")
-  pass "Reconciliation DEGRADED -> REPAIR" "stopped managed backend recovered"
+  (cd "$DEMO_ROOT" && "$BAHA" status -o json > "$ARTIFACT_DIR/reconcile-shared-postgres-after.json")
+  jq -e '.checks[] | select(.name == "postgres/isolation" and .ok == true)' "$ARTIFACT_DIR/reconcile-shared-postgres-after.json" >/dev/null
+  pass "Reconciliation DEGRADED -> REPAIR" "stopped shared PostgreSQL provider recovered without changing app isolation"
 else
-  pass "Reconciliation DEGRADED -> REPAIR" "provider container name is runtime-specific; covered by apply/doctor"
+  pass "Reconciliation DEGRADED -> REPAIR" "shared provider container name is runtime-specific; covered by apply/doctor"
 fi
