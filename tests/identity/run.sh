@@ -74,7 +74,7 @@ done
 jq -e '
   all(.management_ui[]?;
     (.url | startswith("https://")) and
-    ((.url | test("127\\.0\\.0\\.1|localhost:[0-9]+")) | not)
+    ((.url | test("^https://(127\\.0\\.0\\.1|localhost)(:[0-9]+)?(/|$)")) | not)
   )
 ' "$ARTIFACT_DIR/identity-baha-status.json" >/dev/null
 
