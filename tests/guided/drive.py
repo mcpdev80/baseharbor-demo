@@ -202,11 +202,13 @@ init_rules = [
     Rule(r"Metrics container port.*?:\s*$", "8080\n", optional=True),
     Rule(r"OTLP signals .*?\[[^\]]+\]:\s*$", "\n"),
     Rule(r"Workload services allowed to use detected Runtime API operations .*?:\s*$", "demo-app\n", optional=True),
+    Rule(r"Development domain \[[^\]]+\]:\s*$", "\n"),
+    Rule(r"Username \[developer\]:\s*$", "\n"),
+    Rule(r"Use a generated secure password\? \[Y/n\]\s*$", "\n"),
     Rule(r"Write baseharbor\.yaml\? \[Y/n\]\s*$", "\n"),
 ]
 
 up_rules = [
-    Rule(r"Public FQDN \(example: mailflow\.example\.com\) \[[^\]]+\]:\s*$", "\n"),
     Rule(r"TLS:.*?3\. Local development certificate.*?>\s*$", "3\n", optional=True),
     Rule(r"PostgreSQL host port \[\d+\]:\s*$", "\n", optional=True),
     Rule(r"OpenBao host port \[\d+\]:\s*$", "\n", optional=True),
