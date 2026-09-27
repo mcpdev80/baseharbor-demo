@@ -58,6 +58,13 @@ section "TLS file binding boundary"
   test -s "$BASEHARBOR_RUNTIME_CLIENT_CERT_FILE"
   test -s "$BASEHARBOR_RUNTIME_CLIENT_KEY_FILE"
   test -s "$OIDC_CA_FILE"
+
+  case "$DATABASE_URL" in
+    *baseharbor_admin*) echo "provider admin leaked through DATABASE_URL" >&2; exit 1 ;;
+  esac
+  test -s /run/baseharbor/service-bindings/postgres/username
+  test "$(cat /run/baseharbor/service-bindings/postgres/username)" != "baseharbor_admin"
+  ! grep -R -Fq "baseharbor_admin" /run/baseharbor/service-bindings
 '
 )
 
@@ -93,5 +100,6 @@ if grep -R -n -E 'tls_insecure_skip_verify|insecure_skip_verify'   "${XDG_DATA_H
   exit 1
 fi
 
+! grep -Fq 'baseharbor_admin' "$ARTIFACT_DIR/security-canonical-status.json"
 assert_no_secret_leak "$ARTIFACT_DIR/security-canonical-status.json"
 pass "Canonical Development Gateway" "canonical HTTPS routes are verified without insecure backend TLS bypass"
