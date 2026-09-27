@@ -34,7 +34,7 @@ pass "OIDC Discovery" "issuer, client, confidential credential file and managed 
   "$BAHA" status -o json > "$ARTIFACT_DIR/identity-baha-status.json"
 )
 
-jq -e '.checks[] | select(.name == "identity" and .ready == true)' "$ARTIFACT_DIR/identity-baha-status.json" >/dev/null
+jq -e '.checks[] | select(.name == "identity" and .ok == true)' "$ARTIFACT_DIR/identity-baha-status.json" >/dev/null
 
 for surface in sql cache object-storage secrets identity-login identity-admin observability; do
   jq -e --arg surface "$surface" '
