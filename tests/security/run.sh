@@ -132,7 +132,11 @@ section "Canonical development gateway security"
 
 (
   cd "$DEMO_ROOT"
-  "$BAHA" status -o json > "$ARTIFACT_DIR/security-canonical-status.json"
+  if ! "$BAHA" status -o json > "$ARTIFACT_DIR/security-canonical-status.json" 2>"$ARTIFACT_DIR/security-canonical-status.stderr.txt"; then
+    echo "canonical gateway status command returned non-zero" >&2
+    cat "$ARTIFACT_DIR/security-canonical-status.stderr.txt" >&2 || true
+    exit 61
+  fi
 )
 
 jq -e '
@@ -141,13 +145,37 @@ jq -e '
     ((.url | test("^https://(127\\.0\\.0\\.1|localhost)(:[0-9]+)?(/|$)")) | not)
   ) and
   any(.checks[]?; .name == "api" and .ok == true and (.detail | startswith("https://demo.baha.localhost")))
-' "$ARTIFACT_DIR/security-canonical-status.json" >/dev/null
+' "$ARTIFACT_DIR/security-canonical-status.json" >/dev/null || {
+  echo "canonical gateway status contains a non-canonical URL or missing READY API check" >&2
+  exit 62
+}
 
-if grep -R -n -E 'tls_insecure_skip_verify|insecure_skip_verify'   "${XDG_DATA_HOME:-$HOME/.local/share}/baseharbor"   "$DEMO_ROOT/.baseharbor" 2>/dev/null; then
-  echo "canonical development routing contains an insecure TLS bypass" >&2
-  exit 1
+scan_file="$ARTIFACT_DIR/security-insecure-tls-scan.txt"
+set +e
+grep -R -n -E 'tls_insecure_skip_verify|insecure_skip_verify'   "${XDG_DATA_HOME:-$HOME/.local/share}/baseharbor"   "$DEMO_ROOT/.baseharbor" >"$scan_file" 2>"$ARTIFACT_DIR/security-insecure-tls-scan.stderr.txt"
+grep_rc=$?
+set -e
+case "$grep_rc" in
+  0)
+    echo "canonical development routing contains an insecure TLS bypass" >&2
+    cat "$scan_file" >&2
+    exit 63
+    ;;
+  1)
+    ;;
+  *)
+    echo "canonical development TLS-bypass scan failed unexpectedly" >&2
+    cat "$ARTIFACT_DIR/security-insecure-tls-scan.stderr.txt" >&2 || true
+    exit 64
+    ;;
+esac
+
+if grep -Fq 'baseharbor_admin' "$ARTIFACT_DIR/security-canonical-status.json"; then
+  echo "provider administrator leaked into canonical status" >&2
+  exit 65
 fi
-
-! grep -Fq 'baseharbor_admin' "$ARTIFACT_DIR/security-canonical-status.json"
-assert_no_secret_leak "$ARTIFACT_DIR/security-canonical-status.json"
+assert_no_secret_leak "$ARTIFACT_DIR/security-canonical-status.json" || {
+  echo "secret leak detected in canonical gateway status" >&2
+  exit 66
+}
 pass "Canonical Development Gateway" "canonical HTTPS routes are verified without insecure backend TLS bypass"
