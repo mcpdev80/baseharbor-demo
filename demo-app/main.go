@@ -70,6 +70,7 @@ func main() {
 	mux.HandleFunc("/api/file", a.fileAction)
 	mux.HandleFunc("/api/secret", a.secretAction)
 	mux.HandleFunc("/api/metrics/verify", a.metricsVerifyAction)
+	mux.HandleFunc("/api/identity/verify", a.identityAction)
 	mux.HandleFunc("/api/trace", a.traceAction)
 	mux.HandleFunc("/api/companion", a.companionAction)
 	mux.HandleFunc("/api/runtime-resource", a.runtimeResourceAction)
@@ -216,6 +217,7 @@ func (a *app) status(w http.ResponseWriter, r *http.Request) {
 		"object_storage":   a.s3Status(ctx),
 		"secrets":          secretCapabilityStatus(),
 		"metrics":          {Ready: true, Detail: "OpenMetrics endpoint /metrics"},
+		"identity":         oidcCapabilityStatus(ctx),
 		"telemetry":        optionalCapabilityStatus(os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") != "", "standard OTLP endpoint", "OTLP endpoint not configured"),
 		"companion":        optionalCapabilityStatus(a.companion != "", "cross-app target configured", "companion not configured"),
 		"runtime_resource": optionalCapabilityStatus(runtimeResourceConfigured(), "BaseHarbor runtime HTTPS API", "runtime resource API bindings missing"),
@@ -232,6 +234,7 @@ func (a *app) status(w http.ResponseWriter, r *http.Request) {
 			"DATABASE_URL", "DATABASE_CA_FILE", "REDIS_URL/VALKEY_URL", "REDIS_CA_FILE/VALKEY_CA_FILE",
 			"S3_ENDPOINT/AWS_ENDPOINT_URL", "AWS_CA_BUNDLE", "S3_BUCKET", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "APP_SECRET",
 			"OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_CERTIFICATE", "TLS_CERT_FILE", "TLS_KEY_FILE",
+			"OIDC_ISSUER", "OIDC_CLIENT_ID", "OIDC_SCOPES", "OIDC_CLIENT_SECRET_FILE", "OIDC_CA_FILE",
 			"BASEHARBOR_RUNTIME_DOCS_URL",
 		},
 	})
@@ -266,6 +269,75 @@ func (a *app) s3Status(ctx context.Context) capabilityState {
 		return capabilityState{Detail: "bucket unavailable"}
 	}
 	return capabilityState{Ready: true, Detail: "S3 bucket " + a.s3Bucket}
+}
+
+func oidcCapabilityStatus(ctx context.Context) capabilityState {
+	issuer := strings.TrimRight(strings.TrimSpace(os.Getenv("OIDC_ISSUER")), "/")
+	clientID := strings.TrimSpace(os.Getenv("OIDC_CLIENT_ID"))
+	if issuer == "" || clientID == "" {
+		return capabilityState{Detail: "OIDC_ISSUER/OIDC_CLIENT_ID missing"}
+	}
+	u, err := url.Parse(issuer)
+	if err != nil || u.Scheme != "https" || u.Host == "" {
+		return capabilityState{Detail: "OIDC issuer is not a valid HTTPS URL"}
+	}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	if caFile := strings.TrimSpace(os.Getenv("OIDC_CA_FILE")); caFile != "" {
+		tlsConfig, err := tlsConfigFromCAFile(caFile)
+		if err != nil {
+			return capabilityState{Detail: "OIDC CA unavailable"}
+		}
+		tlsConfig.ServerName = u.Hostname()
+		transport.TLSClientConfig = tlsConfig
+	}
+	client := &http.Client{Timeout: 5 * time.Second, Transport: transport}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, issuer+"/.well-known/openid-configuration", nil)
+	if err != nil {
+		return capabilityState{Detail: "OIDC discovery request invalid"}
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return capabilityState{Detail: "OIDC discovery unavailable"}
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode/100 != 2 {
+		return capabilityState{Detail: "OIDC discovery returned " + resp.Status}
+	}
+	var discovery struct {
+		Issuer                string `json:"issuer"`
+		AuthorizationEndpoint string `json:"authorization_endpoint"`
+		TokenEndpoint         string `json:"token_endpoint"`
+		JWKSURI               string `json:"jwks_uri"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&discovery); err != nil {
+		return capabilityState{Detail: "OIDC discovery returned invalid JSON"}
+	}
+	if strings.TrimRight(discovery.Issuer, "/") != issuer || discovery.AuthorizationEndpoint == "" || discovery.TokenEndpoint == "" || discovery.JWKSURI == "" {
+		return capabilityState{Detail: "OIDC discovery is incomplete or issuer-mismatched"}
+	}
+	return capabilityState{Ready: true, Detail: "standard OIDC discovery ready for client " + clientID}
+}
+
+func (a *app) identityAction(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	state := oidcCapabilityStatus(ctx)
+	if !state.Ready {
+		writeError(w, state.Detail)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"issuer": os.Getenv("OIDC_ISSUER"),
+		"client_id_present": strings.TrimSpace(os.Getenv("OIDC_CLIENT_ID")) != "",
+		"scopes": strings.Fields(os.Getenv("OIDC_SCOPES")),
+		"client_secret_file_present": strings.TrimSpace(os.Getenv("OIDC_CLIENT_SECRET_FILE")) != "",
+		"trust_file_present": strings.TrimSpace(os.Getenv("OIDC_CA_FILE")) != "",
+		"discovery_verified": true,
+	})
 }
 
 func (a *app) sqlAction(w http.ResponseWriter, r *http.Request) {
