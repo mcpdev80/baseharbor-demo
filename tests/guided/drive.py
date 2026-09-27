@@ -46,12 +46,12 @@ def all_capabilities_response(match, text):
         r"(?m)^\s*>?\s*\[([ x])\]\s+(\d+)\.\s+"
         r"(SQL Database \(PostgreSQL-compatible evidence\)|"
         r"Cache \(Redis/Valkey-compatible evidence\)|"
-        r"Object Storage \(S3-compatible\)|Managed Secrets|"
+        r"Object Storage \(S3-compatible\)|Managed Secrets|Identity / OIDC|"
         r"Metrics \(/metrics\)|OTLP telemetry|Application logs)\s*$",
         clean,
     )
-    latest = choices[-7:]
-    if len(latest) != 7 or [int(number) for _, number, _ in latest] != list(range(1, 8)):
+    latest = choices[-8:]
+    if len(latest) != 8 or [int(number) for _, number, _ in latest] != list(range(1, 9)):
         raise RuntimeError("capability checkbox state could not be parsed")
 
     keys = []
@@ -66,19 +66,19 @@ def all_capabilities_response(match, text):
 def capability_selection_response(match, text):
     clean = ANSI_ESCAPE.sub("", text)
     if "Use ↑/↓ to move, Space to toggle, Enter to confirm." not in clean:
-        return "1,2,3,4,5,6,7\n"
+        return "1,2,3,4,5,6,7,8\n"
 
     choices = {}
     for mark, number in re.findall(r"\[([ x])\]\s+(\d+)\.\s+[^\r\n]+", clean):
         choices[int(number)] = mark == "x"
-    if len(choices) < 7:
-        raise RuntimeError("capability picker did not render all seven choices")
+    if len(choices) < 8:
+        raise RuntimeError("capability picker did not render all eight choices")
 
     keys = []
-    for number in range(1, 8):
+    for number in range(1, 9):
         if not choices[number]:
             keys.append(" ")
-        if number < 7:
+        if number < 8:
             keys.append("\x1b[B")
     keys.append("\n")
     return keys
@@ -173,7 +173,13 @@ init_rules = [
     Rule(r"Application name \[[^\]]+\]:\s*$", "baseharbor-demo\n"),
     Rule(r"Environment \[[^\]]+\]:\s*$", "\n"),
     Rule(r"Multiple Compose files were detected\..*?>\s*$", callback=root_compose_response),
-    Rule(r"Select application capabilities.*?7\. Application logs", callback=capability_selection_response),
+    Rule(r"Select application capabilities.*?8\. Application logs", callback=capability_selection_response),
+    Rule(r"PostgreSQL management UI\? \[y/N\]\s*$", "y\n"),
+    Rule(r"Cache management UI\? \[y/N\]\s*$", "y\n"),
+    Rule(r"Object storage management UI\? \[y/N\]\s*$", "y\n"),
+    Rule(r"Secrets management UI\? \[y/N\]\s*$", "y\n"),
+    Rule(r"Identity management UI\? \[y/N\]\s*$", "y\n"),
+    Rule(r"Observability management UI\? \[y/N\]\s*$", "y\n"),
     Rule(r"PostgreSQL instances \(comma-separated\) \[[^\]]+\]:\s*$", "\n"),
     Rule(r"Valkey / Redis instances \(comma-separated\) \[[^\]]+\]:\s*$", "\n"),
     Rule(r"S3 buckets instances \(comma-separated\) \[[^\]]+\]:\s*$", "uploads\n"),
