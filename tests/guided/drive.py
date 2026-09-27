@@ -179,7 +179,7 @@ init_rules = [
     Rule(r"Object storage management UI\? \[y/N\]\s*$", "y\n"),
     Rule(r"Secrets management UI\? \[y/N\]\s*$", "y\n"),
     Rule(r"Identity management UI\? \[y/N\]\s*$", "y\n"),
-    Rule(r"Observability management UI\? \[y/N\]\s*$", "y\n"),
+    Rule(r"Observability management UI \(Prometheus\)\? \[y/N\]\s*$", "y\n"),
     Rule(r"PostgreSQL instances \(comma-separated\) \[[^\]]+\]:\s*$", "\n"),
     Rule(r"Valkey / Redis instances \(comma-separated\) \[[^\]]+\]:\s*$", "\n"),
     Rule(r"S3 buckets instances \(comma-separated\) \[[^\]]+\]:\s*$", "uploads\n"),
