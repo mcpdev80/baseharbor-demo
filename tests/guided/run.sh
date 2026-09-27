@@ -56,7 +56,7 @@ gateway_ca="$XDG_DATA_HOME/baseharbor/targets/$BASEHARBOR_TARGET/developer-acces
 test -s "$gateway_ca"
 
 canonical_hosts=(
-  baseharbor-demo.baha.localhost
+  demo.baha.localhost
   pgadmin.baha.localhost
   cache.baha.localhost
   storage.baha.localhost
@@ -73,7 +73,7 @@ for host in "${canonical_hosts[@]}"; do
   test "$code" -lt 500
 done
 
-swagger_host="baseharbor-demo.baha.localhost"
+swagger_host="demo.baha.localhost"
 grep -q "https://$swagger_host/swagger/" "$ARTIFACT_DIR/guided-status.txt"
 swagger_code="$(curl -sS --cacert "$gateway_ca" --resolve "$swagger_host:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$swagger_host/swagger/")"
 test "$swagger_code" -ge 200
