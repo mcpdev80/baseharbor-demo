@@ -44,6 +44,18 @@ grep -q 'uploads' "$DEMO_ROOT/baseharbor.yaml"
 )
 
 grep -q '^READY' "$ARTIFACT_DIR/guided-doctor.txt"
+grep -q 'https://baseharbor-demo-api.baseharbor.localhost' "$ARTIFACT_DIR/guided-status.txt"
+grep -q 'https://baseharbor-demo-pgadmin.baseharbor.localhost' "$ARTIFACT_DIR/guided-status.txt"
+grep -q 'https://baseharbor-demo-cache.baseharbor.localhost' "$ARTIFACT_DIR/guided-status.txt"
+grep -q 'https://baseharbor-demo-identity.baseharbor.localhost' "$ARTIFACT_DIR/guided-status.txt"
+grep -q 'https://baseharbor-demo-identity-admin.baseharbor.localhost' "$ARTIFACT_DIR/guided-status.txt"
+grep -q 'https://shared-storage.baseharbor.localhost' "$ARTIFACT_DIR/guided-status.txt"
+grep -q 'https://shared-openbao.baseharbor.localhost' "$ARTIFACT_DIR/guided-status.txt"
+grep -q 'https://shared-prometheus.baseharbor.localhost' "$ARTIFACT_DIR/guided-status.txt"
+if grep -Eq 'management-ui/.*https://(127\.0\.0\.1|localhost):[0-9]+' "$ARTIFACT_DIR/guided-status.txt"; then
+  echo "guided status leaked implementation-detail management UI ports" >&2
+  exit 1
+fi
 assert_no_secret_leak "$ARTIFACT_DIR/guided-init.txt"
 assert_no_secret_leak "$ARTIFACT_DIR/guided-up.txt"
 assert_no_secret_leak "$ARTIFACT_DIR/guided-status.txt"
