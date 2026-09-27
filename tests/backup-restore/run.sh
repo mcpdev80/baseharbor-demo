@@ -4,6 +4,10 @@ source "$DEMO_ROOT/tests/lib.sh"
 
 section "Backup and restore"
 
+api_host="baseharbor-demo-api.baseharbor.localhost"
+base="https://$api_host"
+curl_dev=(curl -kfsS --resolve "$api_host:443:127.0.0.1")
+
 printf '%s' 'acceptance-backup-password' > "$ARTIFACT_DIR/backup.pass"
 chmod 600 "$ARTIFACT_DIR/backup.pass"
 
@@ -43,19 +47,19 @@ EOF
   "$BAHA" --verbose app apply > "$ARTIFACT_DIR/recovery-apply.txt" 2>&1
 )
 
-curl -fsS -X POST http://127.0.0.1:8080/api/sql > "$ARTIFACT_DIR/recovery-sql-seed.json"
+"${curl_dev[@]}" -X POST "$base"/api/sql > "$ARTIFACT_DIR/recovery-sql-seed.json"
 
-curl -fsS -X POST http://127.0.0.1:8080/api/object > "$ARTIFACT_DIR/recovery-s3-seed.json"
+"${curl_dev[@]}" -X POST "$base"/api/object > "$ARTIFACT_DIR/recovery-s3-seed.json"
 jq -r '.object' "$ARTIFACT_DIR/recovery-s3-seed.json" > "$ARTIFACT_DIR/recovery-s3-object.txt"
 
 printf '%s' 'durable-workload-state-v0417' \
   | curl -fsS -X POST --data-binary @- http://127.0.0.1:8080/api/file \
   > "$ARTIFACT_DIR/recovery-volume-seed.json"
 
-curl -fsS -X POST http://127.0.0.1:8080/api/secret \
+"${curl_dev[@]}" -X POST "$base"/api/secret \
   | jq -e '.present==true and .value_exposed==false' >/dev/null
 
-curl -sS -o /dev/null http://127.0.0.1:8080/recovery-marker-v0417 || true
+curl -ksS --resolve "$api_host:443:127.0.0.1" -o /dev/null "$base/recovery-marker-v0417" || true
 
 (
   cd "$DEMO_ROOT"
@@ -90,17 +94,17 @@ curl -sS -o /dev/null http://127.0.0.1:8080/recovery-marker-v0417 || true
 
 grep -q '^READY' "$ARTIFACT_DIR/restore-doctor.txt"
 
-curl -fsS -X POST http://127.0.0.1:8080/api/sql \
+"${curl_dev[@]}" -X POST "$base"/api/sql \
   | jq -e '.records>=2' >/dev/null
 
 object_name="$(cat "$ARTIFACT_DIR/recovery-s3-object.txt")"
-curl -fsS "http://127.0.0.1:8080/api/object?name=$object_name" \
+"${curl_dev[@]}" "$base/api/object?name=$object_name" \
   | jq -e '.content=="BaseHarbor portable object storage demo\n"' >/dev/null
 
-curl -fsS http://127.0.0.1:8080/api/file \
+"${curl_dev[@]}" "$base/api/file" \
   | jq -e '.content=="durable-workload-state-v0417"' >/dev/null
 
-curl -fsS -X POST http://127.0.0.1:8080/api/secret \
+"${curl_dev[@]}" -X POST "$base"/api/secret \
   | jq -e '.present==true and .value_exposed==false' >/dev/null
 
 grep -q 'recovery-marker-v0417' "$ARTIFACT_DIR/recovery-logs-after-restore.txt"
