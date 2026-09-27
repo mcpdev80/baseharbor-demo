@@ -24,15 +24,7 @@ rm -rf "$DEMO_ROOT/.baseharbor" "$DEMO_ROOT/baseharbor.yaml"
 
 (
   cd "$DEMO_ROOT"
-  "$BAHA" app init demo \
-    --environment dev \
-    --sql \
-    --cache \
-    --s3 \
-    --s3-bucket uploads \
-    --require-secret APP_SECRET \
-    --workload-compose compose.yaml \
-    --workload-service demo-app
+  "$BAHA" app init --quick
 
   cat >> baseharbor.yaml <<'EOF'
 logs:
