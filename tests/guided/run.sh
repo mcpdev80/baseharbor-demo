@@ -6,12 +6,7 @@ section "Guided pristine-repository happy path"
 
 clean_generated_state
 rm -rf "$XDG_CONFIG_HOME/baseharbor" "$XDG_DATA_HOME/baseharbor" "$XDG_DATA_HOME/baseharbor-recovery"
-"$BAHA" target create "$BASEHARBOR_TARGET" \
-  --provider "$BASEHARBOR_TEST_RUNTIME" \
-  --access "local-$BASEHARBOR_TEST_RUNTIME" \
-  --reference local \
-  --scope default \
-  --default >/dev/null
+"$BAHA" target create "$BASEHARBOR_TARGET"   --provider "$BASEHARBOR_TEST_RUNTIME"   --access "local-$BASEHARBOR_TEST_RUNTIME"   --reference local   --scope default   --default >/dev/null
 
 test ! -e "$DEMO_ROOT/baseharbor.yaml"
 test ! -e "$DEMO_ROOT/.baseharbor"
@@ -39,6 +34,7 @@ grep -q 'uploads' "$DEMO_ROOT/baseharbor.yaml"
   cd "$DEMO_ROOT"
   echo "[phase] guided status: collect application readiness"
   "$BAHA" status | tee "$ARTIFACT_DIR/guided-status.txt"
+  "$BAHA" status -o json > "$ARTIFACT_DIR/guided-status.json"
   echo "[phase] guided doctor: verify provider and workload health"
   "$BAHA" doctor | tee "$ARTIFACT_DIR/guided-doctor.txt"
 )
@@ -50,47 +46,43 @@ test "$dev_domain" = "baseharbor.localhost"
 dev_credentials="$(mktemp)"
 chmod 600 "$dev_credentials"
 "$BAHA" dev credentials >"$dev_credentials"
-grep -Eq '^[[:space:]]*Username[[:space:]]+developer
-grep -q 'https://baseharbor-demo-api.baseharbor.localhost' "$ARTIFACT_DIR/guided-status.txt"
-grep -q 'https://baseharbor-demo-pgadmin.baseharbor.localhost' "$ARTIFACT_DIR/guided-status.txt"
-grep -q 'https://baseharbor-demo-cache.baseharbor.localhost' "$ARTIFACT_DIR/guided-status.txt"
-grep -q 'https://baseharbor-demo-identity.baseharbor.localhost' "$ARTIFACT_DIR/guided-status.txt"
-grep -q 'https://baseharbor-demo-identity-admin.baseharbor.localhost' "$ARTIFACT_DIR/guided-status.txt"
-grep -q 'https://shared-storage.baseharbor.localhost' "$ARTIFACT_DIR/guided-status.txt"
-grep -q 'https://shared-openbao.baseharbor.localhost' "$ARTIFACT_DIR/guided-status.txt"
-grep -q 'https://shared-prometheus.baseharbor.localhost' "$ARTIFACT_DIR/guided-status.txt"
-if grep -Eq 'management-ui/.*https://(127\.0\.0\.1|localhost):[0-9]+' "$ARTIFACT_DIR/guided-status.txt"; then
-  echo "guided status leaked implementation-detail management UI ports" >&2
-  exit 1
-fi
-assert_no_secret_leak "$ARTIFACT_DIR/guided-init.txt"
-assert_no_secret_leak "$ARTIFACT_DIR/guided-up.txt"
-assert_no_secret_leak "$ARTIFACT_DIR/guided-status.txt"
-assert_no_secret_leak "$ARTIFACT_DIR/guided-doctor.txt"
-
-pass "Guided Adoption Happy Path" "pristine repository -> interactive app init -> interactive baha up -> READY"
- "$dev_credentials"
+grep -Eq '^[[:space:]]*Username[[:space:]]+developer$' "$dev_credentials"
 password="$(awk '$1 == "Password" {print $2}' "$dev_credentials")"
 test -n "$password"
 rm -f "$dev_credentials"
 unset password
 
+gateway_ca="$XDG_DATA_HOME/baseharbor/targets/$BASEHARBOR_TARGET/developer-access/dev/gateway/runtime/ca.pem"
+test -s "$gateway_ca"
 
-grep -q 'https://baseharbor-demo-api.baseharbor.localhost' "$ARTIFACT_DIR/guided-status.txt"
-grep -q 'https://baseharbor-demo-pgadmin.baseharbor.localhost' "$ARTIFACT_DIR/guided-status.txt"
-grep -q 'https://baseharbor-demo-cache.baseharbor.localhost' "$ARTIFACT_DIR/guided-status.txt"
-grep -q 'https://baseharbor-demo-identity.baseharbor.localhost' "$ARTIFACT_DIR/guided-status.txt"
-grep -q 'https://baseharbor-demo-identity-admin.baseharbor.localhost' "$ARTIFACT_DIR/guided-status.txt"
-grep -q 'https://shared-storage.baseharbor.localhost' "$ARTIFACT_DIR/guided-status.txt"
-grep -q 'https://shared-openbao.baseharbor.localhost' "$ARTIFACT_DIR/guided-status.txt"
-grep -q 'https://shared-prometheus.baseharbor.localhost' "$ARTIFACT_DIR/guided-status.txt"
-if grep -Eq 'management-ui/.*https://(127\.0\.0\.1|localhost):[0-9]+' "$ARTIFACT_DIR/guided-status.txt"; then
-  echo "guided status leaked implementation-detail management UI ports" >&2
+canonical_hosts=(
+  baseharbor-demo-api.baseharbor.localhost
+  baseharbor-demo-pgadmin.baseharbor.localhost
+  baseharbor-demo-cache.baseharbor.localhost
+  baseharbor-demo-storage.baseharbor.localhost
+  baseharbor-demo-identity.baseharbor.localhost
+  baseharbor-demo-identity-admin.baseharbor.localhost
+  shared-openbao.baseharbor.localhost
+  shared-prometheus.baseharbor.localhost
+)
+
+for host in "${canonical_hosts[@]}"; do
+  grep -q "https://$host" "$ARTIFACT_DIR/guided-status.txt"
+  code="$(curl -sS --cacert "$gateway_ca" --resolve "$host:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$host/")"
+  test "$code" -ge 200
+  test "$code" -lt 500
+done
+
+jq -e '.checks[] | select(.name == "canonical-development-urls" and .ok == true)' "$ARTIFACT_DIR/guided-status.json" >/dev/null
+
+if grep -Eq 'https://(127\.0\.0\.1|localhost):[0-9]+' "$ARTIFACT_DIR/guided-status.txt"; then
+  echo "guided status exposed implementation-detail loopback URLs" >&2
   exit 1
 fi
+
 assert_no_secret_leak "$ARTIFACT_DIR/guided-init.txt"
 assert_no_secret_leak "$ARTIFACT_DIR/guided-up.txt"
 assert_no_secret_leak "$ARTIFACT_DIR/guided-status.txt"
 assert_no_secret_leak "$ARTIFACT_DIR/guided-doctor.txt"
 
-pass "Guided Adoption Happy Path" "pristine repository -> interactive app init -> interactive baha up -> READY"
+pass "Guided Adoption Happy Path" "pristine repository -> one dev domain/login -> canonical HTTPS routes -> READY"
