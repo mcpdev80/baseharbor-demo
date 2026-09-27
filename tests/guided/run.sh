@@ -59,7 +59,7 @@ canonical_hosts=(
   baseharbor-demo-api.baseharbor.localhost
   baseharbor-demo-pgadmin.baseharbor.localhost
   baseharbor-demo-cache.baseharbor.localhost
-  baseharbor-demo-storage.baseharbor.localhost
+  shared-storage.baseharbor.localhost
   baseharbor-demo-identity.baseharbor.localhost
   baseharbor-demo-identity-admin.baseharbor.localhost
   shared-openbao.baseharbor.localhost
@@ -72,6 +72,12 @@ for host in "${canonical_hosts[@]}"; do
   test "$code" -ge 200
   test "$code" -lt 500
 done
+
+swagger_host="baseharbor-demo-api.baseharbor.localhost"
+grep -q "https://$swagger_host/swagger/" "$ARTIFACT_DIR/guided-status.txt"
+swagger_code="$(curl -sS --cacert "$gateway_ca" --resolve "$swagger_host:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$swagger_host/swagger/")"
+test "$swagger_code" -ge 200
+test "$swagger_code" -lt 400
 
 jq -e '.checks[] | select(.name == "canonical-development-urls" and .ok == true)' "$ARTIFACT_DIR/guided-status.json" >/dev/null
 
