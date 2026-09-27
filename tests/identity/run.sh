@@ -63,7 +63,7 @@ jq -e 'any(.management_ui[]?; .service == "identity-admin" and .purpose == "admi
 jq -e 'any(.management_ui[]?; .service == "observability" and .purpose == "observability")' "$ARTIFACT_DIR/identity-baha-status.json" >/dev/null
 jq -e '.checks[] | select(.name == "canonical-development-urls" and .ok == true)' "$ARTIFACT_DIR/identity-baha-status.json" >/dev/null
 
-discovery_url="https://$identity_host/realms/baseharbor-baseharbor-demo-dev/.well-known/openid-configuration"
+discovery_url="https://$identity_host/realms/bh-baseharbor-demo-dev/.well-known/openid-configuration"
 curl -fsS --cacert "$gateway_ca" --resolve "$identity_host:443:127.0.0.1" "$discovery_url" > "$ARTIFACT_DIR/identity-canonical-discovery.json"
 jq -e --arg prefix "https://$identity_host/realms/" '.issuer | startswith($prefix)' "$ARTIFACT_DIR/identity-canonical-discovery.json" >/dev/null
 if jq -e '.issuer | test(":[0-9]+")' "$ARTIFACT_DIR/identity-canonical-discovery.json" >/dev/null; then
