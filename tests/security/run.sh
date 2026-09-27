@@ -72,11 +72,27 @@ api_host="demo.baha.localhost"
 gateway_ca="$XDG_DATA_HOME/baseharbor/targets/$BASEHARBOR_TARGET/developer-access/dev/gateway/runtime/ca.pem"
 test -s "$gateway_ca"
 base="https://$api_host"
-curl_dev=(curl -fsS --cacert "$gateway_ca" --resolve "$api_host:443:127.0.0.1")
-"${curl_dev[@]}" -X POST "$base/api/sql" | jq -e '.records>=1' >/dev/null
-"${curl_dev[@]}" -X POST "$base/api/cache" | jq -e '.value=="portable-cache-value"' >/dev/null
-"${curl_dev[@]}" -X POST "$base/api/object" | jq -e '.bucket|length>0' >/dev/null
-"${curl_dev[@]}" -X POST "$base/api/trace" | jq -e '.export_configured==true' >/dev/null
+curl_dev=(curl -sS --cacert "$gateway_ca" --resolve "$api_host:443:127.0.0.1")
+
+security_api_post() {
+  local name="$1"
+  local path="$2"
+  local jq_expr="$3"
+  local body="$ARTIFACT_DIR/security-$name.json"
+  local code
+  code="$("${curl_dev[@]}" -o "$body" -w '%{http_code}' -X POST "$base$path")"
+  if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
+    echo "security API check $name failed with HTTP $code" >&2
+    cat "$body" >&2 || true
+    return 1
+  fi
+  jq -e "$jq_expr" "$body" >/dev/null
+}
+
+security_api_post sql /api/sql '.records>=1'
+security_api_post cache /api/cache '.value=="portable-cache-value"'
+security_api_post object /api/object '.bucket|length>0'
+security_api_post trace /api/trace '.export_configured==true'
 
 pass "TLS File Bindings" "environment exposes paths only; CA/cert/key material is mounted as files and consumed by the workload"
 
