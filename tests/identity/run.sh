@@ -29,19 +29,36 @@ pass "OIDC Discovery" "issuer, client, confidential credential file and managed 
 (
   cd "$DEMO_ROOT"
   "$BAHA" app exec demo-app /bin/sh -ec '
-    test -n "$OIDC_ISSUER"
+    require_env() {
+      name="$1"
+      value="$(printenv "$name" 2>/dev/null || true)"
+      if [ -z "$value" ]; then
+        echo "missing workload environment: $name" >&2
+        exit 21
+      fi
+    }
+    require_file() {
+      path="$1"
+      if [ ! -s "$path" ]; then
+        echo "missing workload binding file: $path" >&2
+        ls -la "$(dirname "$path")" >&2 2>/dev/null || true
+        exit 22
+      fi
+    }
+
+    require_env OIDC_ISSUER
     expected_issuer_prefix="'"$identity_base"'/realms/"
     case "$OIDC_ISSUER" in
       "$expected_issuer_prefix"*) ;;
-      *) echo "unexpected canonical OIDC issuer: $OIDC_ISSUER" >&2; exit 1 ;;
+      *) echo "unexpected canonical OIDC issuer: $OIDC_ISSUER" >&2; exit 23 ;;
     esac
-    test -n "$OIDC_CLIENT_ID"
-    test -n "$OIDC_CA_FILE"
-    test -s "$OIDC_CA_FILE"
-    test -n "$SERVICE_BINDING_ROOT"
-    test -s "$SERVICE_BINDING_ROOT/identity/oidc.issuer"
-    test -s "$SERVICE_BINDING_ROOT/identity/oidc.client-id"
-    test -s "$SERVICE_BINDING_ROOT/identity/ca.crt"
+    require_env OIDC_CLIENT_ID
+    require_env OIDC_CA_FILE
+    require_file "$OIDC_CA_FILE"
+    require_env SERVICE_BINDING_ROOT
+    require_file "$SERVICE_BINDING_ROOT/identity/oidc.issuer"
+    require_file "$SERVICE_BINDING_ROOT/identity/oidc.client-id"
+    require_file "$SERVICE_BINDING_ROOT/identity/ca.crt"
   '
   "$BAHA" status -o json > "$ARTIFACT_DIR/identity-baha-status.json"
 )
