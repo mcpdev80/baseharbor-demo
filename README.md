@@ -181,6 +181,23 @@ The guided v0.4.17 demo also selects the optional management surfaces. In local 
 
 Provider-admin credentials are not projected into the demo application.
 
+For local development, BaseHarbor derives canonical browser URLs from one Target-scoped development domain. With the default domain the demo uses addresses such as:
+
+```text
+https://baseharbor-demo-api.baseharbor.localhost
+https://baseharbor-demo-pgadmin.baseharbor.localhost
+https://baseharbor-demo-cache.baseharbor.localhost
+https://baseharbor-demo-identity.baseharbor.localhost
+https://baseharbor-demo-identity-admin.baseharbor.localhost
+https://shared-storage.baseharbor.localhost
+https://shared-openbao.baseharbor.localhost
+https://shared-prometheus.baseharbor.localhost
+```
+
+Random loopback ports remain runtime implementation detail. The domain can be inspected or changed with `baha dev domain [DOMAIN]`.
+
+Selected development management surfaces reuse one Target-scoped developer login. The default username is `developer`; the generated password is revealed only through the explicit `baha dev credentials` command and is never included in normal status, doctor or acceptance evidence.
+
 ## Backup and restore
 
 Interactive backup:
