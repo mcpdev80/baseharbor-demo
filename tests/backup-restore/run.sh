@@ -28,9 +28,7 @@ rm -rf "$DEMO_ROOT/.baseharbor" "$DEMO_ROOT/baseharbor.yaml"
     --environment dev \
     --sql \
     --cache \
-    --s3 \
     --s3-bucket uploads \
-    --secrets \
     --require-secret APP_SECRET \
     --workload-compose compose.yaml \
     --workload-service demo-app
