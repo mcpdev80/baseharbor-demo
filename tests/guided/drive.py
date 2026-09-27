@@ -204,7 +204,7 @@ init_rules = [
     Rule(r"Workload services allowed to use detected Runtime API operations .*?:\s*$", "demo-app\n", optional=True),
     Rule(r"Development domain \[[^\]]+\]:\s*$", "\n"),
     Rule(r"Username \[developer\]:\s*$", "\n"),
-    Rule(r"Use a generated secure password\? \[Y/n\]\s*$", "\n"),
+    Rule(r"Use a securely generated password\? \[Y/n\]\s*$", "\n"),
     Rule(r"Write baseharbor\.yaml\? \[Y/n\]\s*$", "\n"),
 ]
 
