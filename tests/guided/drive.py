@@ -180,7 +180,7 @@ def run_tty(name, argv, rules, env=None, timeout=900):
                 return
 
 init_rules = [
-    Rule(r"Application name \[[^\]]+\]:\s*$", "baseharbor-demo\n"),
+    Rule(r"Application name \[[^\]]+\]:\s*$", "demo\n"),
     Rule(r"Environment \[[^\]]+\]:\s*$", "\n"),
     Rule(r"Multiple Compose files were detected\..*?>\s*$", callback=root_compose_response),
     Rule(r"Select application capabilities.*?8\. Application logs", callback=capability_selection_response),
