@@ -76,7 +76,7 @@
   {
     "name": "recovery",
     "requires": [
-      "lifecycle"
+      "backup-restore"
     ]
   },
   {
