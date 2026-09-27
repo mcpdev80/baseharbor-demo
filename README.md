@@ -21,7 +21,7 @@ baha up
 
 That's the normal developer path.
 
-BaseHarbor v0.4.15 keeps the deployment destination separate from the repository intent. You can inspect the effective destination at any time with:
+BaseHarbor v0.4.17 keeps the deployment destination separate from repository intent and adds standards-first managed application identity. You can inspect the effective destination at any time with:
 
 ```bash
 baha target
@@ -72,6 +72,8 @@ The demo UI exercises real integrations for:
 - traces
 - logs
 - BaseHarbor Runtime Resources
+- standard OIDC application identity
+- provider management surfaces for PostgreSQL, cache, object storage, OpenBao, identity and Prometheus
 - cross-application connectivity
 
 ## Run the complete two-application demo
@@ -144,9 +146,40 @@ TLS_KEY_FILE
 BASEHARBOR_RUNTIME_CA_FILE
 BASEHARBOR_RUNTIME_CLIENT_CERT_FILE
 BASEHARBOR_RUNTIME_CLIENT_KEY_FILE
+
+OIDC_ISSUER
+OIDC_CLIENT_ID
+OIDC_SCOPES
+OIDC_CLIENT_SECRET_FILE
+OIDC_CA_FILE
 ```
 
 For example, `DATABASE_CA_FILE=/run/baseharbor/.../ca.pem` is only a path reference. BaseHarbor mounts the referenced CA into the workload container read-only. This keeps the application contract portable and avoids multiline certificate data or private keys in environment files.
+
+## Managed identity and management UIs
+
+When Identity/OIDC is selected, the demo app consumes only standard application-facing bindings:
+
+```text
+OIDC_ISSUER
+OIDC_CLIENT_ID
+OIDC_SCOPES
+OIDC_CLIENT_SECRET_FILE
+OIDC_CA_FILE
+```
+
+The application calls the issuer's standard `/.well-known/openid-configuration` endpoint with the provided trust file. It does not call Keycloak administration APIs and does not depend on a BaseHarbor authentication SDK.
+
+The guided v0.4.17 demo also selects the optional management surfaces. In local dev, `baha status` reports their HTTPS URLs and semantic purpose:
+
+- PostgreSQL -> pgAdmin
+- cache -> Redis Commander
+- object storage -> shared SeaweedFS Admin
+- secrets -> shared OpenBao UI
+- identity -> user-facing Keycloak login/account plus a separate Keycloak administration surface
+- observability -> Prometheus web UI
+
+Provider-admin credentials are not projected into the demo application.
 
 ## Backup and restore
 
@@ -222,7 +255,7 @@ The application describes what it needs. BaseHarbor decides how that intent is r
 Against a published BaseHarbor release:
 
 ```bash
-BASEHARBOR_VERSION=v0.4.15 bash scripts/acceptance.sh
+BASEHARBOR_VERSION=v0.4.17 bash scripts/acceptance.sh
 ```
 
 Against a candidate commit or ref:
@@ -231,9 +264,9 @@ Against a candidate commit or ref:
 BASEHARBOR_SOURCE_REF=<commit-or-ref> bash scripts/acceptance.sh
 ```
 
-The suite validates the guided developer path, Bash completion/shell integration/Target-aware prompt, deterministic lifecycle, capability, security, the companion-app cross-application connectivity flow, reconciliation, failure, recovery and final full-installation destroy scenarios on Docker and Podman/Quadlet.
+The suite validates the guided developer path, Bash completion/shell integration/Target-aware prompt, deterministic lifecycle, capabilities, managed OIDC identity, provider management surfaces, security, the companion-app cross-application connectivity flow, reconciliation, failure, recovery and final full-installation destroy scenarios on Docker and Podman/Quadlet.
 
-Each acceptance run creates an isolated explicit BaseHarbor Target for the selected runtime and isolates BaseHarbor config/state through temporary XDG config/data roots. This proves the v0.4.15 Target boundary instead of relying on legacy repository-local platform state.
+Each acceptance run creates an isolated explicit BaseHarbor Target for the selected runtime and isolates BaseHarbor config/state through temporary XDG config/data roots. This proves the Target boundary and the v0.4.17 managed-identity/provider-interface contract instead of relying on legacy repository-local platform state.
 
 Evidence is written below `artifacts/`.
 
