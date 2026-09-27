@@ -35,28 +35,59 @@ section "TLS file binding boundary"
 (
   cd "$DEMO_ROOT"
   "$BAHA" app exec demo-app /bin/sh -ec '
+  require_env() {
+    name="$1"
+    value="$(printenv "$name" 2>/dev/null || true)"
+    if [ -z "$value" ]; then echo "missing workload environment: $name" >&2; exit 31; fi
+  }
+  require_file() {
+    path="$1"
+    if [ ! -s "$path" ]; then echo "missing workload binding file: $path" >&2; exit 32; fi
+  }
+  require_env DATABASE_CA_FILE
   test -n "$DATABASE_CA_FILE"
+  require_env REDIS_CA_FILE
   test -n "$REDIS_CA_FILE"
+  require_env AWS_CA_BUNDLE
   test -n "$AWS_CA_BUNDLE"
+  require_env OTEL_EXPORTER_OTLP_CERTIFICATE
   test -n "$OTEL_EXPORTER_OTLP_CERTIFICATE"
+  require_env TLS_CERT_FILE
   test -n "$TLS_CERT_FILE"
+  require_env TLS_KEY_FILE
   test -n "$TLS_KEY_FILE"
+  require_env BASEHARBOR_RUNTIME_CA_FILE
   test -n "$BASEHARBOR_RUNTIME_CA_FILE"
+  require_env BASEHARBOR_RUNTIME_CLIENT_CERT_FILE
   test -n "$BASEHARBOR_RUNTIME_CLIENT_CERT_FILE"
+  require_env BASEHARBOR_RUNTIME_CLIENT_KEY_FILE
   test -n "$BASEHARBOR_RUNTIME_CLIENT_KEY_FILE"
+  require_env OIDC_ISSUER
   test -n "$OIDC_ISSUER"
+  require_env OIDC_CLIENT_ID
   test -n "$OIDC_CLIENT_ID"
+  require_env OIDC_CA_FILE
   test -n "$OIDC_CA_FILE"
 
+  require_file "$DATABASE_CA_FILE"
   test -s "$DATABASE_CA_FILE"
+  require_file "$REDIS_CA_FILE"
   test -s "$REDIS_CA_FILE"
+  require_file "$AWS_CA_BUNDLE"
   test -s "$AWS_CA_BUNDLE"
+  require_file "$OTEL_EXPORTER_OTLP_CERTIFICATE"
   test -s "$OTEL_EXPORTER_OTLP_CERTIFICATE"
+  require_file "$TLS_CERT_FILE"
   test -s "$TLS_CERT_FILE"
+  require_file "$TLS_KEY_FILE"
   test -s "$TLS_KEY_FILE"
+  require_file "$BASEHARBOR_RUNTIME_CA_FILE"
   test -s "$BASEHARBOR_RUNTIME_CA_FILE"
+  require_file "$BASEHARBOR_RUNTIME_CLIENT_CERT_FILE"
   test -s "$BASEHARBOR_RUNTIME_CLIENT_CERT_FILE"
+  require_file "$BASEHARBOR_RUNTIME_CLIENT_KEY_FILE"
   test -s "$BASEHARBOR_RUNTIME_CLIENT_KEY_FILE"
+  require_file "$OIDC_CA_FILE"
   test -s "$OIDC_CA_FILE"
 
   case "$DATABASE_URL" in
