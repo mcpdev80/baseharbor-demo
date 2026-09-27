@@ -33,7 +33,18 @@ rm -rf "$DEMO_ROOT/.baseharbor" "$DEMO_ROOT/baseharbor.yaml"
     --workload-compose compose.yaml \
     --workload-service demo-app
 
+  # The demo workload uses the Runtime Resource API to create S3 resources.
+  # Explicit recovery init must preserve that authorization just like guided
+  # repository adoption; without it the workload also loses its runtime mTLS
+  # identity and application TLS certificate projection.
   cat >> baseharbor.yaml <<'EOF'
+runtime:
+  permissions:
+    - capability: object-storage.s3/v1
+      services:
+        - demo-app
+      operations:
+        - runtime.create
 logs:
   collect:
     - application
