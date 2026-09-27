@@ -3,7 +3,7 @@ set -euo pipefail
 source "$DEMO_ROOT/tests/lib.sh"
 
 section "Application-facing capabilities"
-api_host="baseharbor-demo.baha.localhost"
+api_host="demo.baha.localhost"
 gateway_ca="$XDG_DATA_HOME/baseharbor/targets/$BASEHARBOR_TARGET/developer-access/dev/gateway/runtime/ca.pem"
 test -s "$gateway_ca"
 base="https://$api_host"
