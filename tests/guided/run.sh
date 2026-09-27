@@ -41,7 +41,7 @@ grep -q 'uploads' "$DEMO_ROOT/baseharbor.yaml"
 
 grep -q '^READY' "$ARTIFACT_DIR/guided-doctor.txt"
 dev_domain="$("$BAHA" dev domain | awk '$1 == "Domain" {print $2}')"
-test "$dev_domain" = "baseharbor.localhost"
+test "$dev_domain" = "baha.localhost"
 
 dev_credentials="$(mktemp)"
 chmod 600 "$dev_credentials"
@@ -56,14 +56,14 @@ gateway_ca="$XDG_DATA_HOME/baseharbor/targets/$BASEHARBOR_TARGET/developer-acces
 test -s "$gateway_ca"
 
 canonical_hosts=(
-  baseharbor-demo-api.baseharbor.localhost
-  baseharbor-demo-pgadmin.baseharbor.localhost
-  baseharbor-demo-cache.baseharbor.localhost
-  shared-storage.baseharbor.localhost
-  baseharbor-demo-identity.baseharbor.localhost
-  baseharbor-demo-identity-admin.baseharbor.localhost
-  shared-openbao.baseharbor.localhost
-  shared-prometheus.baseharbor.localhost
+  baseharbor-demo.baha.localhost
+  pgadmin.baha.localhost
+  cache.baha.localhost
+  storage.baha.localhost
+  auth.baha.localhost
+  auth-admin.baha.localhost
+  secrets.baha.localhost
+  metrics.baha.localhost
 )
 
 for host in "${canonical_hosts[@]}"; do
@@ -73,13 +73,15 @@ for host in "${canonical_hosts[@]}"; do
   test "$code" -lt 500
 done
 
-swagger_host="baseharbor-demo-api.baseharbor.localhost"
+swagger_host="baseharbor-demo.baha.localhost"
 grep -q "https://$swagger_host/swagger/" "$ARTIFACT_DIR/guided-status.txt"
 swagger_code="$(curl -sS --cacert "$gateway_ca" --resolve "$swagger_host:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$swagger_host/swagger/")"
 test "$swagger_code" -ge 200
 test "$swagger_code" -lt 400
 
 jq -e '.checks[] | select(.name == "canonical-development-urls" and .ok == true)' "$ARTIFACT_DIR/guided-status.json" >/dev/null
+jq -e '.checks[] | select(.name == "postgres" and .ok == true and (.detail | contains("shared Target provider")))' "$ARTIFACT_DIR/guided-status.json" >/dev/null
+jq -e '.checks[] | select(.name == "valkey" and .ok == true and (.detail | contains("shared Target provider")))' "$ARTIFACT_DIR/guided-status.json" >/dev/null
 
 if grep -Eq 'https://(127\.0\.0\.1|localhost):[0-9]+' "$ARTIFACT_DIR/guided-status.txt"; then
   echo "guided status exposed implementation-detail loopback URLs" >&2
