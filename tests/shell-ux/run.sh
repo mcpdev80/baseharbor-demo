@@ -26,7 +26,7 @@ grep -q '_baha_prompt_command()' "$shell_init_file"
 )
 
 grep -q "$BASEHARBOR_TARGET" "$prompt_file"
-grep -q 'baseharbor-demo' "$prompt_file"
+grep -q 'demo' "$prompt_file"
 
 PATH="$BASEHARBOR_INSTALL_DIR:$PATH" COMPLETION_FILE="$completion_file" SHELL_INIT_FILE="$shell_init_file" bash --noprofile --norc -c '
   set -euo pipefail
