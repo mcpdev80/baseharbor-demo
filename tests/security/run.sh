@@ -138,7 +138,7 @@ section "Canonical development gateway security"
 jq -e '
   all(.management_ui[]?;
     (.url | startswith("https://")) and
-    ((.url | test("127\\.0\\.0\\.1|localhost:[0-9]+")) | not)
+    ((.url | test("^https://(127\\.0\\.0\\.1|localhost)(:[0-9]+)?(/|$)")) | not)
   ) and
   any(.checks[]?; .name == "api" and .ok == true and (.detail | startswith("https://demo.baha.localhost")))
 ' "$ARTIFACT_DIR/security-canonical-status.json" >/dev/null
