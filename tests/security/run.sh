@@ -68,7 +68,7 @@ section "TLS file binding boundary"
 '
 )
 
-api_host="baseharbor-demo.baha.localhost"
+api_host="demo.baha.localhost"
 gateway_ca="$XDG_DATA_HOME/baseharbor/targets/$BASEHARBOR_TARGET/developer-access/dev/gateway/runtime/ca.pem"
 test -s "$gateway_ca"
 base="https://$api_host"
@@ -92,7 +92,7 @@ jq -e '
     (.url | startswith("https://")) and
     ((.url | test("127\\.0\\.0\\.1|localhost:[0-9]+")) | not)
   ) and
-  any(.checks[]?; .name == "api" and .ok == true and (.detail | startswith("https://baseharbor-demo.baha.localhost")))
+  any(.checks[]?; .name == "api" and .ok == true and (.detail | startswith("https://demo.baha.localhost")))
 ' "$ARTIFACT_DIR/security-canonical-status.json" >/dev/null
 
 if grep -R -n -E 'tls_insecure_skip_verify|insecure_skip_verify'   "${XDG_DATA_HOME:-$HOME/.local/share}/baseharbor"   "$DEMO_ROOT/.baseharbor" 2>/dev/null; then
