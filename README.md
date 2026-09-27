@@ -97,7 +97,7 @@ The companion application listens on `http://localhost:8081` and exposes `/healt
 Create the same directed connection used by the release acceptance suite:
 
 ```bash
-baha connect baseharbor-demo/demo-app companion-app/companion-app
+baha connect demo/demo-app companion-app/companion-app
 baha connections
 curl http://localhost:8081/hello
 ```
@@ -105,7 +105,7 @@ curl http://localhost:8081/hello
 Remove the connection again:
 
 ```bash
-baha disconnect baseharbor-demo/demo-app companion-app/companion-app
+baha disconnect demo/demo-app companion-app/companion-app
 ```
 
 When you are finished with the second app:
@@ -188,8 +188,8 @@ For shared PostgreSQL this boundary is explicit: `baseharbor_admin` belongs only
 For local development, BaseHarbor derives canonical browser URLs from one Target-scoped development domain. With the default domain the demo uses addresses such as:
 
 ```text
-https://baseharbor-demo.baha.localhost
-https://baseharbor-demo.baha.localhost/swagger/
+https://demo.baha.localhost
+https://demo.baha.localhost/swagger/
 https://pgadmin.baha.localhost
 https://cache.baha.localhost
 https://auth.baha.localhost
