@@ -91,8 +91,8 @@ curl -sS --cacert "$gateway_ca" --resolve "$api_host:$gateway_port:127.0.0.1" -o
     any(.recovery.contributors[]; .state_class=="object-storage.s3" and .selected==true) and
     any(.recovery.contributors[]; .state_class=="workload.storage" and .selected==true) and
     any(.recovery.contributors[]; .state_class=="observability.logs" and .selected==true) and
-    any(.observed[]; .id=="status:postgres/isolation" and .status=="ready") and
-    any(.verified[]; .id=="doctor:postgres shared isolation" and .status=="verified")
+    any(.observed_state[]; .id=="status:postgres/isolation" and .status=="ready") and
+    any(.verified_result[]; .id=="doctor:postgres shared isolation" and .status=="verified")
   ' "$ARTIFACT_DIR/recovery-evidence-before-destroy.json" >/dev/null
 
   "$BAHA" app destroy --yes
@@ -130,8 +130,8 @@ jq -e '
   any(.recovery.contributors[]; .state_class=="workload.storage" and .verified==true) and
   any(.recovery.contributors[]; .state_class=="observability.logs" and .verified==true) and
   any(.audit_events[]; .operation=="restore" and .outcome=="success") and
-  any(.observed[]; .id=="status:postgres/isolation" and .status=="ready") and
-  any(.verified[]; .id=="doctor:postgres shared isolation" and .status=="verified")
+  any(.observed_state[]; .id=="status:postgres/isolation" and .status=="ready") and
+  any(.verified_result[]; .id=="doctor:postgres shared isolation" and .status=="verified")
 ' "$ARTIFACT_DIR/recovery-evidence-after-restore.json" >/dev/null
 
 ! grep -Fq 'baseharbor_admin' "$ARTIFACT_DIR/recovery-evidence-before-destroy.json"
