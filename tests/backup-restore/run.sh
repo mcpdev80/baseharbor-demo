@@ -103,7 +103,18 @@ curl -sS --cacert "$gateway_ca" --resolve "$api_host:$gateway_port:127.0.0.1" -o
 
   "$BAHA" app doctor > "$ARTIFACT_DIR/restore-doctor.txt"
   "$BAHA" app evidence -o json > "$ARTIFACT_DIR/recovery-evidence-after-restore.json"
-  "$BAHA" app logs demo-app > "$ARTIFACT_DIR/recovery-logs-after-restore.txt"
+
+  loki_dir="$XDG_DATA_HOME/baseharbor/targets/$BASEHARBOR_TARGET/providers/loki/shared"
+  loki_port="$(awk -F= '$1=="BASEHARBOR_LOKI_PORT" { print $2 }' "$loki_dir/runtime.env")"
+  test -n "$loki_port"
+  curl -fsS \
+    --cacert "$loki_dir/service-access/pki/ca.pem" \
+    --cert "$loki_dir/service-access/pki/client-cert.pem" \
+    --key "$loki_dir/service-access/pki/client-key.pem" \
+    --get "https://127.0.0.1:$loki_port/loki/api/v1/query_range" \
+    --data-urlencode 'query={baseharbor_application="demo",baseharbor_environment="dev"} |= "recovery-marker-v0417"' \
+    --data-urlencode 'limit=10' \
+    > "$ARTIFACT_DIR/recovery-logs-after-restore.json"
 )
 
 grep -q '^READY' "$ARTIFACT_DIR/restore-doctor.txt"
@@ -121,7 +132,10 @@ object_name="$(cat "$ARTIFACT_DIR/recovery-s3-object.txt")"
 "${curl_dev[@]}" -X POST "$base"/api/secret \
   | jq -e '.present==true and .value_exposed==false' >/dev/null
 
-grep -q 'recovery-marker-v0417' "$ARTIFACT_DIR/recovery-logs-after-restore.txt"
+jq -e '
+  .status=="success" and
+  any(.data.result[].values[][]; contains("recovery-marker-v0417"))
+' "$ARTIFACT_DIR/recovery-logs-after-restore.json" >/dev/null
 
 jq -e '
   any(.recovery.contributors[]; .state_class=="database.sql" and .verified==true) and
