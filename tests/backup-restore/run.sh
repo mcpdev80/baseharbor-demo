@@ -57,7 +57,7 @@ EOF
   set -e
 
   printf '%s' 'acceptance-secret-value' | "$BAHA" app secret set APP_SECRET --stdin
-  "$BAHA" --verbose app apply > "$ARTIFACT_DIR/recovery-apply.txt" 2>&1
+  "$BAHA" --verbose app apply 2>&1 | tee "$ARTIFACT_DIR/recovery-apply.txt"
 )
 
 "${curl_dev[@]}" -X POST "$base"/api/sql > "$ARTIFACT_DIR/recovery-sql-seed.json"
