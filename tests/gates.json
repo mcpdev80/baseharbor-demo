@@ -1,15 +1,88 @@
 [
-  {"name":"guided","requires":[]},
-  {"name":"shell-ux","requires":["guided"]},
-  {"name":"init","requires":[]},
-  {"name":"lifecycle","requires":["guided"]},
-  {"name":"policy","requires":["guided"]},
-  {"name":"capabilities","requires":["lifecycle"]},
-  {"name":"connectivity","requires":["lifecycle"]},
-  {"name":"security","requires":["guided"]},
-  {"name":"reconciliation","requires":["lifecycle"]},
-  {"name":"machine","requires":["lifecycle"]},
-  {"name":"failure","requires":["lifecycle"]},
-  {"name":"recovery","requires":["lifecycle"]},
-  {"name":"full-destroy","requires":["lifecycle"]}
+  {
+    "name": "guided",
+    "requires": []
+  },
+  {
+    "name": "shell-ux",
+    "requires": [
+      "guided"
+    ]
+  },
+  {
+    "name": "init",
+    "requires": []
+  },
+  {
+    "name": "lifecycle",
+    "requires": [
+      "guided"
+    ]
+  },
+  {
+    "name": "policy",
+    "requires": [
+      "guided"
+    ]
+  },
+  {
+    "name": "capabilities",
+    "requires": [
+      "lifecycle"
+    ]
+  },
+  {
+    "name": "identity",
+    "requires": [
+      "guided"
+    ]
+  },
+  {
+    "name": "connectivity",
+    "requires": [
+      "lifecycle"
+    ]
+  },
+  {
+    "name": "security",
+    "requires": [
+      "guided"
+    ]
+  },
+  {
+    "name": "reconciliation",
+    "requires": [
+      "lifecycle"
+    ]
+  },
+  {
+    "name": "machine",
+    "requires": [
+      "lifecycle"
+    ]
+  },
+  {
+    "name": "failure",
+    "requires": [
+      "lifecycle"
+    ]
+  },
+  {
+    "name": "backup-restore",
+    "requires": [
+      "lifecycle"
+    ]
+  },
+  {
+    "name": "recovery",
+    "requires": [
+      "backup-restore"
+    ]
+  },
+  {
+    "name": "full-destroy",
+    "requires": [
+      "lifecycle"
+    ]
+  }
 ]

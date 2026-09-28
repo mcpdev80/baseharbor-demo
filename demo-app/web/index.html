@@ -65,6 +65,14 @@
       <div class="actions"><button data-action="secrets" onclick="runAction('secrets','/api/secret','Secrets')">Verify binding</button></div>
     </article>
 
+    <article class="card pos-identity" data-cap="identity">
+      <h3>Identity / OIDC</h3>
+      <div class="status"><span class="dot"></span><span>checking</span></div>
+      <div class="meta">OIDC_ISSUER / OIDC_CLIENT_ID</div>
+      <div class="cap-detail"></div>
+      <div class="actions"><button data-action="identity" onclick="runAction('identity','/api/identity/verify','Identity / OIDC')">Verify discovery</button></div>
+    </article>
+
     <article class="card pos-telemetry" data-cap="telemetry">
       <h3>Telemetry / Traces</h3>
       <div class="status"><span class="dot"></span><span>checking</span></div>

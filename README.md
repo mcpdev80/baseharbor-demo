@@ -21,7 +21,7 @@ baha up
 
 That's the normal developer path.
 
-BaseHarbor v0.4.15 keeps the deployment destination separate from the repository intent. You can inspect the effective destination at any time with:
+BaseHarbor v0.4.17 keeps the deployment destination separate from repository intent and adds standards-first managed application identity. You can inspect the effective destination at any time with:
 
 ```bash
 baha target
@@ -64,14 +64,16 @@ baha doctor
 
 The demo UI exercises real integrations for:
 
-- SQL
-- cache
+- shared PostgreSQL with an application-isolated database and role
+- shared Valkey provider lifecycle with an application-isolated cache service
 - S3-compatible object storage
 - secrets
 - metrics
 - traces
 - logs
 - BaseHarbor Runtime Resources
+- standard OIDC application identity
+- provider management surfaces for PostgreSQL, cache, object storage, OpenBao, identity and Prometheus
 - cross-application connectivity
 
 ## Run the complete two-application demo
@@ -95,7 +97,7 @@ The companion application listens on `http://localhost:8081` and exposes `/healt
 Create the same directed connection used by the release acceptance suite:
 
 ```bash
-baha connect baseharbor-demo/demo-app companion-app/companion-app
+baha connect demo/demo-app companion-app/companion-app
 baha connections
 curl http://localhost:8081/hello
 ```
@@ -103,7 +105,7 @@ curl http://localhost:8081/hello
 Remove the connection again:
 
 ```bash
-baha disconnect baseharbor-demo/demo-app companion-app/companion-app
+baha disconnect demo/demo-app companion-app/companion-app
 ```
 
 When you are finished with the second app:
@@ -118,6 +120,15 @@ When you are finished with the second app:
 The full acceptance suite performs this companion adoption and connectivity flow automatically through the `connectivity` gate.
 
 ## TLS and trust bindings
+
+The reference workload itself is HTTPS-only. Its Compose service declares:
+
+```yaml
+labels:
+  io.baseharbor.workload.protocol: "https"
+```
+
+BaseHarbor uses that declaration for the canonical development route, verifies the workload certificate with the BaseHarbor-issued workload CA, and sends the workload service name as TLS SNI. The demo intentionally has no plaintext HTTP fallback.
 
 BaseHarbor keeps transport configuration and certificate material separate.
 
@@ -144,9 +155,62 @@ TLS_KEY_FILE
 BASEHARBOR_RUNTIME_CA_FILE
 BASEHARBOR_RUNTIME_CLIENT_CERT_FILE
 BASEHARBOR_RUNTIME_CLIENT_KEY_FILE
+
+OIDC_ISSUER
+OIDC_CLIENT_ID
+OIDC_SCOPES
+OIDC_CLIENT_SECRET_FILE
+OIDC_CA_FILE
 ```
 
 For example, `DATABASE_CA_FILE=/run/baseharbor/.../ca.pem` is only a path reference. BaseHarbor mounts the referenced CA into the workload container read-only. This keeps the application contract portable and avoids multiline certificate data or private keys in environment files.
+
+## Managed identity and management UIs
+
+When Identity/OIDC is selected, the demo app consumes only standard application-facing bindings:
+
+```text
+OIDC_ISSUER
+OIDC_CLIENT_ID
+OIDC_SCOPES
+OIDC_CLIENT_SECRET_FILE
+OIDC_CA_FILE
+```
+
+The application calls the issuer's standard `/.well-known/openid-configuration` endpoint with the provided trust file. It does not call Keycloak administration APIs and does not depend on a BaseHarbor authentication SDK.
+
+The guided v0.4.17 demo deliberately uses **shared placement for every managed provider except the application workload**. PostgreSQL is one Target-owned provider with application-isolated databases/roles. Valkey uses one Target-owned provider lifecycle with isolated per-application cache resources so normal Redis/Valkey clients keep working without cross-application key access.
+
+The guided demo also selects the optional management surfaces. In local dev, `baha status` reports their HTTPS URLs and semantic purpose:
+
+- PostgreSQL -> pgAdmin
+- cache -> Redis Commander
+- object storage -> shared SeaweedFS Admin
+- secrets -> shared OpenBao UI
+- identity -> user-facing Keycloak login/account plus a separate Keycloak administration surface
+- observability -> Prometheus web UI
+
+Provider-admin credentials are not projected into the demo application.
+
+For shared PostgreSQL this boundary is explicit: `baseharbor_admin` belongs only to the BaseHarbor control plane. The demo workload receives an application-specific PostgreSQL role, password and database through its normal Service Binding. The guided/security gates require `postgres/isolation` verification and fail if `baseharbor_admin` appears in the workload binding or status evidence.
+
+For local development, BaseHarbor derives canonical browser URLs from one Target-scoped development domain. With the default domain the demo uses addresses such as:
+
+```text
+https://demo.baha.localhost
+https://demo.baha.localhost/swagger/
+https://pgadmin.baha.localhost
+https://cache.baha.localhost
+https://auth.baha.localhost
+https://auth-admin.baha.localhost
+https://storage.baha.localhost
+https://secrets.baha.localhost
+https://metrics.baha.localhost
+```
+
+Random loopback ports remain runtime implementation detail. The domain can be inspected or changed with `baha dev domain [DOMAIN]`.
+
+Selected development management surfaces reuse one Target-scoped developer login. The default username is `developer`; the generated password is revealed only through the explicit `baha dev credentials` command and is never included in normal status, doctor or acceptance evidence.
 
 ## Backup and restore
 
@@ -164,7 +228,7 @@ baha app restore ./<backup>.bhbackup
 
 BaseHarbor encrypts the recovery unit, verifies it before restore and only reports success after the restored application is healthy again.
 
-BaseHarbor v0.4.16 recovery units can include managed SQL, the application-owned secret scope, managed S3 objects, BaseHarbor-owned workload volumes and selectable application log history. External data remains outside BaseHarbor ownership and unsupported state is reported explicitly instead of being silently omitted.
+BaseHarbor v0.4.17 recovery units can include managed SQL, the application-owned secret scope, managed S3 objects, BaseHarbor-owned workload volumes and selectable application log history. External data remains outside BaseHarbor ownership and unsupported state is reported explicitly instead of being silently omitted.
 
 ## Stop or remove it
 
@@ -222,7 +286,7 @@ The application describes what it needs. BaseHarbor decides how that intent is r
 Against a published BaseHarbor release:
 
 ```bash
-BASEHARBOR_VERSION=v0.4.15 bash scripts/acceptance.sh
+BASEHARBOR_VERSION=v0.4.17 bash scripts/acceptance.sh
 ```
 
 Against a candidate commit or ref:
@@ -231,24 +295,35 @@ Against a candidate commit or ref:
 BASEHARBOR_SOURCE_REF=<commit-or-ref> bash scripts/acceptance.sh
 ```
 
-The suite validates the guided developer path, Bash completion/shell integration/Target-aware prompt, deterministic lifecycle, capability, security, the companion-app cross-application connectivity flow, reconciliation, failure, recovery and final full-installation destroy scenarios on Docker and Podman/Quadlet.
+The suite validates the guided developer path, Bash completion/shell integration/Target-aware prompt, deterministic lifecycle, capabilities, managed OIDC identity, provider management surfaces, security, the companion-app cross-application connectivity flow, reconciliation, failure, recovery and final full-installation destroy scenarios on Docker and Podman/Quadlet.
 
-Each acceptance run creates an isolated explicit BaseHarbor Target for the selected runtime and isolates BaseHarbor config/state through temporary XDG config/data roots. This proves the v0.4.15 Target boundary instead of relying on legacy repository-local platform state.
+Each acceptance run creates an isolated explicit BaseHarbor Target for the selected runtime and isolates BaseHarbor config/state through temporary XDG config/data roots. This proves the Target boundary and the v0.4.17 managed-identity/provider-interface contract instead of relying on legacy repository-local platform state.
 
 Evidence is written below `artifacts/`.
 
 ## Run without BaseHarbor
 
-The demo is still a normal Compose application:
+The demo remains HTTPS-only even in standalone mode. Create a local development certificate first:
 
 ```bash
-docker compose --profile standalone up --build
+mkdir -p .demo-tls
+openssl req -x509 -newkey rsa:2048 -nodes -days 30 \
+  -keyout .demo-tls/tls.key \
+  -out .demo-tls/tls.crt \
+  -subj "/CN=localhost" \
+  -addext "subjectAltName=DNS:localhost,IP:127.0.0.1"
+```
+
+Then start the normal Compose file plus the standalone TLS override:
+
+```bash
+docker compose -f compose.yaml -f compose.standalone.yaml --profile standalone up --build
 ```
 
 Open:
 
 ```text
-http://localhost:8080
+https://localhost:8080
 ```
 
-The standalone profile starts local backing services only for standalone demo use.
+The certificate is intentionally local/self-signed in standalone mode. Under BaseHarbor, certificate issuance, projection and trust are managed by BaseHarbor instead.

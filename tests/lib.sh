@@ -96,3 +96,23 @@ run_json() {
 
   assert_no_secret_leak "$stdout_file"
 }
+
+
+dev_gateway_port() {
+  if [ "${BASEHARBOR_TEST_RUNTIME:-docker}" = "podman" ]; then
+    printf '8443\n'
+  else
+    printf '443\n'
+  fi
+}
+
+dev_gateway_url() {
+  local host="$1"
+  local port
+  port="$(dev_gateway_port)"
+  if [ "$port" = "443" ]; then
+    printf 'https://%s\n' "$host"
+  else
+    printf 'https://%s:%s\n' "$host" "$port"
+  fi
+}

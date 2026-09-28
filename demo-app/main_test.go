@@ -95,28 +95,12 @@ func TestStatusPublishesSafeDeveloperLinks(t *testing.T) {
 	}
 }
 
-func TestServerTransportDefaultsToHTTPForStandalone(t *testing.T) {
+func TestServerTransportRejectsPlaintextHTTP(t *testing.T) {
 	t.Setenv("TLS_CERT_FILE", "")
 	t.Setenv("TLS_KEY_FILE", "")
-	t.Setenv("BASEHARBOR_RUNTIME_API_URL", "")
-	t.Setenv("BASEHARBOR_RUNTIME_TOKEN_FILE", "")
 
-	mode, cert, key, err := serverTransport()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if mode != "http" || cert != "" || key != "" {
-		t.Fatalf("got mode=%q cert=%q key=%q", mode, cert, key)
-	}
-}
-
-func TestServerTransportFailsClosedForManagedAppWithoutTLS(t *testing.T) {
-	t.Setenv("TLS_CERT_FILE", "")
-	t.Setenv("TLS_KEY_FILE", "")
-	t.Setenv("BASEHARBOR_RUNTIME_API_URL", "https://baseharbor-runtime:8443")
-
-	if _, _, _, err := serverTransport(); err == nil {
-		t.Fatal("expected BaseHarbor-managed app without TLS bindings to fail closed")
+	if _, _, _, err := serverTransport(); err == nil || !strings.Contains(err.Error(), "plaintext HTTP is intentionally unsupported") {
+		t.Fatalf("expected demo without TLS bindings to fail closed, got %v", err)
 	}
 }
 

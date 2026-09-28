@@ -4,6 +4,13 @@ source "$DEMO_ROOT/tests/lib.sh"
 
 section "Backup and restore"
 
+api_host="demo.baha.localhost"
+gateway_port="$(dev_gateway_port)"
+base="$(dev_gateway_url "$api_host")"
+gateway_ca="$XDG_DATA_HOME/baseharbor/targets/$BASEHARBOR_TARGET/developer-access/dev/gateway/runtime/ca.pem"
+test -s "$gateway_ca"
+curl_dev=(curl -fsS --cacert "$gateway_ca" --resolve "$api_host:$gateway_port:127.0.0.1")
+
 printf '%s' 'acceptance-backup-password' > "$ARTIFACT_DIR/backup.pass"
 chmod 600 "$ARTIFACT_DIR/backup.pass"
 
@@ -17,17 +24,27 @@ rm -rf "$DEMO_ROOT/.baseharbor" "$DEMO_ROOT/baseharbor.yaml"
 
 (
   cd "$DEMO_ROOT"
-  "$BAHA" app init baseharbor-demo \
+  "$BAHA" app init demo \
     --environment dev \
     --sql \
     --cache \
-    --s3 \
     --s3-bucket uploads \
     --require-secret APP_SECRET \
     --workload-compose compose.yaml \
     --workload-service demo-app
 
+  # The demo workload uses the Runtime Resource API to create S3 resources.
+  # Explicit recovery init must preserve that authorization just like guided
+  # repository adoption; without it the workload also loses its runtime mTLS
+  # identity and application TLS certificate projection.
   cat >> baseharbor.yaml <<'EOF'
+runtime:
+  permissions:
+    - capability: object-storage.s3/v1
+      services:
+        - demo-app
+      operations:
+        - runtime.create
 logs:
   collect:
     - application
@@ -40,22 +57,21 @@ EOF
   set -e
 
   printf '%s' 'acceptance-secret-value' | "$BAHA" app secret set APP_SECRET --stdin
-  "$BAHA" --verbose app apply > "$ARTIFACT_DIR/recovery-apply.txt" 2>&1
+  "$BAHA" --verbose app apply 2>&1 | tee "$ARTIFACT_DIR/recovery-apply.txt"
 )
 
-curl -fsS -X POST http://127.0.0.1:8080/api/sql > "$ARTIFACT_DIR/recovery-sql-seed.json"
+"${curl_dev[@]}" -X POST "$base"/api/sql > "$ARTIFACT_DIR/recovery-sql-seed.json"
 
-curl -fsS -X POST http://127.0.0.1:8080/api/object > "$ARTIFACT_DIR/recovery-s3-seed.json"
+"${curl_dev[@]}" -X POST "$base"/api/object > "$ARTIFACT_DIR/recovery-s3-seed.json"
 jq -r '.object' "$ARTIFACT_DIR/recovery-s3-seed.json" > "$ARTIFACT_DIR/recovery-s3-object.txt"
 
-printf '%s' 'durable-workload-state-v0416' \
-  | curl -fsS -X POST --data-binary @- http://127.0.0.1:8080/api/file \
+"${curl_dev[@]}" -X POST --data-binary 'durable-workload-state-v0417' "$base/api/file" \
   > "$ARTIFACT_DIR/recovery-volume-seed.json"
 
-curl -fsS -X POST http://127.0.0.1:8080/api/secret \
+"${curl_dev[@]}" -X POST "$base"/api/secret \
   | jq -e '.present==true and .value_exposed==false' >/dev/null
 
-curl -sS -o /dev/null http://127.0.0.1:8080/recovery-marker-v0416 || true
+curl -sS --cacert "$gateway_ca" --resolve "$api_host:$gateway_port:127.0.0.1" -o /dev/null "$base/recovery-marker-v0417" || true
 
 (
   cd "$DEMO_ROOT"
@@ -74,7 +90,9 @@ curl -sS -o /dev/null http://127.0.0.1:8080/recovery-marker-v0416 || true
     any(.recovery.contributors[]; .state_class=="secrets" and .selected==true) and
     any(.recovery.contributors[]; .state_class=="object-storage.s3" and .selected==true) and
     any(.recovery.contributors[]; .state_class=="workload.storage" and .selected==true) and
-    any(.recovery.contributors[]; .state_class=="observability.logs" and .selected==true)
+    any(.recovery.contributors[]; .state_class=="observability.logs" and .selected==true) and
+    any(.observed_state[]; .id=="status:postgres/isolation" and .status=="ready") and
+    any(.verified_result[]; .id=="doctor:postgres shared isolation" and .status=="verified")
   ' "$ARTIFACT_DIR/recovery-evidence-before-destroy.json" >/dev/null
 
   "$BAHA" app destroy --yes
@@ -85,25 +103,37 @@ curl -sS -o /dev/null http://127.0.0.1:8080/recovery-marker-v0416 || true
 
   "$BAHA" app doctor > "$ARTIFACT_DIR/restore-doctor.txt"
   "$BAHA" app evidence -o json > "$ARTIFACT_DIR/recovery-evidence-after-restore.json"
-  "$BAHA" app logs demo-app > "$ARTIFACT_DIR/recovery-logs-after-restore.txt"
+
+  loki_dir="$XDG_DATA_HOME/baseharbor/targets/$BASEHARBOR_TARGET/providers/loki/shared"
+  loki_port="$(awk -F= '$1=="BASEHARBOR_LOKI_PORT" { print $2 }' "$loki_dir/runtime.env")"
+  test -n "$loki_port"
+  curl -fsS \
+    --cacert "$loki_dir/service-access/pki/ca.pem" \
+    --get "https://127.0.0.1:$loki_port/loki/api/v1/query_range" \
+    --data-urlencode 'query={baseharbor_application="demo",baseharbor_environment="dev"} |= "recovery-marker-v0417"' \
+    --data-urlencode 'limit=10' \
+    > "$ARTIFACT_DIR/recovery-logs-after-restore.json"
 )
 
 grep -q '^READY' "$ARTIFACT_DIR/restore-doctor.txt"
 
-curl -fsS -X POST http://127.0.0.1:8080/api/sql \
+"${curl_dev[@]}" -X POST "$base"/api/sql \
   | jq -e '.records>=2' >/dev/null
 
 object_name="$(cat "$ARTIFACT_DIR/recovery-s3-object.txt")"
-curl -fsS "http://127.0.0.1:8080/api/object?name=$object_name" \
+"${curl_dev[@]}" "$base/api/object?name=$object_name" \
   | jq -e '.content=="BaseHarbor portable object storage demo\n"' >/dev/null
 
-curl -fsS http://127.0.0.1:8080/api/file \
-  | jq -e '.content=="durable-workload-state-v0416"' >/dev/null
+"${curl_dev[@]}" "$base/api/file" \
+  | jq -e '.content=="durable-workload-state-v0417"' >/dev/null
 
-curl -fsS -X POST http://127.0.0.1:8080/api/secret \
+"${curl_dev[@]}" -X POST "$base"/api/secret \
   | jq -e '.present==true and .value_exposed==false' >/dev/null
 
-grep -q 'recovery-marker-v0416' "$ARTIFACT_DIR/recovery-logs-after-restore.txt"
+jq -e '
+  .status=="success" and
+  any(.data.result[].values[][]; contains("recovery-marker-v0417"))
+' "$ARTIFACT_DIR/recovery-logs-after-restore.json" >/dev/null
 
 jq -e '
   any(.recovery.contributors[]; .state_class=="database.sql" and .verified==true) and
@@ -111,9 +141,13 @@ jq -e '
   any(.recovery.contributors[]; .state_class=="object-storage.s3" and .verified==true) and
   any(.recovery.contributors[]; .state_class=="workload.storage" and .verified==true) and
   any(.recovery.contributors[]; .state_class=="observability.logs" and .verified==true) and
-  any(.audit_events[]; .operation=="restore" and .outcome=="success")
+  any(.audit_events[]; .operation=="restore" and .outcome=="success") and
+  any(.observed_state[]; .id=="status:postgres/isolation" and .status=="ready") and
+  any(.verified_result[]; .id=="doctor:postgres shared isolation" and .status=="verified")
 ' "$ARTIFACT_DIR/recovery-evidence-after-restore.json" >/dev/null
 
+! grep -Fq 'baseharbor_admin' "$ARTIFACT_DIR/recovery-evidence-before-destroy.json"
+! grep -Fq 'baseharbor_admin' "$ARTIFACT_DIR/recovery-evidence-after-restore.json"
 assert_no_secret_leak "$ARTIFACT_DIR/recovery-evidence-before-destroy.json"
 assert_no_secret_leak "$ARTIFACT_DIR/recovery-evidence-after-restore.json"
 

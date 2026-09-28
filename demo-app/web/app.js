@@ -138,6 +138,7 @@ async function scenario() {
     ["object_storage", "/api/object", "Object Storage"],
     ["secrets", "/api/secret", "Secrets"],
     ["metrics", "/api/metrics/verify", "Metrics"],
+    ["identity", "/api/identity/verify", "Identity / OIDC"],
     ["telemetry", "/api/trace", "Telemetry / Traces"],
     ["runtime_resource", "/api/runtime-resource", "Runtime Resource"],
     ["companion", "/api/companion", "Cross-App Connectivity"],

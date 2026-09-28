@@ -7,7 +7,7 @@ section "Full BaseHarbor installation destroy"
 test -s "$DEMO_ROOT/baseharbor.yaml"
 
 "$BAHA" app list --all-targets | tee "$ARTIFACT_DIR/full-destroy-before.txt"
-grep -q 'baseharbor-demo' "$ARTIFACT_DIR/full-destroy-before.txt"
+grep -q 'demo' "$ARTIFACT_DIR/full-destroy-before.txt"
 
 "$BAHA" destroy --all --yes | tee "$ARTIFACT_DIR/full-destroy.txt"
 
@@ -32,7 +32,7 @@ if [ ! -s "$DEMO_ROOT/baseharbor.yaml" ]; then
   exit 1
 fi
 
-if "$BASEHARBOR_TEST_RUNTIME" ps -a --format '{{.Names}}' | grep -Eiq '^baseharbor-|baseharbor-demo'; then
+if "$BASEHARBOR_TEST_RUNTIME" ps -a --format '{{.Names}}' | grep -Eiq '^baseharbor-|demo'; then
   echo "BaseHarbor-managed/application containers remain after full destroy" >&2
   "$BASEHARBOR_TEST_RUNTIME" ps -a --format '{{.Names}}' >&2
   exit 1

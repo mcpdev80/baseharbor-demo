@@ -31,19 +31,19 @@ pass "Companion Adoption" "second ordinary Compose app adopted through determini
 
 (
   cd "$DEMO_ROOT"
-  "$BAHA" connect baseharbor-demo/demo-app companion-app/companion-app > "$ARTIFACT_DIR/connect.txt"
+  "$BAHA" connect demo/demo-app companion-app/companion-app > "$ARTIFACT_DIR/connect.txt"
   "$BAHA" connections > "$ARTIFACT_DIR/connections.txt"
 )
-grep -q 'baseharbor-demo' "$ARTIFACT_DIR/connections.txt"
+grep -q 'demo' "$ARTIFACT_DIR/connections.txt"
 grep -q 'companion-app' "$ARTIFACT_DIR/connections.txt"
 pass "Cross-App Connectivity" "directed connection created"
 
 (
   cd "$DEMO_ROOT"
-  "$BAHA" disconnect baseharbor-demo/demo-app companion-app/companion-app > "$ARTIFACT_DIR/disconnect.txt"
+  "$BAHA" disconnect demo/demo-app companion-app/companion-app > "$ARTIFACT_DIR/disconnect.txt"
   "$BAHA" connections > "$ARTIFACT_DIR/connections-after-disconnect.txt"
 )
-! grep -q 'baseharbor-demo.*companion-app' "$ARTIFACT_DIR/connections-after-disconnect.txt"
+! grep -q 'demo.*companion-app' "$ARTIFACT_DIR/connections-after-disconnect.txt"
 pass "Cross-App Isolation" "disconnect removed directed access"
 
 (
