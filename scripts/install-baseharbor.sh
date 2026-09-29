@@ -19,6 +19,7 @@ mkdir -p "$install_dir"
 
 if [ -n "$source_ref" ]; then
   workdir="${BASEHARBOR_SOURCE_DIR:-/tmp/baseharbor-candidate}"
+  runtime_image="${BASEHARBOR_RUNTIME_IMAGE:-localhost/baseharbor-runtime:demo-candidate-$source_ref}"
   rm -rf "$workdir"
   git clone --filter=blob:none --no-checkout https://github.com/mcpdev80/baseharbor.git "$workdir"
   git -C "$workdir" fetch --depth 1 origin "$source_ref"
@@ -33,8 +34,8 @@ if [ -n "$source_ref" ]; then
     mkdir -p /tmp/baseharbor-runtime-image
     cp "$install_dir/baha" /tmp/baseharbor-runtime-image/baha
     cp deploy/control-plane/Dockerfile.binary /tmp/baseharbor-runtime-image/Dockerfile
-    "$container_cli" build --pull --no-cache -t baseharbor-runtime:demo-candidate /tmp/baseharbor-runtime-image
-    image_version="$("$container_cli" run --rm --entrypoint /usr/local/bin/baha baseharbor-runtime:demo-candidate version)"
+    "$container_cli" build --pull --no-cache -t "$runtime_image" /tmp/baseharbor-runtime-image
+    image_version="$("$container_cli" run --rm --entrypoint /usr/local/bin/baha "$runtime_image" version)"
     printf 'Prepared runtime candidate image: %s\n' "$image_version"
     case "$image_version" in
       *"commit $source_ref"*) ;;
@@ -45,7 +46,7 @@ if [ -n "$source_ref" ]; then
     esac
   )
 
-  export BASEHARBOR_RUNTIME_IMAGE=baseharbor-runtime:demo-candidate
+  export BASEHARBOR_RUNTIME_IMAGE="$runtime_image"
   printf 'Prepared BaseHarbor candidate %s from source.\n' "$source_ref"
   "$install_dir/baha" version
   exit 0
