@@ -21,7 +21,7 @@ jq -e '
 ' "$GATE_REGISTRY" >/dev/null
 
 if [ -n "${BASEHARBOR_SOURCE_REF:-}" ]; then
-  export BASEHARBOR_RUNTIME_IMAGE=baseharbor-runtime:demo-candidate
+  export BASEHARBOR_RUNTIME_IMAGE="localhost/baseharbor-runtime:demo-candidate-${BASEHARBOR_SOURCE_REF}"
 fi
 printf '[acceptance] install: preparing BaseHarbor candidate\n'
 bash "$DEMO_ROOT/scripts/install-baseharbor.sh"
