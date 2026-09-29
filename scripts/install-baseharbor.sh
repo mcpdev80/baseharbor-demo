@@ -26,7 +26,9 @@ if [ -n "$source_ref" ]; then
 
   (
     cd "$workdir"
-    CGO_ENABLED=0 go build -trimpath -o "$install_dir/baha" ./cmd/baha
+    CGO_ENABLED=0 go build -trimpath \
+      -ldflags="-s -w -X main.version=dev -X main.commit=$source_ref -X main.date=unknown" \
+      -o "$install_dir/baha" ./cmd/baha
 
     mkdir -p /tmp/baseharbor-runtime-image
     cp "$install_dir/baha" /tmp/baseharbor-runtime-image/baha
