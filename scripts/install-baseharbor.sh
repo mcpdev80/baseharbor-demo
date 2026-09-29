@@ -31,7 +31,7 @@ if [ -n "$source_ref" ]; then
     mkdir -p /tmp/baseharbor-runtime-image
     cp "$install_dir/baha" /tmp/baseharbor-runtime-image/baha
     cp deploy/control-plane/Dockerfile.binary /tmp/baseharbor-runtime-image/Dockerfile
-    "$container_cli" build --pull -t baseharbor-runtime:demo-candidate /tmp/baseharbor-runtime-image
+    "$container_cli" build --pull --no-cache -t baseharbor-runtime:demo-candidate /tmp/baseharbor-runtime-image
   )
 
   export BASEHARBOR_RUNTIME_IMAGE=baseharbor-runtime:demo-candidate
