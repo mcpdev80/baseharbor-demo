@@ -99,11 +99,18 @@ run_json() {
 
 
 dev_gateway_port() {
-  if [ "${BASEHARBOR_TEST_RUNTIME:-docker}" = "podman" ]; then
-    printf '8443\n'
-  else
-    printf '443\n'
+  local state port
+  state="$XDG_DATA_HOME/baseharbor/targets/$BASEHARBOR_TARGET/developer-access/dev/gateway/routes.json"
+  if [ ! -s "$state" ]; then
+    echo "developer gateway state is missing: $state" >&2
+    return 1
   fi
+  port="$(jq -r '.host_port // empty' "$state")"
+  if [[ ! "$port" =~ ^[0-9]+$ ]] || [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
+    echo "developer gateway state contains invalid host_port: $state" >&2
+    return 1
+  fi
+  printf '%s\n' "$port"
 }
 
 dev_gateway_url() {
