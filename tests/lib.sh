@@ -99,6 +99,15 @@ run_json() {
 
 
 dev_gateway_port() {
+  local state port
+  state="${XDG_DATA_HOME}/baseharbor/targets/${BASEHARBOR_TARGET}/developer-access/dev/gateway/routes.json"
+  if [ -s "$state" ]; then
+    port="$(jq -er '.host_port // empty' "$state" 2>/dev/null || true)"
+    if [[ "$port" =~ ^[0-9]+$ ]] && [ "$port" -ge 1 ] && [ "$port" -le 65535 ]; then
+      printf '%s\n' "$port"
+      return
+    fi
+  fi
   if [ "${BASEHARBOR_TEST_RUNTIME:-docker}" = "podman" ]; then
     printf '8443\n'
   else
