@@ -34,6 +34,15 @@ if [ -n "$source_ref" ]; then
     cp "$install_dir/baha" /tmp/baseharbor-runtime-image/baha
     cp deploy/control-plane/Dockerfile.binary /tmp/baseharbor-runtime-image/Dockerfile
     "$container_cli" build --pull --no-cache -t baseharbor-runtime:demo-candidate /tmp/baseharbor-runtime-image
+    image_version="$("$container_cli" run --rm --entrypoint /usr/local/bin/baha baseharbor-runtime:demo-candidate version)"
+    printf 'Prepared runtime candidate image: %s\n' "$image_version"
+    case "$image_version" in
+      *"commit $source_ref"*) ;;
+      *)
+        echo "Runtime candidate image does not contain requested BaseHarbor source ref $source_ref" >&2
+        exit 1
+        ;;
+    esac
   )
 
   export BASEHARBOR_RUNTIME_IMAGE=baseharbor-runtime:demo-candidate
