@@ -80,11 +80,15 @@ run_runtime_case() {
   assert_no_secret_leak "$ARTIFACT_DIR/config-matrix-$case_id-env.json"
 }
 
-# Two reduced runtime rotations exercise the absence boundary and a common managed
-# subset. The existing guided/full suite exercises the complete capability set.
-# Both rotations reuse the same Target and are executed identically on Docker and
-# Podman by pre-release.
-run_runtime_case workload-only 18180
-run_runtime_case developer-core 18181
-
-pass "Config Matrix" "all contracts planned without mutation; reduced runtime profiles converge, restart and destroy"
+# Targeted execution proves reduced runtime convergence on the selected runtime.
+# In pre-release suite mode the expensive reduced rotations are intentionally not
+# repeated: this contract matrix is rechecked and the normal guided suite proves
+# the complete runtime stack. Targeted config-matrix gates are run on both Docker
+# and Podman before the final pre-release.
+if [ -z "${DEMO_SUITE:-}" ]; then
+  run_runtime_case workload-only 18180
+  run_runtime_case developer-core 18181
+  pass "Config Matrix" "all contracts planned; reduced runtime profiles converge, restart and destroy"
+else
+  pass "Config Matrix" "all reduced contracts planned without mutation; targeted runtime matrix is a pre-release prerequisite"
+fi
