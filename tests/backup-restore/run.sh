@@ -104,6 +104,16 @@ curl -sS --cacert "$gateway_ca" --resolve "$api_host:$gateway_port:127.0.0.1" -o
 
 grep -q '^READY' "$ARTIFACT_DIR/restore-doctor.txt"
 
+post_restore_ready=false
+for attempt in 1 2 3 4 5 6; do
+  if "${curl_dev[@]}" "$base/healthz" | jq -e '.status=="ok"' >/dev/null; then
+    post_restore_ready=true
+    break
+  fi
+  sleep 2
+done
+test "$post_restore_ready" = true
+
 "${curl_dev[@]}" -X POST "$base"/api/sql \
   | jq -e '.records>=2' >/dev/null
 
