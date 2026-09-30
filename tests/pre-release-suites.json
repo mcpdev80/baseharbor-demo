@@ -1,0 +1,23 @@
+{
+  "normal": [
+    "guided",
+    "shell-ux",
+    "init",
+    "lifecycle",
+    "policy",
+    "capabilities",
+    "identity",
+    "connectivity",
+    "security",
+    "machine",
+    "mcp",
+    "agent"
+  ],
+  "operations": [
+    "reconciliation",
+    "failure",
+    "backup-restore",
+    "recovery",
+    "full-destroy"
+  ]
+}

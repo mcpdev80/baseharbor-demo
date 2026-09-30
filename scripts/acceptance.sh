@@ -6,6 +6,7 @@ export DEMO_ROOT
 export ARTIFACT_DIR="${ARTIFACT_DIR:-$DEMO_ROOT/artifacts}"
 export BASEHARBOR_INSTALL_DIR="${BASEHARBOR_INSTALL_DIR:-$DEMO_ROOT/.tools/bin}"
 GATE_REGISTRY="$DEMO_ROOT/tests/gates.json"
+SUITE_REGISTRY="$DEMO_ROOT/tests/pre-release-suites.json"
 
 mkdir -p "$ARTIFACT_DIR" "$BASEHARBOR_INSTALL_DIR"
 : > "$ARTIFACT_DIR/results.tsv"
@@ -20,8 +21,18 @@ jq -e '
   )
 ' "$GATE_REGISTRY" >/dev/null
 
+jq -e --slurpfile gates "$GATE_REGISTRY" '
+  type == "object" and length > 0 and
+  all(to_entries[];
+    (.value | type == "array" and length > 0) and
+    all(.value[]; type == "string" and length > 0)
+  ) and
+  ([.[][]] | length) == ($gates[0] | length) and
+  ([.[][]] | sort) == ([$gates[0][].name] | sort)
+' "$SUITE_REGISTRY" >/dev/null
+
 if [ -n "${BASEHARBOR_SOURCE_REF:-}" ]; then
-  export BASEHARBOR_RUNTIME_IMAGE="localhost/baseharbor-runtime:demo-candidate-${BASEHARBOR_SOURCE_REF}"
+  export BASEHARBOR_RUNTIME_IMAGE="${BASEHARBOR_RUNTIME_IMAGE:-localhost/baseharbor-runtime:demo-candidate-${BASEHARBOR_SOURCE_REF}}"
 fi
 printf '[acceptance] install: preparing BaseHarbor candidate\n'
 bash "$DEMO_ROOT/scripts/install-baseharbor.sh"
@@ -98,7 +109,20 @@ select_gate() {
   selected["$gate"]=1
 }
 
-if [ "$#" -eq 0 ] && [ -z "${DEMO_GROUPS:-}" ]; then
+if [ -n "${DEMO_SUITE:-}" ]; then
+  if [ -n "${DEMO_GROUPS:-}" ] || [ "$#" -ne 0 ]; then
+    echo "DEMO_SUITE cannot be combined with DEMO_GROUPS or positional gates." >&2
+    exit 2
+  fi
+  jq -e --arg suite "$DEMO_SUITE" 'has($suite)' "$SUITE_REGISTRY" >/dev/null || {
+    echo "Unknown demo acceptance suite: $DEMO_SUITE" >&2
+    exit 2
+  }
+  full_suite=1
+  while IFS= read -r gate; do
+    select_gate "$gate"
+  done < <(jq -r --arg suite "$DEMO_SUITE" '.[$suite][]' "$SUITE_REGISTRY")
+elif [ "$#" -eq 0 ] && [ -z "${DEMO_GROUPS:-}" ]; then
   full_suite=1
   while IFS= read -r gate; do
     select_gate "$gate"

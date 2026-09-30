@@ -50,13 +50,21 @@
     ]
   },
   {
-    "name": "reconciliation",
+    "name": "machine",
     "requires": [
       "lifecycle"
     ]
   },
   {
-    "name": "machine",
+    "name": "mcp",
+    "requires": []
+  },
+  {
+    "name": "agent",
+    "requires": []
+  },
+  {
+    "name": "reconciliation",
     "requires": [
       "lifecycle"
     ]
