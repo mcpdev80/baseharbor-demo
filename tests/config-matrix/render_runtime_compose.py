@@ -18,28 +18,33 @@ def main():
     lines = [
         "services:",
         "  demo-app:",
-        "    build:",
-        "      context: ./demo-app",
+        "    image: busybox:1.37",
+        '    user: "65532:65532"',
+        "    command:",
+        '      - sh',
+        '      - -c',
+        '      - mkdir -p /tmp/www && printf "ok\\n" > /tmp/www/index.html && exec httpd -f -p 8080 -h /tmp/www',
         "    ports:",
-        '      - "${DEMO_HTTPS_PORT:-8080}:8080"',
+        '      - "${DEMO_HTTP_PORT:-8080}:8080"',
         "    labels:",
-        '      io.baseharbor.workload.protocol: "https"',
-        "    environment:",
-        '      PORT: "8080"',
-        '      APP_STATE_DIR: "/var/lib/baseharbor-demo"',
+        '      io.baseharbor.workload.protocol: "http"',
     ]
+    if expected:
+        lines.append("    environment:")
     for name in expected:
         lines.append("      " + name + ": ${" + name + ":-}")
     if "S3_ENDPOINT" in expected:
         for name in ("S3_ACCESS_KEY", "S3_SECRET_KEY"):
             lines.append("      " + name + ": ${" + name + ":-}")
     lines += [
-        "    volumes:",
-        "      - demo-app-state:/var/lib/baseharbor-demo",
+        "    read_only: true",
+        "    cap_drop:",
+        "      - ALL",
+        "    security_opt:",
+        "      - no-new-privileges:true",
+        "    tmpfs:",
+        "      - /tmp",
         "    restart: unless-stopped",
-        "",
-        "volumes:",
-        "  demo-app-state:",
         "",
     ]
     Path(a.output).write_text("\n".join(lines))
