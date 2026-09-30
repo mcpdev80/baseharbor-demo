@@ -25,6 +25,47 @@ container_runtime() {
   "$container_cli" "$@"
 }
 
+prebuilt_binary="${BASEHARBOR_PREBUILT_BINARY:-}"
+if [ -n "$prebuilt_binary" ]; then
+  [ -x "$prebuilt_binary" ] || {
+    echo "BASEHARBOR_PREBUILT_BINARY is not executable: $prebuilt_binary" >&2
+    exit 1
+  }
+  [ -n "${BASEHARBOR_RUNTIME_IMAGE:-}" ] || {
+    echo "BASEHARBOR_RUNTIME_IMAGE is required with BASEHARBOR_PREBUILT_BINARY." >&2
+    exit 1
+  }
+  container_runtime image inspect "$BASEHARBOR_RUNTIME_IMAGE" >/dev/null 2>&1 || {
+    echo "Preloaded runtime image is missing: $BASEHARBOR_RUNTIME_IMAGE" >&2
+    exit 1
+  }
+  cp "$prebuilt_binary" "$install_dir/baha"
+  chmod 0755 "$install_dir/baha"
+
+  if [ -n "$source_ref" ]; then
+    binary_version="$("$install_dir/baha" version)"
+    case "$binary_version" in
+      *"commit $source_ref"*) ;;
+      *)
+        echo "Prebuilt BaseHarbor binary does not contain requested source ref $source_ref" >&2
+        exit 1
+        ;;
+    esac
+    image_version="$(container_runtime run --rm --entrypoint /usr/local/bin/baha "$BASEHARBOR_RUNTIME_IMAGE" version)"
+    case "$image_version" in
+      *"commit $source_ref"*) ;;
+      *)
+        echo "Preloaded runtime image does not contain requested source ref $source_ref" >&2
+        exit 1
+        ;;
+    esac
+  fi
+
+  printf 'Using prebuilt BaseHarbor candidate and preloaded runtime image.\n'
+  "$install_dir/baha" version
+  exit 0
+fi
+
 if [ -n "$source_ref" ]; then
   workdir="${BASEHARBOR_SOURCE_DIR:-/tmp/baseharbor-candidate}"
   runtime_image="${BASEHARBOR_RUNTIME_IMAGE:-localhost/baseharbor-runtime:demo-candidate-$source_ref}"
