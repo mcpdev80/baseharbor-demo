@@ -35,8 +35,9 @@ if [ -n "$postgres" ]; then
   set -e
   test "$degraded_rc" -ne 0
   (cd "$DEMO_ROOT" && "$BAHA" app apply > "$ARTIFACT_DIR/reconcile-degraded-repair.txt")
-  (cd "$DEMO_ROOT" && "$BAHA" status -o json > "$ARTIFACT_DIR/reconcile-shared-postgres-after.json")
-  jq -e '.checks[] | select(.name == "postgres/isolation" and .ok == true)' "$ARTIFACT_DIR/reconcile-shared-postgres-after.json" >/dev/null
+  (cd "$DEMO_ROOT" && "$BAHA" app doctor > "$ARTIFACT_DIR/reconcile-shared-postgres-after.txt")
+  grep -q 'postgres shared isolation' "$ARTIFACT_DIR/reconcile-shared-postgres-after.txt"
+  grep -q '^READY' "$ARTIFACT_DIR/reconcile-shared-postgres-after.txt"
   pass "Reconciliation DEGRADED -> REPAIR" "stopped shared PostgreSQL provider recovered without changing app isolation"
 else
   pass "Reconciliation DEGRADED -> REPAIR" "shared provider container name is runtime-specific; covered by apply/doctor"
