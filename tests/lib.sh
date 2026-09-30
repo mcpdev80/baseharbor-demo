@@ -61,9 +61,13 @@ remove_managed_service_for_reconcile() {
     expected="$project-$service"
     unit="$expected.service"
     systemctl --user stop "$unit" >/dev/null 2>&1 || true
-    if "$CONTAINER_CLI" container exists "$expected" >/dev/null 2>&1; then
-      "$CONTAINER_CLI" rm -f "$expected" >/dev/null
-    fi
+    for _ in 1 2 3 4 5; do
+      if ! "$CONTAINER_CLI" container exists "$expected" >/dev/null 2>&1; then
+        return 0
+      fi
+      sleep 1
+    done
+    "$CONTAINER_CLI" rm -f "$expected" >/dev/null 2>&1 || true
     return 0
   fi
 
