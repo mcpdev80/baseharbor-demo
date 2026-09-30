@@ -55,6 +55,22 @@ EOF
 )
 grep -q '^READY' "$ARTIFACT_DIR/initial-doctor.txt"
 
+printf 'PHASE lifecycle-down-up\n'
+(
+  cd "$DEMO_ROOT"
+  timeout 120s "$BAHA" app down >"$ARTIFACT_DIR/lifecycle-down.txt" 2>&1
+  timeout 300s "$BAHA" up >"$ARTIFACT_DIR/lifecycle-up.txt" 2>&1
+  timeout 120s "$BAHA" app doctor >"$ARTIFACT_DIR/lifecycle-doctor.txt" 2>&1
+)
+grep -q '^READY' "$ARTIFACT_DIR/lifecycle-doctor.txt"
+
+printf 'PHASE lifecycle-idempotency\n'
+(
+  cd "$DEMO_ROOT"
+  timeout 300s "$BAHA" up >"$ARTIFACT_DIR/lifecycle-idempotent.txt" 2>&1
+)
+grep -Eq 'already READY|No changes|READY' "$ARTIFACT_DIR/lifecycle-idempotent.txt"
+
 printf 'PHASE reconciliation-noop\n'
 (cd "$DEMO_ROOT" && timeout 120s "$BAHA" app apply >"$ARTIFACT_DIR/reconcile-noop.txt" 2>&1)
 
