@@ -29,8 +29,14 @@ run_runtime_case() {
     cd "$case_root"
     export DEMO_HTTPS_PORT="$port"
 
-    "$BAHA" app preflight >"$ARTIFACT_DIR/config-matrix-$case_id-preflight.txt"
-    "$BAHA" up --yes >"$ARTIFACT_DIR/config-matrix-$case_id-up.txt"
+    if ! "$BAHA" app preflight >"$ARTIFACT_DIR/config-matrix-$case_id-preflight.txt" 2>&1; then
+      cat "$ARTIFACT_DIR/config-matrix-$case_id-preflight.txt" >&2
+      return 1
+    fi
+    if ! "$BAHA" up --yes >"$ARTIFACT_DIR/config-matrix-$case_id-up.txt" 2>&1; then
+      cat "$ARTIFACT_DIR/config-matrix-$case_id-up.txt" >&2
+      return 1
+    fi
     "$BAHA" status -o json >"$ARTIFACT_DIR/config-matrix-$case_id-status.json"
     "$BAHA" doctor >"$ARTIFACT_DIR/config-matrix-$case_id-doctor.txt"
     "$BAHA" app env --format json >"$ARTIFACT_DIR/config-matrix-$case_id-env.json"
