@@ -1,0 +1,46 @@
+{
+  "contract_version": "v1",
+  "schema_version": "v1",
+  "recovery": {
+    "contributors": [
+      {
+        "state_class": "database.sql",
+        "verified": true
+      },
+      {
+        "state_class": "secrets",
+        "verified": true
+      },
+      {
+        "state_class": "object-storage.s3",
+        "verified": true
+      },
+      {
+        "state_class": "workload.storage",
+        "verified": true
+      },
+      {
+        "state_class": "observability.logs",
+        "verified": true
+      }
+    ]
+  },
+  "audit_events": [
+    {
+      "operation": "restore",
+      "outcome": "success"
+    }
+  ],
+  "observed_state": [
+    {
+      "id": "status:postgres/isolation",
+      "status": "ready"
+    }
+  ],
+  "verified_result": [
+    {
+      "id": "doctor:postgres shared isolation",
+      "status": "verified"
+    }
+  ]
+}
