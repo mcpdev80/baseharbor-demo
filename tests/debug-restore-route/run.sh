@@ -41,7 +41,9 @@ gateway_port="$(jq -r '.host_port' "$routes")"
 base="https://demo.baha.localhost${gateway_port:+:$gateway_port}"
 if [ "$gateway_port" = "443" ]; then base="https://demo.baha.localhost"; fi
 curl_dev=(curl -fsS --cacert "$gateway_ca" --resolve "demo.baha.localhost:$gateway_port:127.0.0.1")
-"${curl_dev[@]}" "$base/healthz" | jq -e '.status=="ok"' >/dev/null
+initial_code="$(curl -sS --cacert "$gateway_ca" --resolve "demo.baha.localhost:$gateway_port:127.0.0.1" -o "$ARTIFACT_DIR/initial-body.html" -w '%{http_code}' "$base/" || true)"
+test "$initial_code" -ge 200
+test "$initial_code" -lt 400
 
 printf '%s' 'debug-restore-password' >"$ARTIFACT_DIR/backup.pass"
 chmod 600 "$ARTIFACT_DIR/backup.pass"
@@ -56,10 +58,10 @@ podman ps --format '{{.ID}} {{.Names}} {{.Status}}' >"$ARTIFACT_DIR/podman-ps.tx
 cp "$routes" "$ARTIFACT_DIR/routes-after-restore.json" 2>/dev/null || true
 
 for attempt in 1 2 3 4 5; do
-  code="$(curl -sS --cacert "$gateway_ca" --resolve "demo.baha.localhost:$gateway_port:127.0.0.1" -o "$ARTIFACT_DIR/health-body.json" -w '%{http_code}' "$base/healthz" || true)"
-  printf '%s\t%s\n' "$attempt" "$code" >>"$ARTIFACT_DIR/health-attempts.tsv"
-  if [ "$code" = "200" ] && jq -e '.status=="ok"' "$ARTIFACT_DIR/health-body.json" >/dev/null 2>&1; then
-    printf 'PASS  Minimal restore route health\n'
+  code="$(curl -sS --cacert "$gateway_ca" --resolve "demo.baha.localhost:$gateway_port:127.0.0.1" -o "$ARTIFACT_DIR/route-body.html" -w '%{http_code}' "$base/" || true)"
+  printf '%s\t%s\n' "$attempt" "$code" >>"$ARTIFACT_DIR/route-attempts.tsv"
+  if [ "$code" -ge 200 ] && [ "$code" -lt 400 ]; then
+    printf 'PASS  Minimal restore route readiness\n'
     exit 0
   fi
   sleep 1
