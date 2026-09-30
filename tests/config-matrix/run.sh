@@ -17,8 +17,11 @@ run_runtime_case() {
   local port="$2"
   local case_root="$matrix_root/$case_id"
   mkdir -p "$case_root"
-  cp "$DEMO_ROOT/compose.yaml" "$case_root/compose.yaml"
   cp -a "$DEMO_ROOT/demo-app" "$case_root/demo-app"
+  python3 "$DEMO_ROOT/tests/config-matrix/render_runtime_compose.py" \
+    --matrix "$DEMO_ROOT/tests/config-matrix/cases.json" \
+    --case "$case_id" \
+    --output "$case_root/compose.yaml"
 
   python3 "$DEMO_ROOT/tests/config-matrix/render.py"     --matrix "$DEMO_ROOT/tests/config-matrix/cases.json"     --case "$case_id"     --output "$case_root/baseharbor.yaml"
 
