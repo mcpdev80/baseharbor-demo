@@ -1,5 +1,9 @@
 [
   {
+    "name": "config-matrix",
+    "requires": []
+  },
+  {
     "name": "guided",
     "requires": []
   },
