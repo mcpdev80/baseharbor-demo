@@ -28,8 +28,9 @@ def main():
         '      - "${DEMO_HTTP_PORT:-8080}:8080"',
         "    labels:",
         '      io.baseharbor.workload.protocol: "http"',
-        "    environment:",
     ]
+    if expected:
+        lines.append("    environment:")
     for name in expected:
         lines.append("      " + name + ": ${" + name + ":-}")
     if "S3_ENDPOINT" in expected:
