@@ -78,6 +78,33 @@ container_id_for_service() {
   printf '%s\n' "$id"
 }
 
+remove_service_for_reconciliation() {
+  local service="$1"
+  local project="$2"
+  local id
+  id="$(container_id_for_service "$service" "$project")"
+  if [ -z "$id" ]; then
+    echo "reconciliation target service not found: project=$project service=$service runtime=$CONTAINER_CLI" >&2
+    "$CONTAINER_CLI" ps -a --format '{{.ID}} {{.Names}} {{.Status}}' >&2 || true
+    return 1
+  fi
+
+  if [ "$CONTAINER_CLI" = "podman" ]; then
+    local expected="$project-$service"
+    local unit="$expected.service"
+    systemctl --user stop "$unit" >/dev/null 2>&1 || true
+    "$CONTAINER_CLI" rm -f "$expected" >/dev/null 2>&1 || "$CONTAINER_CLI" rm -f "$id" >/dev/null 2>&1 || true
+    if "$CONTAINER_CLI" container exists "$expected" >/dev/null 2>&1; then
+      echo "reconciliation target still exists after Quadlet stop/remove: $expected" >&2
+      systemctl --user status "$unit" --no-pager >&2 || true
+      return 1
+    fi
+    return 0
+  fi
+
+  "$CONTAINER_CLI" rm -f "$id" >/dev/null
+}
+
 run_json() {
   local name="$1"; shift
   local stdout_file="$ARTIFACT_DIR/$name.json"
