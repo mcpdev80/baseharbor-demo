@@ -77,11 +77,7 @@ remove_managed_service_for_reconcile() {
   "$CONTAINER_CLI" rm -f "$container" >/dev/null
 }
 runtime_container_cli() {
-  if [ "$CONTAINER_CLI" = "podman" ]; then
-    env -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_CACHE_HOME "$CONTAINER_CLI" "$@"
-  else
-    "$CONTAINER_CLI" "$@"
-  fi
+  "$CONTAINER_CLI" "$@"
 }
 
 container_id_for_service() {
