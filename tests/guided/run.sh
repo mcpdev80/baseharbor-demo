@@ -81,7 +81,8 @@ swagger_code="$(curl -sS --cacert "$gateway_ca" --resolve "$swagger_host:$gatewa
 test "$swagger_code" -ge 200
 test "$swagger_code" -lt 400
 
-grep -q 'shared Target provider' "$ARTIFACT_DIR/guided-status.txt"
+grep -q 'postgres/default.*scope=shared owner=demo/dev' "$ARTIFACT_DIR/guided-status.txt"
+grep -q 'valkey.*app-isolated cache resource' "$ARTIFACT_DIR/guided-status.txt"
 grep -q 'cross-application access isolation verified' "$ARTIFACT_DIR/guided-status.txt"
 
 if grep -Eq 'https://(127\.0\.0\.1|localhost):[0-9]+' "$ARTIFACT_DIR/guided-status.txt"; then
