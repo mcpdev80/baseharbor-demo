@@ -1,0 +1,8 @@
+services:
+  debug-app:
+    image: docker.io/library/nginx:1.29-alpine
+    ports:
+      - "18088:80"
+    labels:
+      io.baseharbor.workload.protocol: "http"
+    restart: unless-stopped
