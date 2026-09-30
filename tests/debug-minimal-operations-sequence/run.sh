@@ -92,7 +92,11 @@ grep -q '^READY' "$ARTIFACT_DIR/reconcile-missing-doctor.txt"
 shared_project="bh-${target_slug}-shared"
 postgres="$(container_id_for_service shared-postgres-dev "$shared_project")"
 test -n "$postgres"
-"$CONTAINER_CLI" stop "$postgres" >/dev/null
+"$CONTAINER_CLI" stop "$postgres" >/dev/null 2>&1 || true
+if "$CONTAINER_CLI" ps -q --filter "id=$postgres" | grep -q .; then
+  echo "shared PostgreSQL container is still running after stop: $postgres" >&2
+  exit 1
+fi
 set +e
 (cd "$DEMO_ROOT" && timeout 120s "$BAHA" app doctor >"$ARTIFACT_DIR/reconcile-degraded-before.txt" 2>&1)
 degraded_rc=$?
