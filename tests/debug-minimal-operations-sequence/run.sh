@@ -86,22 +86,26 @@ printf 'PHASE reconciliation-missing\n'
 grep -q '^READY' "$ARTIFACT_DIR/reconcile-missing-doctor.txt"
 
 shared_project="bh-${target_slug}-shared"
-postgres="$(container_id_for_service shared-postgres-dev "$shared_project")"
-if [ -n "$postgres" ]; then
-  "$CONTAINER_CLI" stop "$postgres" >/dev/null || true
-  set +e
-  (cd "$DEMO_ROOT" && timeout 120s "$BAHA" app doctor >"$ARTIFACT_DIR/reconcile-degraded-before.txt" 2>&1)
-  degraded_rc=$?
-  set -e
-  test "$degraded_rc" -ne 0
-  printf 'PHASE reconciliation-repair\n'
-  (
-    cd "$DEMO_ROOT"
-    timeout 240s "$BAHA" app apply >"$ARTIFACT_DIR/reconcile-repair.txt" 2>&1
-    timeout 120s "$BAHA" app doctor >"$ARTIFACT_DIR/reconcile-repair-doctor.txt" 2>&1
-  )
-  grep -q '^READY' "$ARTIFACT_DIR/reconcile-repair-doctor.txt"
+if [ "$BASEHARBOR_TEST_RUNTIME" = "podman" ]; then
+  postgres_unit="${shared_project}-postgres.service"
+  systemctl --user stop "$postgres_unit"
+else
+  postgres="$(container_id_for_service shared-postgres-dev "$shared_project")"
+  test -n "$postgres"
+  "$CONTAINER_CLI" stop "$postgres" >/dev/null
 fi
+set +e
+(cd "$DEMO_ROOT" && timeout 120s "$BAHA" app doctor >"$ARTIFACT_DIR/reconcile-degraded-before.txt" 2>&1)
+degraded_rc=$?
+set -e
+test "$degraded_rc" -ne 0
+printf 'PHASE reconciliation-repair\n'
+(
+  cd "$DEMO_ROOT"
+  timeout 240s "$BAHA" app apply >"$ARTIFACT_DIR/reconcile-repair.txt" 2>&1
+  timeout 120s "$BAHA" app doctor >"$ARTIFACT_DIR/reconcile-repair-doctor.txt" 2>&1
+)
+grep -q '^READY' "$ARTIFACT_DIR/reconcile-repair-doctor.txt"
 
 api_host="demo.baha.localhost"
 gateway_port="$(dev_gateway_port)"
