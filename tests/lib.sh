@@ -52,6 +52,25 @@ assert_no_secret_leak() {
   ! grep -Eqi '(AWS_SECRET_ACCESS_KEY|APP_SECRET)=([^<]|$)' "$file"
 }
 
+remove_managed_service_for_reconcile() {
+  local service="$1"
+  local project="$2"
+  local container
+
+  container="$(container_id_for_service "$service" "$project")"
+  test -n "$container"
+
+  if [ "$CONTAINER_CLI" = "podman" ]; then
+    local expected unit
+    expected="$project-$service"
+    unit="$expected.service"
+    systemctl --user stop "$unit" >/dev/null 2>&1 || true
+    "$CONTAINER_CLI" rm -f "$expected" >/dev/null 2>&1 || "$CONTAINER_CLI" rm -f "$container" >/dev/null
+  else
+    "$CONTAINER_CLI" rm -f "$container" >/dev/null
+  fi
+}
+
 container_id_for_service() {
   local service="$1"
   local project="${2:-}"
