@@ -17,7 +17,6 @@ run_runtime_case() {
   local port="$2"
   local case_root="$matrix_root/$case_id"
   mkdir -p "$case_root"
-  cp -a "$DEMO_ROOT/demo-app" "$case_root/demo-app"
   python3 "$DEMO_ROOT/tests/config-matrix/render_runtime_compose.py" \
     --matrix "$DEMO_ROOT/tests/config-matrix/cases.json" \
     --case "$case_id" \
@@ -27,7 +26,7 @@ run_runtime_case() {
 
   (
     cd "$case_root"
-    export DEMO_HTTPS_PORT="$port"
+    export DEMO_HTTP_PORT="$port"
 
     if ! "$BAHA" app preflight >"$ARTIFACT_DIR/config-matrix-$case_id-preflight.txt" 2>&1; then
       cat "$ARTIFACT_DIR/config-matrix-$case_id-preflight.txt" >&2
