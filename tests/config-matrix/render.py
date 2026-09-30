@@ -4,6 +4,7 @@ from pathlib import Path
 
 def render(case):
     caps=set(case["capabilities"])
+    management=set(case.get("management_ui", []))
     name="matrix-"+case["id"]
     out=[
         "version: 1",
@@ -13,7 +14,7 @@ def render(case):
     ]
     services=[]
     if "sql" in caps:
-        services += ["  sql:","    enabled: true"]
+        services += ["  sql:","    enabled: true"]\n        if "sql" in management:\n            services += ["    management_ui: true"]
     if "cache" in caps:
         services += ["  cache:","    enabled: true"]
     if "object_storage" in caps:
@@ -68,7 +69,7 @@ def render(case):
             "      path: /metrics",
         ]
     if "logs" in caps:
-        out += ["logs:","  collect:","    - demo-app"]
+        out += ["logs:","  collect:","    - application"]
     if "telemetry" in caps:
         out += ["telemetry:","  otlp:","    signals:","      - traces"]
     return "\n".join(out)+"\n"
