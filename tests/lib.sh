@@ -55,10 +55,6 @@ assert_no_secret_leak() {
 remove_managed_service_for_reconcile() {
   local service="$1"
   local project="$2"
-  local container
-
-  container="$(container_id_for_service "$service" "$project")"
-  test -n "$container"
 
   if [ "$CONTAINER_CLI" = "podman" ]; then
     local expected unit
@@ -67,14 +63,15 @@ remove_managed_service_for_reconcile() {
     systemctl --user stop "$unit" >/dev/null 2>&1 || true
     if "$CONTAINER_CLI" container exists "$expected" >/dev/null 2>&1; then
       "$CONTAINER_CLI" rm -f "$expected" >/dev/null
-    elif "$CONTAINER_CLI" container exists "$container" >/dev/null 2>&1; then
-      "$CONTAINER_CLI" rm -f "$container" >/dev/null
     fi
-  else
-    "$CONTAINER_CLI" rm -f "$container" >/dev/null
+    return 0
   fi
-}
 
+  local container
+  container="$(container_id_for_service "$service" "$project")"
+  test -n "$container"
+  "$CONTAINER_CLI" rm -f "$container" >/dev/null
+}
 container_id_for_service() {
   local service="$1"
   local project="${2:-}"
