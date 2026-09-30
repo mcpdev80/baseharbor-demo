@@ -106,13 +106,26 @@ grep -q '^READY' "$ARTIFACT_DIR/restore-doctor.txt"
 
 post_restore_ready=false
 for attempt in 1 2 3 4 5 6; do
-  if "${curl_dev[@]}" "$base/healthz" | jq -e '.status=="ok"' >/dev/null; then
+  code="$(curl -sS --cacert "$gateway_ca" --resolve "$api_host:$gateway_port:127.0.0.1" -o "$ARTIFACT_DIR/post-restore-health-body.json" -w '%{http_code}' "$base/healthz" || true)"
+  printf '%s\t%s\n' "$attempt" "$code" >> "$ARTIFACT_DIR/post-restore-health-attempts.tsv"
+  if [ "$code" = "200" ] && jq -e '.status=="ok"' "$ARTIFACT_DIR/post-restore-health-body.json" >/dev/null 2>&1; then
     post_restore_ready=true
     break
   fi
+  if [ "$attempt" = "1" ]; then
+    cp "$XDG_DATA_HOME/baseharbor/targets/$BASEHARBOR_TARGET/developer-access/dev/gateway/routes.json" "$ARTIFACT_DIR/post-restore-routes.json" 2>/dev/null || true
+    "$CONTAINER_CLI" ps -a --format '{{.ID}} {{.Names}} {{.Status}}' > "$ARTIFACT_DIR/post-restore-runtime-ps.txt" 2>&1 || true
+    (cd "$DEMO_ROOT" && "$BAHA" status --verbose) > "$ARTIFACT_DIR/post-restore-status.txt" 2>&1 || true
+    (cd "$DEMO_ROOT" && "$BAHA" app doctor) > "$ARTIFACT_DIR/post-restore-doctor-debug.txt" 2>&1 || true
+  fi
   sleep 2
 done
-test "$post_restore_ready" = true
+if [ "$post_restore_ready" != true ]; then
+  echo "post-restore canonical workload route did not become ready" >&2
+  cat "$ARTIFACT_DIR/post-restore-health-attempts.tsv" >&2 || true
+  cat "$ARTIFACT_DIR/post-restore-health-body.json" >&2 || true
+  exit 1
+fi
 
 "${curl_dev[@]}" -X POST "$base"/api/sql \
   | jq -e '.records>=2' >/dev/null

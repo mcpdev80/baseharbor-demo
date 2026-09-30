@@ -13,9 +13,7 @@ pass "Reconciliation IN_SYNC -> NOOP" "repeated apply converged"
 target="$("$BAHA" target -o json | jq -r '.target.name')"
 target_slug="${target//./-}"
 project="bh-${target_slug}-demo-dev"
-container="$(container_id_for_service demo-app "$project")"
-test -n "$container"
-"$CONTAINER_CLI" rm -f "$container" >/dev/null
+remove_managed_service_for_reconcile demo-app "$project"
 
 (
   cd "$DEMO_ROOT"
