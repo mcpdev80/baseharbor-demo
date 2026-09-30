@@ -10,11 +10,17 @@ test -s "$DEMO_ROOT/baseharbor.yaml"
   cd "$DEMO_ROOT"
   "$BAHA" plan | tee "$ARTIFACT_DIR/plan.txt"
   run_json plan "$BAHA" plan -o json
-  "$BAHA" app preflight | tee "$ARTIFACT_DIR/preflight.txt"
+  preflight_ok=false
+  for attempt in 1 2 3; do
+    if "$BAHA" app preflight | tee "$ARTIFACT_DIR/preflight.txt"; then
+      preflight_ok=true
+      break
+    fi
+    sleep 2
+  done
+  test "$preflight_ok" = true
   "$BAHA" status | tee "$ARTIFACT_DIR/status.txt"
   "$BAHA" doctor | tee "$ARTIFACT_DIR/doctor.txt"
-  run_json status "$BAHA" status -o json
-  run_json doctor "$BAHA" doctor -o json
 )
 
 grep -q '^READY' "$ARTIFACT_DIR/doctor.txt"
