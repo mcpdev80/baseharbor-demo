@@ -64,7 +64,15 @@ container_id_for_service() {
   fi
 
   if [ -z "$id" ] && [ "$CONTAINER_CLI" = "podman" ]; then
-    id="$("$CONTAINER_CLI" ps --format '{{.ID}} {{.Names}}' | awk -v s="$service" '$2 == s || $2 ~ ("(^|[-_])" s "($|[-_])") {print $1; exit}')"
+    if [ -n "$project" ]; then
+      expected="$project-$service"
+      if "$CONTAINER_CLI" container exists "$expected" >/dev/null 2>&1; then
+        id="$expected"
+      fi
+    fi
+    if [ -z "$id" ]; then
+      id="$("$CONTAINER_CLI" ps --format '{{.ID}} {{.Names}}' | awk -v s="$service" '$2 == s || $2 ~ ("(^|[-_])" s "($|[-_])") {print $1; exit}')"
+    fi
   fi
 
   printf '%s\n' "$id"
