@@ -7,6 +7,7 @@ set -euo pipefail
 : "${DEMO_ROOT:?DEMO_ROOT is required}"
 
 export BASEHARBOR_INSTALL_DIR="${BASEHARBOR_INSTALL_DIR:-$DEMO_ROOT/.tools/bin}"
+export BASEHARBOR_RUNTIME_IMAGE="${BASEHARBOR_RUNTIME_IMAGE:-localhost/baseharbor-runtime:demo-candidate-${BASEHARBOR_SOURCE_REF}}"
 export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-/tmp/baseharbor-debug-minops/config}"
 export XDG_DATA_HOME="${XDG_DATA_HOME:-/tmp/baseharbor-debug-minops/data}"
 export XDG_CACHE_HOME="${XDG_CACHE_HOME:-/tmp/baseharbor-debug-minops/cache}"
