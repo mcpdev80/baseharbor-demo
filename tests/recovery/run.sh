@@ -16,8 +16,8 @@ jq -e '
   any(.recovery.contributors[]; .state_class=="workload.storage" and .verified==true) and
   any(.recovery.contributors[]; .state_class=="observability.logs" and .verified==true) and
   any(.audit_events[]; .operation=="restore" and .outcome=="success") and
-  any(.observed[]; .id=="status:postgres/isolation" and .status=="ready") and
-  any(.verified[]; .id=="doctor:postgres shared isolation" and .status=="verified")
+  any(.observed_state[]; .id=="status:postgres/isolation" and .status=="ready") and
+  any(.verified_result[]; .id=="doctor:postgres shared isolation" and .status=="verified")
 ' "$ARTIFACT_DIR/recovery-evidence-after-restore.json" >/dev/null
 
 assert_no_secret_leak "$ARTIFACT_DIR/recovery-evidence-after-restore.json"
