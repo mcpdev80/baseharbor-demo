@@ -90,14 +90,9 @@ printf 'PHASE reconciliation-missing\n'
 grep -q '^READY' "$ARTIFACT_DIR/reconcile-missing-doctor.txt"
 
 shared_project="bh-${target_slug}-shared"
-if [ "$BASEHARBOR_TEST_RUNTIME" = "podman" ]; then
-  postgres_unit="${shared_project}-postgres.service"
-  systemctl --user stop "$postgres_unit" >/dev/null 2>&1 || true
-else
-  postgres="$(container_id_for_service shared-postgres-dev "$shared_project")"
-  test -n "$postgres"
-  "$CONTAINER_CLI" stop "$postgres" >/dev/null
-fi
+postgres="$(container_id_for_service shared-postgres-dev "$shared_project")"
+test -n "$postgres"
+"$CONTAINER_CLI" stop "$postgres" >/dev/null
 set +e
 (cd "$DEMO_ROOT" && timeout 120s "$BAHA" app doctor >"$ARTIFACT_DIR/reconcile-degraded-before.txt" 2>&1)
 degraded_rc=$?
