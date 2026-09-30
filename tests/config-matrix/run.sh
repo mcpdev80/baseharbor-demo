@@ -10,7 +10,7 @@ matrix_root="$(mktemp -d)"
 cleanup_matrix() {
   rm -rf "$matrix_root"
 }
-trap cleanup_matrix RETURN
+trap cleanup_matrix EXIT
 
 run_runtime_case() {
   local case_id="$1"
