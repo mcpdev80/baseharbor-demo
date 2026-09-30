@@ -1,28 +1,32 @@
 #!/usr/bin/env python3
-import argparse, json
+import argparse
+import json
 from pathlib import Path
 
+
 def render(case):
-    caps=set(case["capabilities"])
-    management=set(case.get("management_ui", []))
-    name="matrix-"+case["id"]
-    out=[
+    caps = set(case["capabilities"])
+    management = set(case.get("management_ui", []))
+    name = "matrix-" + case["id"]
+    out = [
         "version: 1",
         "app:",
         f"  name: {name}",
         "  environment: dev",
     ]
-    services=[]
+    services = []
     if "sql" in caps:
-        services += ["  sql:","    enabled: true"]\n        if "sql" in management:\n            services += ["    management_ui: true"]
+        services += ["  sql:", "    enabled: true"]
+        if "sql" in management:
+            services += ["    management_ui: true"]
     if "cache" in caps:
-        services += ["  cache:","    enabled: true"]
+        services += ["  cache:", "    enabled: true"]
     if "object_storage" in caps:
-        services += ["  object_storage:","    buckets:","      uploads: {}"]
+        services += ["  object_storage:", "    buckets:", "      uploads: {}"]
     if "secrets" in caps:
-        services += ["  secrets:","    enabled: true"]
+        services += ["  secrets:", "    enabled: true"]
     if "identity" in caps:
-        services += ["  identity:","    enabled: true"]
+        services += ["  identity:", "    enabled: true"]
     if services:
         out += ["services:"] + services
     if "identity" in caps:
@@ -69,22 +73,24 @@ def render(case):
             "      path: /metrics",
         ]
     if "logs" in caps:
-        out += ["logs:","  collect:","    - application"]
+        out += ["logs:", "  collect:", "    - application"]
     if "telemetry" in caps:
-        out += ["telemetry:","  otlp:","    signals:","      - traces"]
-    return "\n".join(out)+"\n"
+        out += ["telemetry:", "  otlp:", "    signals:", "      - traces"]
+    return "\n".join(out) + "\n"
+
 
 def main():
-    p=argparse.ArgumentParser()
-    p.add_argument("--matrix",required=True)
-    p.add_argument("--case",required=True)
-    p.add_argument("--output",required=True)
-    a=p.parse_args()
-    data=json.loads(Path(a.matrix).read_text())
-    case=next((x for x in data["cases"] if x["id"]==a.case),None)
+    p = argparse.ArgumentParser()
+    p.add_argument("--matrix", required=True)
+    p.add_argument("--case", required=True)
+    p.add_argument("--output", required=True)
+    a = p.parse_args()
+    data = json.loads(Path(a.matrix).read_text())
+    case = next((x for x in data["cases"] if x["id"] == a.case), None)
     if not case:
         raise SystemExit(f"unknown matrix case: {a.case}")
     Path(a.output).write_text(render(case))
 
-if __name__=="__main__":
+
+if __name__ == "__main__":
     main()
