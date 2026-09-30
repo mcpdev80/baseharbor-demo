@@ -24,13 +24,21 @@ grep -q '^READY' "$ARTIFACT_DIR/reconcile-missing-doctor.txt"
 pass "Reconciliation MISSING -> CREATE" "missing workload recreated"
 
 shared_project="bh-${target_slug}-shared"
-postgres="$(container_id_for_service shared-postgres-dev "$shared_project")"
-if [ -n "$postgres" ]; then
-  runtime_container_cli stop "$postgres" >/dev/null 2>&1 || true
-  if runtime_container_cli ps -q --filter "id=$postgres" | grep -q .; then
-    echo "shared PostgreSQL container is still running after stop: $postgres" >&2
+if [ "$CONTAINER_CLI" = "podman" ]; then
+  postgres_unit="${shared_project}-shared-postgres-dev.service"
+  systemctl --user stop "$postgres_unit" >/dev/null 2>&1 || true
+  if systemctl --user is-active --quiet "$postgres_unit"; then
+    echo "shared PostgreSQL Quadlet unit is still active after stop: $postgres_unit" >&2
     exit 1
   fi
+  postgres="podman-quadlet"
+else
+  postgres="$(container_id_for_service shared-postgres-dev "$shared_project")"
+  if [ -n "$postgres" ]; then
+    "$CONTAINER_CLI" stop "$postgres" >/dev/null
+  fi
+fi
+if [ -n "$postgres" ]; then
   set +e
   (cd "$DEMO_ROOT" && "$BAHA" app doctor) >"$ARTIFACT_DIR/reconcile-degraded-before.txt" 2>&1
   degraded_rc=$?
