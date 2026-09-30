@@ -60,7 +60,7 @@ def render(case):
         "    - name: app",
         "      service: demo-app",
         "      port: 8080",
-        "      protocol: https",
+        "      protocol: http",
         "      visibility: public",
     ]
     if "metrics" in caps:
