@@ -28,6 +28,8 @@ try:
     expected = {
         "baseharbor.target",
         "baseharbor.inspect",
+        "baseharbor.workspace.resolve",
+        "baseharbor.app.new",
         "baseharbor.plan",
         "baseharbor.apply",
         "baseharbor.status",
