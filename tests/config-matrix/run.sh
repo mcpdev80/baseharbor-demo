@@ -70,7 +70,10 @@ run_runtime_case() {
       developer-core)
         jq -e 'has("DATABASE_URL")' "$ARTIFACT_DIR/config-matrix-$case_id-env.json" >/dev/null
         jq -e '(has("REDIS_URL") or has("VALKEY_URL"))' "$ARTIFACT_DIR/config-matrix-$case_id-env.json" >/dev/null
-        jq -e 'has("APP_SECRET")' "$ARTIFACT_DIR/config-matrix-$case_id-env.json" >/dev/null
+        jq -e 'has("APP_SECRET") | not' "$ARTIFACT_DIR/config-matrix-$case_id-env.json" >/dev/null
+        jq -e '
+          any(.checks[]?; .name == "required-secret/APP_SECRET" and .ok == true and .state == "ready")
+        ' "$ARTIFACT_DIR/config-matrix-$case_id-status.json" >/dev/null
         jq -e 'has("S3_ENDPOINT") | not' "$ARTIFACT_DIR/config-matrix-$case_id-env.json" >/dev/null
         jq -e 'has("OIDC_ISSUER") | not' "$ARTIFACT_DIR/config-matrix-$case_id-env.json" >/dev/null
         jq -e 'has("OTEL_EXPORTER_OTLP_ENDPOINT") | not' "$ARTIFACT_DIR/config-matrix-$case_id-env.json" >/dev/null
