@@ -92,7 +92,7 @@ grep -q '^READY' "$ARTIFACT_DIR/reconcile-missing-doctor.txt"
 shared_project="bh-${target_slug}-shared"
 if [ "$BASEHARBOR_TEST_RUNTIME" = "podman" ]; then
   postgres_unit="${shared_project}-postgres.service"
-  systemctl --user stop "$postgres_unit"
+  systemctl --user stop "$postgres_unit" >/dev/null 2>&1 || true
 else
   postgres="$(container_id_for_service shared-postgres-dev "$shared_project")"
   test -n "$postgres"
