@@ -1,0 +1,17 @@
+{
+  "schema_version": "baseharbor.demo-config-matrix/v1",
+  "cases": [
+    {"id":"workload-only","capabilities":[],"expected_bindings":[],"runtime":"always"},
+    {"id":"sql","capabilities":["sql"],"expected_bindings":["DATABASE_URL"],"runtime":"always"},
+    {"id":"cache","capabilities":["cache"],"expected_bindings":["REDIS_URL"],"runtime":"always"},
+    {"id":"object-storage","capabilities":["object_storage"],"expected_bindings":["S3_ENDPOINT","S3_BUCKET"],"runtime":"full"},
+    {"id":"secrets","capabilities":["secrets"],"expected_bindings":["APP_SECRET"],"runtime":"full"},
+    {"id":"identity","capabilities":["identity"],"expected_bindings":["OIDC_ISSUER","OIDC_CLIENT_ID"],"runtime":"full"},
+    {"id":"metrics","capabilities":["metrics"],"expected_bindings":[],"runtime":"full"},
+    {"id":"logs","capabilities":["logs"],"expected_bindings":[],"runtime":"full"},
+    {"id":"telemetry","capabilities":["telemetry"],"expected_bindings":["OTEL_EXPORTER_OTLP_ENDPOINT"],"runtime":"full"},
+    {"id":"sql-cache","capabilities":["sql","cache"],"expected_bindings":["DATABASE_URL","REDIS_URL"],"runtime":"always"},
+    {"id":"developer-core","capabilities":["sql","cache","secrets"],"expected_bindings":["DATABASE_URL","REDIS_URL","APP_SECRET"],"runtime":"full"},
+    {"id":"full","capabilities":["sql","cache","object_storage","secrets","identity","metrics","logs","telemetry"],"expected_bindings":["DATABASE_URL","REDIS_URL","S3_ENDPOINT","S3_BUCKET","APP_SECRET","OIDC_ISSUER","OIDC_CLIENT_ID","OTEL_EXPORTER_OTLP_ENDPOINT"],"runtime":"full"}
+  ]
+}
