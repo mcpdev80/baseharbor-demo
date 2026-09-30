@@ -76,26 +76,34 @@ remove_managed_service_for_reconcile() {
   test -n "$container"
   "$CONTAINER_CLI" rm -f "$container" >/dev/null
 }
+runtime_container_cli() {
+  if [ "$CONTAINER_CLI" = "podman" ]; then
+    env -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_CACHE_HOME "$CONTAINER_CLI" "$@"
+  else
+    "$CONTAINER_CLI" "$@"
+  fi
+}
+
 container_id_for_service() {
   local service="$1"
   local project="${2:-}"
   local id=""
 
   if [ -n "$project" ]; then
-    id="$("$CONTAINER_CLI" ps -q       --filter "label=com.docker.compose.project=$project"       --filter "label=com.docker.compose.service=$service" | head -n1 || true)"
+    id="$(runtime_container_cli ps -q       --filter "label=com.docker.compose.project=$project"       --filter "label=com.docker.compose.service=$service" | head -n1 || true)"
   else
-    id="$("$CONTAINER_CLI" ps -q       --filter "label=com.docker.compose.service=$service" | head -n1 || true)"
+    id="$(runtime_container_cli ps -q       --filter "label=com.docker.compose.service=$service" | head -n1 || true)"
   fi
 
   if [ -z "$id" ] && [ "$CONTAINER_CLI" = "podman" ]; then
     if [ -n "$project" ]; then
       expected="$project-$service"
-      if "$CONTAINER_CLI" container exists "$expected" >/dev/null 2>&1; then
+      if runtime_container_cli container exists "$expected" >/dev/null 2>&1; then
         id="$expected"
       fi
     fi
     if [ -z "$id" ]; then
-      id="$("$CONTAINER_CLI" ps --format '{{.ID}} {{.Names}}' | awk -v s="$service" '$2 == s || $2 ~ ("(^|[-_])" s "($|[-_])") {print $1; exit}')"
+      id="$(runtime_container_cli ps --format '{{.ID}} {{.Names}}' | awk -v s="$service" '$2 == s || $2 ~ ("(^|[-_])" s "($|[-_])") {print $1; exit}')"
     fi
   fi
 
