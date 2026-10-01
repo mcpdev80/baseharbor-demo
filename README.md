@@ -21,7 +21,7 @@ baha up
 
 That's the normal developer path.
 
-BaseHarbor v0.4.17 keeps the deployment destination separate from repository intent and adds standards-first managed application identity. You can inspect the effective destination at any time with:
+BaseHarbor v0.4.19 keeps the deployment destination separate from repository intent and adds standards-first managed application identity. You can inspect the effective destination at any time with:
 
 ```bash
 baha target
@@ -92,14 +92,18 @@ After the main demo is READY:
 )
 ```
 
-The companion application listens on `http://localhost:8081` and exposes `/healthz` and `/hello`.
+The companion application exposes `/healthz` and `/hello` through its canonical BaseHarbor development route. Use `baha status` from `companion-app/` to read the effective HTTPS URL and gateway port; the runtime may select a fallback host port when a preferred port is already occupied.
 
 Create the same directed connection used by the release acceptance suite:
 
 ```bash
 baha connect demo/demo-app companion-app/companion-app
 baha connections
-curl http://localhost:8081/hello
+
+(
+  cd companion-app
+  baha status
+)
 ```
 
 Remove the connection again:
@@ -210,7 +214,7 @@ https://metrics.baha.localhost
 
 Random loopback ports remain runtime implementation detail. The domain can be inspected or changed with `baha dev domain [DOMAIN]`.
 
-Selected development management surfaces reuse one Target-scoped developer login. The default username is `developer`; the generated password is revealed only through the explicit `baha dev credentials` command and is never included in normal status, doctor or acceptance evidence.
+Selected development management surfaces reuse one Target- and environment-scoped developer login. The default username is `developer`, but it is only a default: set another username explicitly with `baha dev credentials --username USER`. The credential is reused by later shared management surfaces in the same Target/environment. The password is revealed only through the explicit `baha dev credentials` command and is never included in normal status, doctor or acceptance evidence.
 
 ## Backup and restore
 
@@ -228,7 +232,7 @@ baha app restore ./<backup>.bhbackup
 
 BaseHarbor encrypts the recovery unit, verifies it before restore and only reports success after the restored application is healthy again.
 
-BaseHarbor v0.4.17 recovery units can include managed SQL, the application-owned secret scope, managed S3 objects, BaseHarbor-owned workload volumes and selectable application log history. External data remains outside BaseHarbor ownership and unsupported state is reported explicitly instead of being silently omitted.
+BaseHarbor v0.4.19 recovery units can include managed SQL, the application-owned secret scope, managed S3 objects, BaseHarbor-owned workload volumes and selectable application log history. External data remains outside BaseHarbor ownership and unsupported state is reported explicitly instead of being silently omitted.
 
 ## Stop or remove it
 
@@ -286,7 +290,7 @@ The application describes what it needs. BaseHarbor decides how that intent is r
 Against a published BaseHarbor release:
 
 ```bash
-BASEHARBOR_VERSION=v0.4.17 bash scripts/acceptance.sh
+BASEHARBOR_VERSION=v0.4.19 bash scripts/acceptance.sh
 ```
 
 Against a candidate commit or ref:
