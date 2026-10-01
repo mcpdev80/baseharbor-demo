@@ -30,8 +30,8 @@ rm -rf "$DEMO_ROOT/.baseharbor" "$DEMO_ROOT/baseharbor.yaml"
     --cache \
     --s3-bucket uploads \
     --require-secret APP_SECRET \
-    --workload-compose compose.yaml \
-    --workload-service demo-app
+    --workload-source compose:compose.yaml \
+    --workload-component demo-app
 
   # The demo workload uses the Runtime Resource API to create S3 resources.
   # Explicit recovery init must preserve that authorization just like guided
