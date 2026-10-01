@@ -162,5 +162,32 @@
       "database.key-value",
       "key-value-management-ui"
     ]
+  },
+  "control-plane-recovery": {
+    "class": "integration",
+    "profile": "control-plane-recovery",
+    "capabilities": [
+      "control-plane",
+      "openbao",
+      "operator-recovery"
+    ]
+  },
+  "loki-runtime": {
+    "class": "integration",
+    "profile": "logs-ingestion",
+    "capabilities": [
+      "logs",
+      "loki",
+      "alloy"
+    ]
+  },
+  "tempo-runtime": {
+    "class": "integration",
+    "profile": "trace-ingestion",
+    "capabilities": [
+      "telemetry.otlp",
+      "traces",
+      "tempo"
+    ]
   }
 }
