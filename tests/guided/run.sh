@@ -28,6 +28,9 @@ test "$compose_before" = "$compose_after"
 
 grep -q '^workload:' "$DEMO_ROOT/baseharbor.yaml"
 grep -q '^  components:' "$DEMO_ROOT/baseharbor.yaml"
+! grep -q '^  compose:' "$DEMO_ROOT/baseharbor.yaml"
+! grep -q '^  services:' "$DEMO_ROOT/baseharbor.yaml"
+grep -q '^  components:' "$DEMO_ROOT/baseharbor.yaml"
 grep -q '^    - demo-app
 if [ "${DEMO_ATOMIC_GATE:-0}" != "1" ]; then
   grep -q '^metrics:' "$DEMO_ROOT/baseharbor.yaml"
