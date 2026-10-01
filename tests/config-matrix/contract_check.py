@@ -7,8 +7,8 @@ import tempfile
 from pathlib import Path
 
 PREFIX = {
-    "sql": ("postgres",),
-    "cache": ("valkey",),
+    "sql": ("database.sql:",),
+    "cache": ("cache.key-value:",),
     "object_storage": ("s3-bucket:",),
     "secrets": ("secrets-scope", "secret:"),
     "identity": ("identity:",),
