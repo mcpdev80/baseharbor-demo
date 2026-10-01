@@ -20,7 +20,7 @@ chmod 600 "$ARTIFACT_DIR/backup.pass"
   cd "$DEMO_ROOT"
   "$BAHA" app destroy --yes || true
 )
-rm -rf "$DEMO_ROOT/.baseharbor" "$DEMO_ROOT/baseharbor.yaml"
+rm -rf "$DEMO_ROOT/.baseharbor" "$DEMO_ROOT/baseharbor.yaml" "$DEMO_ROOT/baseharbor.repository.yaml"
 
 (
   cd "$DEMO_ROOT"
