@@ -15,7 +15,7 @@ mkdir -p "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_CACHE_HOME"
   --scope default \
   --default >/dev/null
 
-rm -f "$DEMO_ROOT/baseharbor.yaml"
+rm -f "$DEMO_ROOT/baseharbor.yaml" "$DEMO_ROOT/baseharbor.repository.yaml"
 (
   cd "$DEMO_ROOT"
   "$BAHA" app init demo \
