@@ -23,7 +23,7 @@ def render(case):
     if "cache" in caps:
         services += ["  cache:", "    enabled: true"]
     if "key_value" in caps:
-        services += ["  key_value:", "    enabled: true"]
+        services += ["  key_value:", "    instances:", "      durable: {}"]
         if "key_value" in management:
             services += ["    management_ui: true"]
     if "document_database" in caps:
