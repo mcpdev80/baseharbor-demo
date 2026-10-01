@@ -234,7 +234,6 @@ run_tty(
     "guided-up",
     [BAHA, "--verbose", "up"],
     up_rules,
-    env={"BASEHARBOR_TRACES_ENABLED": "true"},
     timeout=1200,
 )
 
