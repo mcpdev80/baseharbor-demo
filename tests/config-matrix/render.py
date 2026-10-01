@@ -22,6 +22,29 @@ def render(case):
             services += ["    management_ui: true"]
     if "cache" in caps:
         services += ["  cache:", "    enabled: true"]
+    if "key_value" in caps:
+        services += ["  key_value:", "    enabled: true"]
+        if "key_value" in management:
+            services += ["    management_ui: true"]
+    if "document_database" in caps:
+        services += ["  document_database:", "    enabled: true"]
+        if "document_database" in management:
+            services += ["    management_ui: true"]
+    messaging_ui_rendered = False
+    if "messaging_queue" in caps:
+        services += ["  messaging_queue:", "    enabled: true"]
+        if "messaging" in management:
+            services += ["    management_ui: true"]
+            messaging_ui_rendered = True
+    if "messaging_pubsub" in caps:
+        services += ["  messaging_pubsub:", "    enabled: true"]
+        if "messaging" in management and not messaging_ui_rendered:
+            services += ["    management_ui: true"]
+            messaging_ui_rendered = True
+    if "messaging_stream" in caps:
+        services += ["  messaging_stream:", "    enabled: true"]
+        if "messaging" in management and not messaging_ui_rendered:
+            services += ["    management_ui: true"]
     if "object_storage" in caps:
         services += ["  object_storage:", "    buckets:", "      uploads: {}"]
     if "secrets" in caps:
