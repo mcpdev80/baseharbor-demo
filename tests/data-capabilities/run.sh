@@ -19,7 +19,10 @@ pass "SQL Data Path" "write + read"
 "${curl_dev[@]}" -X POST "$base/api/cache" | tee "$ARTIFACT_DIR/cache.json" | jq -e '.value=="portable-cache-value"' >/dev/null
 pass "Cache" "set + get + ttl"
 
-"${curl_dev[@]}" -X POST "$base/api/object" | tee "$ARTIFACT_DIR/object.json" | jq -e '.bucket|length>0' >/dev/null
+object_code="$("${curl_dev[@]/-fS/-sS}" -o "$ARTIFACT_DIR/object.json" -w '%{http_code}' -X POST "$base/api/object" || true)"
+cat "$ARTIFACT_DIR/object.json"
+test "$object_code" = "200"
+jq -e '.bucket|length>0' "$ARTIFACT_DIR/object.json" >/dev/null
 pass "Object Storage" "S3 put"
 
 "${curl_dev[@]}" -X POST "$base/api/secret" | tee "$ARTIFACT_DIR/secret.json" | jq -e '.present==true and .value_exposed==false' >/dev/null
