@@ -28,12 +28,9 @@
     ]
   },
   "shell-ux": {
-    "class": "runtime",
-    "profile": "workload-only",
-    "capabilities": [
-      "workload",
-      "development-gateway"
-    ]
+    "class": "static",
+    "profile": "shell-interface",
+    "capabilities": []
   },
   "lifecycle": {
     "class": "runtime",
