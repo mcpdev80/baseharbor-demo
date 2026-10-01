@@ -193,7 +193,7 @@ init_rules = [
     Rule(r"Identity management UI\? \[y/N\]\s*$", callback=lambda m, t: "y\r" if management_ui_enabled("identity") else "n\r", optional=True),
     Rule(r"Observability management UI \(Prometheus\)\? \[y/N\]\s*$", callback=lambda m, t: "y\r" if management_ui_enabled("observability") else "n\r", optional=True),
     Rule(r"PostgreSQL instances \(comma-separated\) \[[^\]]+\]:\s*$", "\n", optional=True),
-    Rule(r"Valkey / Redis instances \(comma-separated\) \[[^\]]+\]:\s*$", "\n", optional=True),
+    Rule(r"Valkey / Redis cache instances \(comma-separated\) \[[^\]]+\]:\s*$", "\n", optional=True),
     Rule(r"Durable Valkey / Redis instances \(comma-separated\) \[[^\]]+\]:\s*$", "\n", optional=True),
     Rule(r"MongoDB-compatible document database instances \(comma-separated\) \[[^\]]+\]:\s*$", "\n", optional=True),
     Rule(r"Messaging queue instances \(comma-separated\) \[[^\]]+\]:\s*$", "\n", optional=True),
