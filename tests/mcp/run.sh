@@ -43,6 +43,15 @@ try:
         "baseharbor.destroy",
         "baseharbor.policy.check",
         "baseharbor.policy.explain",
+        "baseharbor.organization.check",
+        "baseharbor.organization.inspect",
+        "baseharbor.organization.set",
+        "baseharbor.organization.update",
+        "baseharbor.provider.add",
+        "baseharbor.provider.inspect",
+        "baseharbor.provider.list",
+        "baseharbor.provider.remove",
+        "baseharbor.provider.verify",
     }
     if names != expected:
         raise RuntimeError(f"unexpected MCP tools: {sorted(names)}")
