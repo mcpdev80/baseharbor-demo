@@ -184,7 +184,7 @@ def run_tty(name, argv, rules, env=None, timeout=900):
 init_rules = [
     Rule(r"Application name \[[^\]]+\]:\s*$", "demo\n"),
     Rule(r"Environment \[[^\]]+\]:\s*$", "\n"),
-    Rule(r"Multiple workload sources detected:.*?Workload source.*?:\s*$", callback=root_workload_source_response),
+    Rule(r"Multiple workload sources detected:.*?Workload source.*?:\s*$", callback=root_workload_source_response, optional=True),
     Rule(r"Select application capabilities.*?13\. Application logs", callback=capability_selection_response),
     Rule(r"PostgreSQL management UI\? \[y/N\]\s*$", callback=lambda m, t: "y\r" if management_ui_enabled("sql") else "n\r", optional=True),
     Rule(r"Cache management UI\? \[y/N\]\s*$", callback=lambda m, t: "y\r" if management_ui_enabled("cache") else "n\r", optional=True),
