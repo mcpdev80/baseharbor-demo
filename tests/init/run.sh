@@ -26,10 +26,18 @@ test -s "$workdir/baseharbor.yaml"
 
 grep -q '^workload:' "$workdir/baseharbor.yaml"
 grep -q '^  components:' "$workdir/baseharbor.yaml"
+grep -q '^    - demo-app$' "$workdir/baseharbor.yaml"
 ! grep -q '^  compose:' "$workdir/baseharbor.yaml"
 ! grep -q '^  services:' "$workdir/baseharbor.yaml"
-grep -q '^  components:' "$workdir/baseharbor.yaml"
-grep -q '^    - demo-app
+test ! -e "$workdir/baseharbor.repository.yaml"
+
+jq -e '.workload_source_resolution.schema_version == "baseharbor.workload-source-resolution/v1"' "$ARTIFACT_DIR/inspect.json" >/dev/null
+jq -e '.workload_source_resolution.state == "selected"' "$ARTIFACT_DIR/inspect.json" >/dev/null
+jq -e '.workload_source_resolution.reason == "single_candidate"' "$ARTIFACT_DIR/inspect.json" >/dev/null
+jq -e '.workload_source_resolution.selected.kind == "compose"' "$ARTIFACT_DIR/inspect.json" >/dev/null
+jq -e '.workload_source_resolution.selected.path == "compose.yaml"' "$ARTIFACT_DIR/inspect.json" >/dev/null
+jq -e '.workload_evidence.components[] | select(.id == "demo-app")' "$ARTIFACT_DIR/inspect.json" >/dev/null
+
 grep -q '^runtime:' "$workdir/baseharbor.yaml"
 
 # Suggested-only OTLP/log collection and heuristic secret names are intentionally
@@ -39,21 +47,4 @@ grep -q '^runtime:' "$workdir/baseharbor.yaml"
 ! grep -q '^secrets:' "$workdir/baseharbor.yaml"
 
 pass "Repository Inspection" "read-only human + standardized source-resolution JSON"
-pass "Application Init Quick" "single-source Compose -> source-neutral workload.components; no repository source metadata needed"
- "$workdir/baseharbor.yaml"
-! grep -q '^  compose:' "$workdir/baseharbor.yaml"
-test ! -e "$workdir/baseharbor.repository.yaml"
-jq -e '.workload_source_resolution.state == "selected"' "$ARTIFACT_DIR/inspect.json" >/dev/null
-jq -e '.workload_source_resolution.reason == "single_candidate"' "$ARTIFACT_DIR/inspect.json" >/dev/null
-jq -e '.workload_evidence.components[] | select(.id == "demo-app")' "$ARTIFACT_DIR/inspect.json" >/dev/null
-grep -q '^metrics:' "$workdir/baseharbor.yaml"
-grep -q '^runtime:' "$workdir/baseharbor.yaml"
-
-# Suggested-only OTLP/log collection and heuristic secret names are intentionally
-# not promoted into the portable contract by --quick.
-! grep -q '^telemetry:' "$workdir/baseharbor.yaml"
-! grep -q '^logs:' "$workdir/baseharbor.yaml"
-! grep -q '^secrets:' "$workdir/baseharbor.yaml"
-
-pass "Repository Inspection" "read-only human + JSON"
-pass "Application Init Quick" "unambiguous detected intent only; no manual YAML mutation"
+pass "Application Init Quick" "single-source Compose -> source-neutral workload.components; no source metadata needed"
