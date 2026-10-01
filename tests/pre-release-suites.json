@@ -1,20 +1,22 @@
 {
-  "normal": [
+  "static": [
     "config-matrix",
+    "init",
+    "mcp",
+    "agent"
+  ],
+  "journey": [
     "guided",
     "shell-ux",
-    "init",
     "lifecycle",
     "data-capabilities",
     "observability",
     "policy",
     "identity",
     "connectivity",
-    "security",
-    "mcp",
-    "agent"
+    "security"
   ],
-  "operations": [
+  "resilience": [
     "reconciliation",
     "failure",
     "backup-restore",
