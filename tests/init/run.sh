@@ -26,6 +26,9 @@ test -s "$workdir/baseharbor.yaml"
 
 grep -q '^workload:' "$workdir/baseharbor.yaml"
 grep -q '^  components:' "$workdir/baseharbor.yaml"
+! grep -q '^  compose:' "$workdir/baseharbor.yaml"
+! grep -q '^  services:' "$workdir/baseharbor.yaml"
+grep -q '^  components:' "$workdir/baseharbor.yaml"
 grep -q '^    - demo-app
 grep -q '^runtime:' "$workdir/baseharbor.yaml"
 
