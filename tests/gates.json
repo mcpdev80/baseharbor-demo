@@ -24,15 +24,21 @@
     ]
   },
   {
-    "name": "policy",
+    "name": "data-capabilities",
     "requires": [
-      "guided"
+      "lifecycle"
     ]
   },
   {
-    "name": "capabilities",
+    "name": "observability",
     "requires": [
       "lifecycle"
+    ]
+  },
+  {
+    "name": "policy",
+    "requires": [
+      "guided"
     ]
   },
   {
@@ -51,12 +57,6 @@
     "name": "security",
     "requires": [
       "guided"
-    ]
-  },
-  {
-    "name": "machine",
-    "requires": [
-      "lifecycle"
     ]
   },
   {
@@ -83,12 +83,6 @@
     "name": "backup-restore",
     "requires": [
       "lifecycle"
-    ]
-  },
-  {
-    "name": "recovery",
-    "requires": [
-      "backup-restore"
     ]
   },
   {

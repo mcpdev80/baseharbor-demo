@@ -139,23 +139,25 @@ else
   done
 fi
 
-changed=1
-while [ "$changed" -eq 1 ]; do
-  changed=0
-  for gate in "${!selected[@]}"; do
-    while IFS= read -r dependency; do
-      [ -n "$dependency" ] || continue
-      gate_exists "$dependency" || {
-        echo "Gate $gate requires unknown gate $dependency" >&2
-        exit 2
-      }
-      if [ "${selected[$dependency]:-0}" != "1" ]; then
-        selected["$dependency"]=1
-        changed=1
-      fi
-    done < <(jq -r --arg gate "$gate" '.[] | select(.name == $gate) | .requires[]' "$GATE_REGISTRY")
+if [ "${DEMO_ATOMIC_GATE:-0}" != "1" ]; then
+  changed=1
+  while [ "$changed" -eq 1 ]; do
+    changed=0
+    for gate in "${!selected[@]}"; do
+      while IFS= read -r dependency; do
+        [ -n "$dependency" ] || continue
+        gate_exists "$dependency" || {
+          echo "Gate $gate requires unknown gate $dependency" >&2
+          exit 2
+        }
+        if [ "${selected[$dependency]:-0}" != "1" ]; then
+          selected["$dependency"]=1
+          changed=1
+        fi
+      done < <(jq -r --arg gate "$gate" '.[] | select(.name == $gate) | .requires[]' "$GATE_REGISTRY")
+    done
   done
-done
+fi
 
 record_group() {
   local gate="$1"
@@ -214,17 +216,22 @@ while IFS= read -r gate; do
     exit 2
   }
 
-  # Dependencies define selection and execution order. A failed prerequisite does
-  # not suppress later diagnostics as long as the shared runtime is still usable.
-  while IFS= read -r dependency; do
-    [ -n "$dependency" ] || continue
-    if [ -z "${gate_status[$dependency]:-}" ]; then
-      echo "Gate order is invalid: $gate requires $dependency before it has run" >&2
-      exit 2
-    fi
-  done < <(jq -r --arg gate "$gate" '.[] | select(.name == $gate) | .requires[]' "$GATE_REGISTRY")
+  # Suite mode preserves dependency ordering. Atomic mode deliberately
+  # bootstraps only the selected gate's minimal fixture instead.
+  if [ "${DEMO_ATOMIC_GATE:-0}" != "1" ]; then
+    while IFS= read -r dependency; do
+      [ -n "$dependency" ] || continue
+      if [ -z "${gate_status[$dependency]:-}" ]; then
+        echo "Gate order is invalid: $gate requires $dependency before it has run" >&2
+        exit 2
+      fi
+    done < <(jq -r --arg gate "$gate" '.[] | select(.name == $gate) | .requires[]' "$GATE_REGISTRY")
+  fi
 
   printf '\n>>> demo-%s\n' "$gate"
+  if [ "${DEMO_ATOMIC_GATE:-0}" = "1" ] && [ "$gate" != "guided" ] && [ "$gate" != "config-matrix" ] && [ "$gate" != "init" ] && [ "$gate" != "mcp" ] && [ "$gate" != "agent" ] && [ "$gate" != "backup-restore" ]; then
+    bash "$DEMO_ROOT/tests/atomic-bootstrap.sh" "$gate"
+  fi
   set +e
   bash "$script"
   rc=$?

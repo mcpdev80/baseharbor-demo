@@ -77,7 +77,12 @@ jq -e '.checks[] | select(.name == "identity/oidc" and .ok == true)' "$ARTIFACT_
   exit 43
 }
 
-for surface in sql cache object-storage secrets identity-login identity-admin observability; do
+if [ "${DEMO_ATOMIC_GATE:-0}" = "1" ]; then
+  expected_surfaces=(identity-login identity-admin)
+else
+  expected_surfaces=(sql cache object-storage secrets identity-login identity-admin observability)
+fi
+for surface in "${expected_surfaces[@]}"; do
   jq -e --arg surface "$surface" '
     any(.management_ui[]?; .service == $surface and (.url | startswith("https://")))
   ' "$ARTIFACT_DIR/identity-baha-status.json" >/dev/null || {

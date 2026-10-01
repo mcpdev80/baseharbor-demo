@@ -10,17 +10,21 @@ RESULTS_FILE="$ARTIFACT_DIR/results.tsv"
 touch "$RESULTS_FILE"
 
 CONTAINER_CLI="${BASEHARBOR_TEST_RUNTIME:-}"
-if [ -z "$CONTAINER_CLI" ]; then
+if [ "$CONTAINER_CLI" = "static" ]; then
+  CONTAINER_CLI=""
+elif [ -z "$CONTAINER_CLI" ]; then
   if command -v docker >/dev/null 2>&1; then
     CONTAINER_CLI=docker
   elif command -v podman >/dev/null 2>&1; then
     CONTAINER_CLI=podman
   else
-    echo "Neither docker nor podman is available for acceptance diagnostics." >&2
+    echo "Neither docker nor podman is available for runtime acceptance diagnostics." >&2
     exit 1
   fi
 fi
-command -v "$CONTAINER_CLI" >/dev/null 2>&1
+if [ -n "$CONTAINER_CLI" ]; then
+  command -v "$CONTAINER_CLI" >/dev/null 2>&1
+fi
 export CONTAINER_CLI
 
 section() {
