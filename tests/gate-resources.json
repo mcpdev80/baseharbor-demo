@@ -1,0 +1,140 @@
+{
+  "config-matrix": {
+    "class": "static",
+    "profile": "contracts",
+    "capabilities": []
+  },
+  "init": {
+    "class": "static",
+    "profile": "repository-adoption",
+    "capabilities": []
+  },
+  "mcp": {
+    "class": "static",
+    "profile": "machine-interface",
+    "capabilities": []
+  },
+  "agent": {
+    "class": "static",
+    "profile": "machine-interface",
+    "capabilities": []
+  },
+  "guided": {
+    "class": "runtime",
+    "profile": "workload-only",
+    "capabilities": [
+      "workload",
+      "development-gateway"
+    ]
+  },
+  "shell-ux": {
+    "class": "runtime",
+    "profile": "workload-only",
+    "capabilities": [
+      "workload",
+      "development-gateway"
+    ]
+  },
+  "lifecycle": {
+    "class": "runtime",
+    "profile": "workload-only",
+    "capabilities": [
+      "workload",
+      "development-gateway"
+    ]
+  },
+  "policy": {
+    "class": "runtime",
+    "profile": "workload-only",
+    "capabilities": [
+      "workload",
+      "development-gateway"
+    ]
+  },
+  "connectivity": {
+    "class": "runtime",
+    "profile": "workload-only",
+    "capabilities": [
+      "workload",
+      "development-gateway",
+      "application-connectivity"
+    ]
+  },
+  "full-destroy": {
+    "class": "runtime",
+    "profile": "workload-only",
+    "capabilities": [
+      "workload",
+      "development-gateway"
+    ]
+  },
+  "data-capabilities": {
+    "class": "runtime",
+    "profile": "data",
+    "capabilities": [
+      "database.sql",
+      "cache.key-value",
+      "object-storage.s3",
+      "secrets",
+      "runtime-resource"
+    ]
+  },
+  "observability": {
+    "class": "runtime",
+    "profile": "observability",
+    "capabilities": [
+      "metrics.openmetrics",
+      "telemetry.otlp",
+      "logs"
+    ]
+  },
+  "identity": {
+    "class": "runtime",
+    "profile": "identity",
+    "capabilities": [
+      "identity.oidc",
+      "identity-management-ui",
+      "development-gateway"
+    ]
+  },
+  "security": {
+    "class": "runtime",
+    "profile": "binding-security",
+    "capabilities": [
+      "database.sql",
+      "cache.key-value",
+      "object-storage.s3",
+      "identity.oidc",
+      "telemetry.otlp",
+      "runtime-mtls"
+    ]
+  },
+  "reconciliation": {
+    "class": "runtime",
+    "profile": "sql-reconcile",
+    "capabilities": [
+      "database.sql",
+      "workload"
+    ]
+  },
+  "failure": {
+    "class": "runtime",
+    "profile": "metrics-failure",
+    "capabilities": [
+      "metrics.openmetrics",
+      "workload"
+    ]
+  },
+  "backup-restore": {
+    "class": "runtime",
+    "profile": "recovery",
+    "capabilities": [
+      "database.sql",
+      "cache.key-value",
+      "object-storage.s3",
+      "secrets",
+      "logs",
+      "workload.storage"
+    ]
+  }
+}
