@@ -34,7 +34,13 @@ trap cleanup EXIT
 
 (
   cd "$DEMO_ROOT"
-  "$BAHA" app init demo --environment dev --sql --workload-compose compose.yaml --workload-service demo-app
+  cat > pgexec-compose.yaml <<'EOF'
+services:
+  pgexec-app:
+    image: docker.io/library/alpine:3.24
+    command: ["sh", "-ec", "while true; do sleep 3600; done"]
+EOF
+  "$BAHA" app init demo --environment dev --sql --workload-compose pgexec-compose.yaml --workload-service pgexec-app
   "$BAHA" app init --tls local --yes
   timeout 300s "$BAHA" --verbose up --yes >"$ARTIFACT_DIR/up.txt" 2>&1
   timeout 120s "$BAHA" app doctor >"$ARTIFACT_DIR/doctor.txt" 2>&1
