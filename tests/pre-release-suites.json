@@ -5,12 +5,12 @@
     "shell-ux",
     "init",
     "lifecycle",
+    "data-capabilities",
+    "observability",
     "policy",
-    "capabilities",
     "identity",
     "connectivity",
     "security",
-    "machine",
     "mcp",
     "agent"
   ],
@@ -18,7 +18,6 @@
     "reconciliation",
     "failure",
     "backup-restore",
-    "recovery",
     "full-destroy"
   ]
 }
