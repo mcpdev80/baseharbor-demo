@@ -27,7 +27,7 @@ case "$gate" in
     capabilities="1"
     ;;
   failure)
-    capabilities="6"
+    capabilities="11"
     ;;
   *)
     exit 0
