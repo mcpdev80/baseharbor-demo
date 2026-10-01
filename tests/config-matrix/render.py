@@ -76,8 +76,7 @@ def render(case):
         ]
     out += [
         "workload:",
-        "  compose: compose.yaml",
-        "  services:",
+        "  components:",
         "    - demo-app",
         "exposure:",
         "  http:",
