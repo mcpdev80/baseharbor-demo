@@ -54,15 +54,16 @@ unit="${shared_project}-shared-postgres-dev.service"
 container="${shared_project}-shared-postgres-dev"
 
 systemctl --user status "$unit" --no-pager -l >"$ARTIFACT_DIR/unit-status-before.txt" 2>&1
-podman inspect "$container" >"$ARTIFACT_DIR/container-inspect-before.json"
+podman_real() { env -u XDG_CONFIG_HOME -u XDG_DATA_HOME podman "$@"; }
+podman_real inspect "$container" >"$ARTIFACT_DIR/container-inspect-before.json"
 
 set +e
-podman exec "$container" id >"$ARTIFACT_DIR/exec-default.txt" 2>"$ARTIFACT_DIR/exec-default.err"
+podman_real exec "$container" id >"$ARTIFACT_DIR/exec-default.txt" 2>"$ARTIFACT_DIR/exec-default.err"
 default_rc=$?
 set -e
 printf '%s\n' "$default_rc" >"$ARTIFACT_DIR/exec-default.rc"
 
-podman exec --user 0 "$container" sh -ec 'id; echo ---passwd---; cat /etc/passwd; echo ---psql---; command -v psql || true' >"$ARTIFACT_DIR/exec-root.txt" 2>"$ARTIFACT_DIR/exec-root.err"
+podman_real exec --user 0 "$container" sh -ec 'id; echo ---passwd---; cat /etc/passwd; echo ---psql---; command -v psql || true' >"$ARTIFACT_DIR/exec-root.txt" 2>"$ARTIFACT_DIR/exec-root.err"
 
 systemctl --user stop "$unit" >/dev/null 2>&1 || true
 if systemctl --user is-active --quiet "$unit"; then
@@ -75,14 +76,14 @@ fi
   timeout 240s "$BAHA" app apply >"$ARTIFACT_DIR/reconcile-repair.txt" 2>&1
 )
 systemctl --user status "$unit" --no-pager -l >"$ARTIFACT_DIR/unit-status-after.txt" 2>&1
-podman inspect "$container" >"$ARTIFACT_DIR/container-inspect-after.json"
+podman_real inspect "$container" >"$ARTIFACT_DIR/container-inspect-after.json"
 
 set +e
-podman exec "$container" id >"$ARTIFACT_DIR/exec-default-after.txt" 2>"$ARTIFACT_DIR/exec-default-after.err"
+podman_real exec "$container" id >"$ARTIFACT_DIR/exec-default-after.txt" 2>"$ARTIFACT_DIR/exec-default-after.err"
 after_rc=$?
 set -e
 printf '%s\n' "$after_rc" >"$ARTIFACT_DIR/exec-default-after.rc"
 
-podman exec --user 0 "$container" sh -ec 'id; echo ---passwd---; cat /etc/passwd; echo ---psql---; command -v psql || true' >"$ARTIFACT_DIR/exec-root-after.txt" 2>"$ARTIFACT_DIR/exec-root-after.err"
+podman_real exec --user 0 "$container" sh -ec 'id; echo ---passwd---; cat /etc/passwd; echo ---psql---; command -v psql || true' >"$ARTIFACT_DIR/exec-root-after.txt" 2>"$ARTIFACT_DIR/exec-root-after.err"
 
 printf 'PASS  Podman shared PostgreSQL exec probe\n'
