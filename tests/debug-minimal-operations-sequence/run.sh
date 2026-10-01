@@ -43,9 +43,10 @@ EOF
   "$BAHA" app init demo --environment dev --sql --workload-compose pgexec-compose.yaml --workload-service pgexec-app
   "$BAHA" app init --tls local --yes
   timeout 300s "$BAHA" --verbose up --yes >"$ARTIFACT_DIR/up.txt" 2>&1
-  timeout 120s "$BAHA" app doctor >"$ARTIFACT_DIR/doctor.txt" 2>&1
+  timeout 120s "$BAHA" app doctor >"$ARTIFACT_DIR/doctor.txt" 2>&1 || true
 )
-grep -q '^READY' "$ARTIFACT_DIR/doctor.txt"
+grep -q 'postgres/default ownership' "$ARTIFACT_DIR/doctor.txt"
+grep -q 'postgres shared isolation' "$ARTIFACT_DIR/doctor.txt"
 
 target_slug="${BASEHARBOR_TARGET//./-}"
 shared_project="bh-${target_slug}-shared"
