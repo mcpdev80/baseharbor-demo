@@ -184,7 +184,7 @@ OIDC_CA_FILE
 
 The application calls the issuer's standard `/.well-known/openid-configuration` endpoint with the provided trust file. It does not call Keycloak administration APIs and does not depend on a BaseHarbor authentication SDK.
 
-The guided v0.4.20 demo keeps provider placement explicit and capability-first. Because this repository also contains the companion application's Compose file, guided adoption proves explicit source selection: the chosen root Compose source is stored in `baseharbor.repository.yaml`, while `baseharbor.yaml` contains only logical workload components. Shared PostgreSQL and cache Valkey remain Target-owned with application-isolated resources; durable key-value, document-database and messaging capabilities are exercised through dedicated atomic provider gates so their heavier application-scoped providers do not inflate every guided run.
+The guided v0.4.20 demo keeps provider placement explicit and capability-first. Repository workload syntax stays outside the portable application contract: `baseharbor.yaml` contains only logical workload components. The scanner may resolve an obviously dominant repository source without persisting extra metadata; `baseharbor.repository.yaml` is written only when an explicit source choice must be retained. Shared PostgreSQL and cache Valkey remain Target-owned with application-isolated resources; durable key-value, document-database and messaging capabilities are exercised through dedicated atomic provider gates so their heavier application-scoped providers do not inflate every guided run.
 
 The guided demo also selects the optional management surfaces. In local dev, `baha status` reports their HTTPS URLs and semantic purpose:
 
