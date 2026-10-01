@@ -3,9 +3,7 @@ set -euo pipefail
 source "$DEMO_ROOT/tests/lib.sh"
 
 section "Cross-application connectivity"
-tmp_root="$(mktemp -d)"
-companion="$tmp_root/companion-app"
-mkdir -p "$companion"
+companion="$DEMO_ROOT/companion-app"
 cleanup_companion() {
   set +e
   if [ -d "$companion" ]; then
@@ -13,11 +11,11 @@ cleanup_companion() {
       cd "$companion"
       "$BAHA" app destroy --yes >/dev/null 2>&1 || true
     )
-    rm -rf "$tmp_root"
+    rm -rf "$companion/.baseharbor" "$companion/baseharbor.yaml"
   fi
 }
 trap cleanup_companion EXIT
-cp -a "$DEMO_ROOT/companion-app/." "$companion/"
+rm -rf "$companion/.baseharbor" "$companion/baseharbor.yaml"
 
 (
   cd "$companion"
@@ -51,4 +49,4 @@ pass "Cross-App Isolation" "disconnect removed directed access"
   "$BAHA" app destroy --yes
 )
 trap - EXIT
-rm -rf "$tmp_root"
+rm -rf "$companion/.baseharbor" "$companion/baseharbor.yaml"
