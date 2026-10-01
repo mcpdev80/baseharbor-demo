@@ -40,33 +40,32 @@ def root_compose_response(match, text):
             return number + "\n"
     raise RuntimeError("root compose.yaml was not offered by guided init")
 
-def all_capabilities_response(match, text):
-    clean = ANSI_ESCAPE.sub("", text)
-    choices = re.findall(
-        r"(?m)^\s*>?\s*\[([ x])\]\s+(\d+)\.\s+"
-        r"(SQL Database \(PostgreSQL-compatible evidence\)|"
-        r"Cache \(Redis/Valkey-compatible evidence\)|"
-        r"Object Storage \(S3-compatible\)|Managed Secrets|Identity / OIDC|"
-        r"Metrics \(/metrics\)|OTLP telemetry|Application logs)\s*$",
-        clean,
-    )
-    latest = choices[-8:]
-    if len(latest) != 8 or [int(number) for _, number, _ in latest] != list(range(1, 9)):
-        raise RuntimeError("capability checkbox state could not be parsed")
+def selected_capabilities():
+    raw = os.environ.get("BASEHARBOR_GUIDED_CAPABILITIES")
+    if raw is None:
+        return set(range(1, 9))
+    raw = raw.strip()
+    if not raw:
+        return set()
+    selected = {int(value.strip()) for value in raw.split(",") if value.strip()}
+    invalid = sorted(selected - set(range(1, 9)))
+    if invalid:
+        raise RuntimeError(f"invalid BASEHARBOR_GUIDED_CAPABILITIES values: {invalid}")
+    return selected
 
-    keys = []
-    for index, (mark, _, _) in enumerate(latest):
-        if mark != "x":
-            keys.append(" ")
-        if index < len(latest) - 1:
-            keys.append("\x1b[B")
-    keys.append("\r")
-    return "".join(keys)
+def management_ui_enabled(name):
+    raw = os.environ.get("BASEHARBOR_GUIDED_MANAGEMENT_UI", "all").strip().lower()
+    if raw in ("", "none", "false", "0"):
+        return False
+    if raw in ("all", "true", "1"):
+        return True
+    return name in {value.strip() for value in raw.split(",") if value.strip()}
 
 def capability_selection_response(match, text):
     clean = ANSI_ESCAPE.sub("", text)
+    desired = selected_capabilities()
     if "Use ↑/↓ to move, Space to toggle, Enter to confirm." not in clean:
-        return "1,2,3,4,5,6,7,8\n"
+        return ",".join(str(number) for number in sorted(desired)) + "\n"
 
     choices = {}
     for mark, number in re.findall(r"\[([ x])\]\s+(\d+)\.\s+[^\r\n]+", clean):
@@ -76,7 +75,7 @@ def capability_selection_response(match, text):
 
     keys = []
     for number in range(1, 9):
-        if not choices[number]:
+        if choices[number] != (number in desired):
             keys.append(" ")
         if number < 8:
             keys.append("\x1b[B")
@@ -184,23 +183,23 @@ init_rules = [
     Rule(r"Environment \[[^\]]+\]:\s*$", "\n"),
     Rule(r"Multiple Compose files were detected\..*?>\s*$", callback=root_compose_response),
     Rule(r"Select application capabilities.*?8\. Application logs", callback=capability_selection_response),
-    Rule(r"PostgreSQL management UI\? \[y/N\]\s*$", "y\r"),
-    Rule(r"Cache management UI\? \[y/N\]\s*$", "y\r"),
-    Rule(r"Object storage management UI\? \[y/N\]\s*$", "y\r"),
-    Rule(r"Secrets management UI\? \[y/N\]\s*$", "y\r"),
-    Rule(r"Identity management UI\? \[y/N\]\s*$", "y\r"),
-    Rule(r"Observability management UI \(Prometheus\)\? \[y/N\]\s*$", "y\r"),
-    Rule(r"PostgreSQL instances \(comma-separated\) \[[^\]]+\]:\s*$", "\n"),
-    Rule(r"Valkey / Redis instances \(comma-separated\) \[[^\]]+\]:\s*$", "\n"),
-    Rule(r"S3 buckets instances \(comma-separated\) \[[^\]]+\]:\s*$", "uploads\n"),
-    Rule(r"Manage this application secret with BaseHarbor\? \[Y/n\]\s*$", "\n"),
-    Rule(r"BaseHarbor secret name \[APP_SECRET\]:\s*$", "\n"),
-    Rule(r"Required for application startup\? \[Y/n\]\s*$", "\n"),
-    Rule(r"Selection \[1\]:\s*$", "\n"),
-    Rule(r"Additional application secret names .*?:\s*$", "\n"),
+    Rule(r"PostgreSQL management UI\? \[y/N\]\s*$", callback=lambda m, t: "y\r" if management_ui_enabled("sql") else "n\r", optional=True),
+    Rule(r"Cache management UI\? \[y/N\]\s*$", callback=lambda m, t: "y\r" if management_ui_enabled("cache") else "n\r", optional=True),
+    Rule(r"Object storage management UI\? \[y/N\]\s*$", callback=lambda m, t: "y\r" if management_ui_enabled("object-storage") else "n\r", optional=True),
+    Rule(r"Secrets management UI\? \[y/N\]\s*$", callback=lambda m, t: "y\r" if management_ui_enabled("secrets") else "n\r", optional=True),
+    Rule(r"Identity management UI\? \[y/N\]\s*$", callback=lambda m, t: "y\r" if management_ui_enabled("identity") else "n\r", optional=True),
+    Rule(r"Observability management UI \(Prometheus\)\? \[y/N\]\s*$", callback=lambda m, t: "y\r" if management_ui_enabled("observability") else "n\r", optional=True),
+    Rule(r"PostgreSQL instances \(comma-separated\) \[[^\]]+\]:\s*$", "\n", optional=True),
+    Rule(r"Valkey / Redis instances \(comma-separated\) \[[^\]]+\]:\s*$", "\n", optional=True),
+    Rule(r"S3 buckets instances \(comma-separated\) \[[^\]]+\]:\s*$", "uploads\n", optional=True),
+    Rule(r"Manage this application secret with BaseHarbor\? \[Y/n\]\s*$", "\n", optional=True),
+    Rule(r"BaseHarbor secret name \[APP_SECRET\]:\s*$", "\n", optional=True),
+    Rule(r"Required for application startup\? \[Y/n\]\s*$", "\n", optional=True),
+    Rule(r"Selection \[1\]:\s*$", "\n", optional=True),
+    Rule(r"Additional application secret names .*?:\s*$", "\n", optional=True),
     Rule(r"Metrics workload service \[[^\]]+\]:\s*$", "demo-app\n", optional=True),
     Rule(r"Metrics container port.*?:\s*$", "8080\n", optional=True),
-    Rule(r"OTLP signals .*?\[[^\]]+\]:\s*$", "\n"),
+    Rule(r"OTLP signals .*?\[[^\]]+\]:\s*$", "\n", optional=True),
     Rule(r"Workload services allowed to use detected Runtime API operations .*?:\s*$", "demo-app\n", optional=True),
     Rule(r"Development domain \[[^\]]+\]:\s*$", "\n"),
     Rule(r"Username \[developer\]:\s*$", "\n"),
@@ -216,7 +215,7 @@ up_rules = [
     Rule(r"Use \d+ instead\? \[Y/n\]:\s*$", "\n", repeat=True, optional=True),
     Rule(r"OpenBao recovery file \[[^\]]+\]:\s*$", "\n"),
     Rule(r"Configure now\? \[Y/n\]\s*$", "\n"),
-    Rule(r"APP_SECRET value:\s*$", "acceptance-secret-value\n"),
+    Rule(r"APP_SECRET value:\s*$", "acceptance-secret-value\n", optional=True),
     Rule(r"Install the BaseHarbor CA into the host trust store\? \[y/N\]:\s*$", "n\n", optional=True),
 ]
 
