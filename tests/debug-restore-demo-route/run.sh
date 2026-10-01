@@ -29,7 +29,7 @@ trap cleanup EXIT
 
 source "$DEMO_ROOT/tests/lib.sh"
 
-rm -rf "$DEMO_ROOT/.baseharbor" "$DEMO_ROOT/baseharbor.yaml"
+rm -rf "$DEMO_ROOT/.baseharbor" "$DEMO_ROOT/baseharbor.yaml" "$DEMO_ROOT/baseharbor.repository.yaml"
 (
   cd "$DEMO_ROOT"
   "$BAHA" app init demo --environment dev --sql --cache --s3-bucket uploads --require-secret APP_SECRET --workload-source compose:compose.yaml --workload-component demo-app
