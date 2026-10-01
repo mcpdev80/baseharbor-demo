@@ -32,8 +32,28 @@ fi
 container_id="$(container_id_for_service demo-app)"
 echo "[diag] workload container S3 keys:"
 if [ -n "$container_id" ]; then
-  "$CONTAINER_CLI" inspect "$container_id" --format '{{range .Config.Env}}{{println .}}{{end}}' \
+  container_env="$("$CONTAINER_CLI" inspect "$container_id" --format '{{range .Config.Env}}{{println .}}{{end}}')"
+  printf '%s\n' "$container_env" \
     | sed -n 's/^\(S3_[A-Z0-9_]*\)=.*/\1=<present>/p; s/^\(AWS_[A-Z0-9_]*\)=.*/\1=<present>/p' || true
+  echo "[diag] workload container S3 value state:"
+  for key in S3_ENDPOINT S3_BUCKET AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY S3_ACCESS_KEY S3_SECRET_KEY AWS_CA_BUNDLE; do
+    line="$(printf '%s\n' "$container_env" | grep -E "^$key=" | head -n1 || true)"
+    value="${line#*=}"
+    if [ -z "$line" ]; then
+      echo "$key=missing"
+    elif [ -z "$value" ]; then
+      echo "$key=empty"
+    else
+      case "$key" in
+        AWS_SECRET_ACCESS_KEY|S3_SECRET_KEY|AWS_ACCESS_KEY_ID|S3_ACCESS_KEY)
+          echo "$key=nonempty(len=${#value})"
+          ;;
+        *)
+          echo "$key=$value"
+          ;;
+      esac
+    fi
+  done
 fi
 
 object_code="$("${curl_dev[@]/-fsS/-sS}" -o "$ARTIFACT_DIR/object.json" -w '%{http_code}' -X POST "$base/api/object" || true)"
