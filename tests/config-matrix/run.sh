@@ -91,11 +91,10 @@ run_runtime_case() {
   assert_no_secret_leak "$ARTIFACT_DIR/config-matrix-$case_id-env.json"
 }
 
-# Targeted execution proves reduced runtime convergence on the selected runtime.
-# In pre-release suite mode the expensive reduced rotations are intentionally not
-# repeated: this contract matrix is rechecked and the normal guided suite proves
-# the complete runtime stack. Targeted config-matrix gates are run on both Docker
-# and Podman before the final pre-release.
+# Standalone execution additionally proves two reduced runtime profiles.
+# Atomic pre-release executes this gate as a static contract/plan proof; real
+# provider semantics are proven by their dedicated minimal Docker/Podman gates.
+# This avoids starting provider containers merely to validate portable planning.
 if [ -z "${DEMO_SUITE:-}" ]; then
   run_runtime_case workload-only 18180
   run_runtime_case developer-core 18181
