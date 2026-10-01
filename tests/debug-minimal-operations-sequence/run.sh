@@ -8,10 +8,10 @@ set -euo pipefail
 
 export BASEHARBOR_INSTALL_DIR="${BASEHARBOR_INSTALL_DIR:-$DEMO_ROOT/.tools/bin}"
 export BASEHARBOR_RUNTIME_IMAGE="${BASEHARBOR_RUNTIME_IMAGE:-localhost/baseharbor-runtime:demo-candidate-${BASEHARBOR_SOURCE_REF}}"
-export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-/tmp/baseharbor-debug-minops/config}"
-export XDG_DATA_HOME="${XDG_DATA_HOME:-/tmp/baseharbor-debug-minops/data}"
-export XDG_CACHE_HOME="${XDG_CACHE_HOME:-/tmp/baseharbor-debug-minops/cache}"
-export BASEHARBOR_TARGET="${BASEHARBOR_TARGET:-debug-minops-${BASEHARBOR_TEST_RUNTIME}}"
+export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-/tmp/baseharbor-debug-pgexec/config}"
+export XDG_DATA_HOME="${XDG_DATA_HOME:-/tmp/baseharbor-debug-pgexec/data}"
+export XDG_CACHE_HOME="${XDG_CACHE_HOME:-/tmp/baseharbor-debug-pgexec/cache}"
+export BASEHARBOR_TARGET="${BASEHARBOR_TARGET:-debug-pgexec-${BASEHARBOR_TEST_RUNTIME}}"
 if [ "$BASEHARBOR_TEST_RUNTIME" = "podman" ]; then
   export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
   export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
@@ -32,149 +32,50 @@ cleanup() {
 }
 trap cleanup EXIT
 
-source "$DEMO_ROOT/tests/lib.sh"
-
 (
   cd "$DEMO_ROOT"
-  "$BAHA" app init demo --environment dev --sql --cache --s3-bucket uploads --require-secret APP_SECRET --workload-compose compose.yaml --workload-service demo-app
-  cat >> baseharbor.yaml <<'EOF'
-runtime:
-  permissions:
-    - capability: object-storage.s3/v1
-      services:
-        - demo-app
-      operations:
-        - runtime.create
-logs:
-  collect:
-    - application
-EOF
+  "$BAHA" app init demo --environment dev --sql --workload-compose compose.yaml --workload-service demo-app
   "$BAHA" app init --tls local --yes
-  set +e
-  timeout 300s "$BAHA" --verbose up --yes >"$ARTIFACT_DIR/first-up.txt" 2>&1
-  set -e
-  printf '%s' 'acceptance-secret-value' | "$BAHA" app secret set APP_SECRET --stdin
-  timeout 300s "$BAHA" --verbose app apply >"$ARTIFACT_DIR/initial-apply.txt" 2>&1
-  timeout 120s "$BAHA" app doctor >"$ARTIFACT_DIR/initial-doctor.txt" 2>&1
+  timeout 300s "$BAHA" --verbose up --yes >"$ARTIFACT_DIR/up.txt" 2>&1
+  timeout 120s "$BAHA" app doctor >"$ARTIFACT_DIR/doctor.txt" 2>&1
 )
-grep -q '^READY' "$ARTIFACT_DIR/initial-doctor.txt"
-
-printf 'PHASE lifecycle-down-up\n'
-(
-  cd "$DEMO_ROOT"
-  timeout 120s "$BAHA" app down >"$ARTIFACT_DIR/lifecycle-down.txt" 2>&1
-  timeout 300s "$BAHA" up >"$ARTIFACT_DIR/lifecycle-up.txt" 2>&1
-  timeout 120s "$BAHA" app doctor >"$ARTIFACT_DIR/lifecycle-doctor.txt" 2>&1
-)
-grep -q '^READY' "$ARTIFACT_DIR/lifecycle-doctor.txt"
-
-printf 'PHASE lifecycle-idempotency\n'
-(
-  cd "$DEMO_ROOT"
-  timeout 300s "$BAHA" up >"$ARTIFACT_DIR/lifecycle-idempotent.txt" 2>&1
-)
-grep -Eq 'already READY|No changes|READY' "$ARTIFACT_DIR/lifecycle-idempotent.txt"
-
-printf 'PHASE reconciliation-noop\n'
-(cd "$DEMO_ROOT" && timeout 120s "$BAHA" app apply >"$ARTIFACT_DIR/reconcile-noop.txt" 2>&1)
+grep -q '^READY' "$ARTIFACT_DIR/doctor.txt"
 
 target_slug="${BASEHARBOR_TARGET//./-}"
-project="bh-${target_slug}-demo-dev"
-remove_managed_service_for_reconcile demo-app "$project"
-printf 'PHASE reconciliation-missing\n'
-(
-  cd "$DEMO_ROOT"
-  timeout 180s "$BAHA" app apply >"$ARTIFACT_DIR/reconcile-missing.txt" 2>&1
-  timeout 120s "$BAHA" app doctor >"$ARTIFACT_DIR/reconcile-missing-doctor.txt" 2>&1
-)
-grep -q '^READY' "$ARTIFACT_DIR/reconcile-missing-doctor.txt"
-
 shared_project="bh-${target_slug}-shared"
-if [ "$CONTAINER_CLI" = "podman" ]; then
-  postgres_unit="${shared_project}-shared-postgres-dev.service"
-  systemctl --user stop "$postgres_unit" >/dev/null 2>&1 || true
-  if systemctl --user is-active --quiet "$postgres_unit"; then
-    echo "shared PostgreSQL Quadlet unit is still active after stop: $postgres_unit" >&2
-    exit 1
-  fi
-else
-  postgres="$(container_id_for_service shared-postgres-dev "$shared_project")"
-  test -n "$postgres"
-  "$CONTAINER_CLI" stop "$postgres" >/dev/null
-fi
+unit="${shared_project}-shared-postgres-dev.service"
+container="${shared_project}-shared-postgres-dev"
+
+systemctl --user status "$unit" --no-pager -l >"$ARTIFACT_DIR/unit-status-before.txt" 2>&1
+podman inspect "$container" >"$ARTIFACT_DIR/container-inspect-before.json"
+
 set +e
-(cd "$DEMO_ROOT" && timeout 120s "$BAHA" app doctor >"$ARTIFACT_DIR/reconcile-degraded-before.txt" 2>&1)
-degraded_rc=$?
+podman exec "$container" id >"$ARTIFACT_DIR/exec-default.txt" 2>"$ARTIFACT_DIR/exec-default.err"
+default_rc=$?
 set -e
-test "$degraded_rc" -ne 0
-printf 'PHASE reconciliation-repair\n'
-(
-  cd "$DEMO_ROOT"
-  timeout 240s "$BAHA" app apply >"$ARTIFACT_DIR/reconcile-repair.txt" 2>&1
-  timeout 120s "$BAHA" app doctor >"$ARTIFACT_DIR/reconcile-repair-doctor.txt" 2>&1
-)
-grep -q '^READY' "$ARTIFACT_DIR/reconcile-repair-doctor.txt"
+printf '%s\n' "$default_rc" >"$ARTIFACT_DIR/exec-default.rc"
 
-api_host="demo.baha.localhost"
-gateway_port="$(dev_gateway_port)"
-base="$(dev_gateway_url "$api_host")"
-gateway_ca="$XDG_DATA_HOME/baseharbor/targets/$BASEHARBOR_TARGET/developer-access/dev/gateway/runtime/ca.pem"
-test -s "$gateway_ca"
-curl_dev=(curl -fsS --cacert "$gateway_ca" --resolve "$api_host:$gateway_port:127.0.0.1")
+podman exec --user 0 "$container" sh -ec 'id; echo ---passwd---; cat /etc/passwd; echo ---psql---; command -v psql || true' >"$ARTIFACT_DIR/exec-root.txt" 2>"$ARTIFACT_DIR/exec-root.err"
 
-printf 'PHASE backup-seed\n'
-"${curl_dev[@]}" -X POST "$base/api/sql" >"$ARTIFACT_DIR/sql-seed.json"
-"${curl_dev[@]}" -X POST "$base/api/object" >"$ARTIFACT_DIR/s3-seed.json"
-jq -r '.object' "$ARTIFACT_DIR/s3-seed.json" >"$ARTIFACT_DIR/s3-object.txt"
-"${curl_dev[@]}" -X POST --data-binary 'durable-workload-state-v0418' "$base/api/file" >"$ARTIFACT_DIR/file-seed.json"
-"${curl_dev[@]}" -X POST "$base/api/secret" | jq -e '.present==true and .value_exposed==false' >/dev/null
-curl -sS --cacert "$gateway_ca" --resolve "$api_host:$gateway_port:127.0.0.1" -o /dev/null "$base/recovery-marker-v0418" || true
-
-printf '%s' 'acceptance-backup-password' >"$ARTIFACT_DIR/backup.pass"
-chmod 600 "$ARTIFACT_DIR/backup.pass"
-
-printf 'PHASE backup-restore\n'
-(
-  cd "$DEMO_ROOT"
-  timeout 240s "$BAHA" app backup --include-state observability.logs --password-file "$ARTIFACT_DIR/backup.pass" --output "$ARTIFACT_DIR/demo.bhbackup" >"$ARTIFACT_DIR/backup.txt" 2>&1
-  timeout 180s "$BAHA" app destroy --yes >"$ARTIFACT_DIR/destroy.txt" 2>&1
-  timeout 300s "$BAHA" app restore "$ARTIFACT_DIR/demo.bhbackup" --password-file "$ARTIFACT_DIR/backup.pass" >"$ARTIFACT_DIR/restore.txt" 2>&1
-  timeout 120s "$BAHA" app doctor >"$ARTIFACT_DIR/restore-doctor.txt" 2>&1
-  "$BAHA" app evidence -o json >"$ARTIFACT_DIR/recovery-evidence.json"
-)
-grep -q '^READY' "$ARTIFACT_DIR/restore-doctor.txt"
-
-printf 'PHASE post-restore-health\n'
-post_restore_ready=false
-for attempt in 1 2 3 4 5 6; do
-  code="$(curl -sS --cacert "$gateway_ca" --resolve "$api_host:$gateway_port:127.0.0.1" -o "$ARTIFACT_DIR/post-restore-health.json" -w '%{http_code}' "$base/healthz" || true)"
-  printf '%s\t%s\n' "$attempt" "$code" >>"$ARTIFACT_DIR/post-restore-health-attempts.tsv"
-  if [ "$code" = "200" ] && jq -e '.status=="ok"' "$ARTIFACT_DIR/post-restore-health.json" >/dev/null 2>&1; then
-    post_restore_ready=true
-    break
-  fi
-  if [ "$attempt" = "1" ]; then
-    cp "$XDG_DATA_HOME/baseharbor/targets/$BASEHARBOR_TARGET/developer-access/dev/gateway/routes.json" "$ARTIFACT_DIR/routes-after-restore.json" 2>/dev/null || true
-    "$BASEHARBOR_TEST_RUNTIME" ps -a --format '{{.ID}} {{.Names}} {{.Status}} {{.Image}}' >"$ARTIFACT_DIR/runtime-ps-after-restore.txt" 2>&1 || true
-    (cd "$DEMO_ROOT" && "$BAHA" status --verbose) >"$ARTIFACT_DIR/status-after-restore.txt" 2>&1 || true
-  fi
-  sleep 2
-done
-
-if [ "$post_restore_ready" != true ]; then
-  echo 'post-restore canonical route failed' >&2
-  cat "$ARTIFACT_DIR/post-restore-health-attempts.tsv" >&2 || true
+systemctl --user stop "$unit" >/dev/null 2>&1 || true
+if systemctl --user is-active --quiet "$unit"; then
+  echo "shared PostgreSQL unit still active after stop" >&2
   exit 1
 fi
 
-printf 'PHASE recovery-evidence\n'
-jq -e '
-  any(.recovery.contributors[]; .state_class=="database.sql" and .verified==true) and
-  any(.recovery.contributors[]; .state_class=="secrets" and .verified==true) and
-  any(.recovery.contributors[]; .state_class=="object-storage.s3" and .verified==true) and
-  any(.recovery.contributors[]; .state_class=="workload.storage" and .verified==true) and
-  any(.recovery.contributors[]; .state_class=="observability.logs" and .verified==true) and
-  any(.audit_events[]; .operation=="restore" and .outcome=="success")
-' "$ARTIFACT_DIR/recovery-evidence.json" >/dev/null
+(
+  cd "$DEMO_ROOT"
+  timeout 240s "$BAHA" app apply >"$ARTIFACT_DIR/reconcile-repair.txt" 2>&1
+)
+systemctl --user status "$unit" --no-pager -l >"$ARTIFACT_DIR/unit-status-after.txt" 2>&1
+podman inspect "$container" >"$ARTIFACT_DIR/container-inspect-after.json"
 
-printf 'PASS  Minimal operations sequence\n'
+set +e
+podman exec "$container" id >"$ARTIFACT_DIR/exec-default-after.txt" 2>"$ARTIFACT_DIR/exec-default-after.err"
+after_rc=$?
+set -e
+printf '%s\n' "$after_rc" >"$ARTIFACT_DIR/exec-default-after.rc"
+
+podman exec --user 0 "$container" sh -ec 'id; echo ---passwd---; cat /etc/passwd; echo ---psql---; command -v psql || true' >"$ARTIFACT_DIR/exec-root-after.txt" 2>"$ARTIFACT_DIR/exec-root-after.err"
+
+printf 'PASS  Podman shared PostgreSQL exec probe\n'
