@@ -136,5 +136,31 @@
       "logs",
       "workload.storage"
     ]
+  },
+  "rabbitmq-runtime": {
+    "class": "integration",
+    "profile": "messaging",
+    "capabilities": [
+      "messaging.queue",
+      "messaging.pubsub",
+      "messaging.stream",
+      "messaging-management-ui"
+    ]
+  },
+  "mongodb-runtime": {
+    "class": "integration",
+    "profile": "document-database",
+    "capabilities": [
+      "database.document",
+      "document-database-management-ui"
+    ]
+  },
+  "durable-key-value": {
+    "class": "integration",
+    "profile": "durable-key-value",
+    "capabilities": [
+      "database.key-value",
+      "key-value-management-ui"
+    ]
   }
 }
