@@ -28,7 +28,7 @@ trap cleanup EXIT
 rm -rf "$DEMO_ROOT/.baseharbor" "$DEMO_ROOT/baseharbor.yaml"
 (
   cd "$DEMO_ROOT"
-  "$BAHA" app init demo --environment dev --workload-compose tests/debug-restore-route/compose.yaml --workload-service debug-app
+  "$BAHA" app init demo --environment dev --workload-source compose:tests/debug-restore-route/compose.yaml --workload-component debug-app
   "$BAHA" app init --tls local --yes
   timeout 180s "$BAHA" --verbose up --yes >"$ARTIFACT_DIR/up.txt" 2>&1
 )
