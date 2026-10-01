@@ -73,7 +73,8 @@ The demo UI exercises real integrations for:
 - logs
 - BaseHarbor Runtime Resources
 - standard OIDC application identity
-- provider management surfaces for PostgreSQL, cache, object storage, OpenBao, identity and Prometheus
+- provider management surfaces for PostgreSQL, cache, durable key-value, MongoDB document storage, RabbitMQ messaging, object storage, OpenBao, identity and Prometheus
+- dedicated atomic semantic proofs for `database.key-value`, `database.document`, `messaging.queue`, `messaging.pubsub` and `messaging.stream`
 - cross-application connectivity
 
 ## Run the complete two-application demo
@@ -183,7 +184,7 @@ OIDC_CA_FILE
 
 The application calls the issuer's standard `/.well-known/openid-configuration` endpoint with the provided trust file. It does not call Keycloak administration APIs and does not depend on a BaseHarbor authentication SDK.
 
-The guided v0.4.17 demo deliberately uses **shared placement for every managed provider except the application workload**. PostgreSQL is one Target-owned provider with application-isolated databases/roles. Valkey uses one Target-owned provider lifecycle with isolated per-application cache resources so normal Redis/Valkey clients keep working without cross-application key access.
+The guided v0.4.19 demo keeps provider placement explicit and capability-first. Shared PostgreSQL and cache Valkey remain Target-owned with application-isolated resources; durable key-value, document-database and messaging capabilities are exercised through dedicated atomic provider gates so their heavier application-scoped providers do not inflate every guided run.
 
 The guided demo also selects the optional management surfaces. In local dev, `baha status` reports their HTTPS URLs and semantic purpose:
 
@@ -276,6 +277,9 @@ The same application intent is consumed through standard interfaces:
 - Podman Quadlet as an equivalent local runtime path
 - SQL-compatible database access
 - Redis/Valkey-compatible cache access
+- durable key-value semantics distinct from cache
+- document-database semantics through the MongoDB reference provider
+- queue, pub/sub and stream messaging semantics through the RabbitMQ reference provider
 - S3-compatible object storage
 - OpenMetrics
 - OpenTelemetry
@@ -299,9 +303,9 @@ Against a candidate commit or ref:
 BASEHARBOR_SOURCE_REF=<commit-or-ref> bash scripts/acceptance.sh
 ```
 
-The suite validates the guided developer path, Bash completion/shell integration/Target-aware prompt, deterministic lifecycle, capabilities, managed OIDC identity, provider management surfaces, security, the companion-app cross-application connectivity flow, reconciliation, failure, recovery and final full-installation destroy scenarios on Docker and Podman/Quadlet.
+The release validation uses independently rerunnable atomic gates. Static contract/DX gates require no provider containers; Docker and Podman gates start only the resource profile required by the selected capability. Dedicated gates cover durable key-value, MongoDB document storage, RabbitMQ messaging, managed OIDC identity, observability, reconciliation, failure, recovery and final cleanup.
 
-Each acceptance run creates an isolated explicit BaseHarbor Target for the selected runtime and isolates BaseHarbor config/state through temporary XDG config/data roots. This proves the Target boundary and the v0.4.17 managed-identity/provider-interface contract instead of relying on legacy repository-local platform state.
+Each acceptance run creates an isolated explicit BaseHarbor Target for the selected runtime and isolates BaseHarbor config/state through temporary XDG config/data roots. This proves the Target boundary and the v0.4.19 capability/provider/runtime contracts instead of relying on legacy repository-local platform state.
 
 Evidence is written below `artifacts/`.
 

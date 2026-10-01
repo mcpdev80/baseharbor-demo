@@ -43,12 +43,12 @@ def root_compose_response(match, text):
 def selected_capabilities():
     raw = os.environ.get("BASEHARBOR_GUIDED_CAPABILITIES")
     if raw is None:
-        return set(range(1, 9))
+        return set(range(1, 14))
     raw = raw.strip()
     if not raw:
         return set()
     selected = {int(value.strip()) for value in raw.split(",") if value.strip()}
-    invalid = sorted(selected - set(range(1, 9)))
+    invalid = sorted(selected - set(range(1, 14)))
     if invalid:
         raise RuntimeError(f"invalid BASEHARBOR_GUIDED_CAPABILITIES values: {invalid}")
     return selected
@@ -70,14 +70,14 @@ def capability_selection_response(match, text):
     choices = {}
     for mark, number in re.findall(r"\[([ x])\]\s+(\d+)\.\s+[^\r\n]+", clean):
         choices[int(number)] = mark == "x"
-    if len(choices) < 8:
-        raise RuntimeError("capability picker did not render all eight choices")
+    if len(choices) < 13:
+        raise RuntimeError("capability picker did not render all thirteen choices")
 
     keys = []
-    for number in range(1, 9):
+    for number in range(1, 14):
         if choices[number] != (number in desired):
             keys.append(" ")
-        if number < 8:
+        if number < 13:
             keys.append("\x1b[B")
     keys.append("\n")
     return keys
@@ -182,15 +182,23 @@ init_rules = [
     Rule(r"Application name \[[^\]]+\]:\s*$", "demo\n"),
     Rule(r"Environment \[[^\]]+\]:\s*$", "\n"),
     Rule(r"Multiple Compose files were detected\..*?>\s*$", callback=root_compose_response),
-    Rule(r"Select application capabilities.*?8\. Application logs", callback=capability_selection_response),
+    Rule(r"Select application capabilities.*?13\. Application logs", callback=capability_selection_response),
     Rule(r"PostgreSQL management UI\? \[y/N\]\s*$", callback=lambda m, t: "y\r" if management_ui_enabled("sql") else "n\r", optional=True),
     Rule(r"Cache management UI\? \[y/N\]\s*$", callback=lambda m, t: "y\r" if management_ui_enabled("cache") else "n\r", optional=True),
+    Rule(r"Durable key-value management UI\? \[y/N\]\s*$", callback=lambda m, t: "y\r" if management_ui_enabled("key-value") else "n\r", optional=True),
+    Rule(r"Document database management UI\? \[y/N\]\s*$", callback=lambda m, t: "y\r" if management_ui_enabled("document-database") else "n\r", optional=True),
+    Rule(r"Messaging management UI\? \[y/N\]\s*$", callback=lambda m, t: "y\r" if management_ui_enabled("messaging") else "n\r", optional=True),
     Rule(r"Object storage management UI\? \[y/N\]\s*$", callback=lambda m, t: "y\r" if management_ui_enabled("object-storage") else "n\r", optional=True),
     Rule(r"Secrets management UI\? \[y/N\]\s*$", callback=lambda m, t: "y\r" if management_ui_enabled("secrets") else "n\r", optional=True),
     Rule(r"Identity management UI\? \[y/N\]\s*$", callback=lambda m, t: "y\r" if management_ui_enabled("identity") else "n\r", optional=True),
     Rule(r"Observability management UI \(Prometheus\)\? \[y/N\]\s*$", callback=lambda m, t: "y\r" if management_ui_enabled("observability") else "n\r", optional=True),
     Rule(r"PostgreSQL instances \(comma-separated\) \[[^\]]+\]:\s*$", "\n", optional=True),
     Rule(r"Valkey / Redis instances \(comma-separated\) \[[^\]]+\]:\s*$", "\n", optional=True),
+    Rule(r"Durable Valkey / Redis instances \(comma-separated\) \[[^\]]+\]:\s*$", "\n", optional=True),
+    Rule(r"MongoDB-compatible document database instances \(comma-separated\) \[[^\]]+\]:\s*$", "\n", optional=True),
+    Rule(r"Messaging queue instances \(comma-separated\) \[[^\]]+\]:\s*$", "\n", optional=True),
+    Rule(r"Messaging pub/sub instances \(comma-separated\) \[[^\]]+\]:\s*$", "\n", optional=True),
+    Rule(r"Messaging stream instances \(comma-separated\) \[[^\]]+\]:\s*$", "\n", optional=True),
     Rule(r"S3 buckets instances \(comma-separated\) \[[^\]]+\]:\s*$", "uploads\n", optional=True),
     Rule(r"Manage this application secret with BaseHarbor\? \[Y/n\]\s*$", "\n", optional=True),
     Rule(r"BaseHarbor secret name \[APP_SECRET\]:\s*$", "\n", optional=True),

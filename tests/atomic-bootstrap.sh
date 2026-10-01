@@ -11,23 +11,23 @@ case "$gate" in
     capabilities=""
     ;;
   data-capabilities)
-    capabilities="1,2,3,4"
+    capabilities="1,2,8,9"
     ;;
   observability)
-    capabilities="6,7,8"
+    capabilities="11,12,13"
     ;;
   identity)
-    capabilities="5"
+    capabilities="10"
     management_ui="identity"
     ;;
   security)
-    capabilities="1,2,3,5,7"
+    capabilities="1,2,8,10,12"
     ;;
   reconciliation)
     capabilities="1"
     ;;
   failure)
-    capabilities="6"
+    capabilities="11"
     ;;
   *)
     exit 0

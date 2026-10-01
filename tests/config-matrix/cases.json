@@ -136,6 +136,86 @@
       "management_ui": []
     },
     {
+      "id": "durable-key-value",
+      "capabilities": [
+        "key_value"
+      ],
+      "expected_bindings": [],
+      "runtime": "contract",
+      "management_ui": []
+    },
+    {
+      "id": "durable-key-value-ui",
+      "capabilities": [
+        "key_value"
+      ],
+      "expected_bindings": [],
+      "runtime": "contract",
+      "management_ui": [
+        "key_value"
+      ]
+    },
+    {
+      "id": "document-database",
+      "capabilities": [
+        "document_database"
+      ],
+      "expected_bindings": [],
+      "runtime": "contract",
+      "management_ui": []
+    },
+    {
+      "id": "document-database-ui",
+      "capabilities": [
+        "document_database"
+      ],
+      "expected_bindings": [],
+      "runtime": "contract",
+      "management_ui": [
+        "document_database"
+      ]
+    },
+    {
+      "id": "messaging-queue",
+      "capabilities": [
+        "messaging_queue"
+      ],
+      "expected_bindings": [],
+      "runtime": "contract",
+      "management_ui": []
+    },
+    {
+      "id": "messaging-pubsub",
+      "capabilities": [
+        "messaging_pubsub"
+      ],
+      "expected_bindings": [],
+      "runtime": "contract",
+      "management_ui": []
+    },
+    {
+      "id": "messaging-stream",
+      "capabilities": [
+        "messaging_stream"
+      ],
+      "expected_bindings": [],
+      "runtime": "contract",
+      "management_ui": []
+    },
+    {
+      "id": "messaging-ui",
+      "capabilities": [
+        "messaging_queue",
+        "messaging_pubsub",
+        "messaging_stream"
+      ],
+      "expected_bindings": [],
+      "runtime": "contract",
+      "management_ui": [
+        "messaging"
+      ]
+    },
+    {
       "id": "full",
       "capabilities": [
         "sql",
@@ -145,7 +225,12 @@
         "identity",
         "metrics",
         "logs",
-        "telemetry"
+        "telemetry",
+        "key_value",
+        "document_database",
+        "messaging_queue",
+        "messaging_pubsub",
+        "messaging_stream"
       ],
       "expected_bindings": [
         "DATABASE_URL",
