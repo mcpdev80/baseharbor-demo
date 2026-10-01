@@ -54,6 +54,20 @@ if [ -n "$container_id" ]; then
       esac
     fi
   done
+  echo "[diag] workload container CA state:"
+  if "$CONTAINER_CLI" exec "$container_id" sh -lc 'test -r /run/baseharbor/bindings/object-storage/ca.pem'; then
+    ca_bytes="$("$CONTAINER_CLI" exec "$container_id" sh -lc 'wc -c </run/baseharbor/bindings/object-storage/ca.pem' 2>/dev/null || true)"
+    echo "AWS_CA_BUNDLE=readable(bytes=${ca_bytes:-unknown})"
+  else
+    echo "AWS_CA_BUNDLE=unreadable-or-missing"
+  fi
+  echo "[diag] workload container object-storage mounts:"
+  "$CONTAINER_CLI" inspect "$container_id" --format '{{range .Mounts}}{{println .Destination}}{{end}}' \
+    | grep -E '/run/baseharbor/bindings/object-storage|/run/baseharbor' || true
+  echo "[diag] workload S3 startup logs:"
+  "$CONTAINER_CLI" logs "$container_id" 2>&1 \
+    | grep -E 's3_.*failed|object.*storage|x509|certificate|ca.pem|permission denied|no such file' \
+    | tail -n 30 || true
 fi
 
 object_code="$("${curl_dev[@]/-fsS/-sS}" -o "$ARTIFACT_DIR/object.json" -w '%{http_code}' -X POST "$base/api/object" || true)"
