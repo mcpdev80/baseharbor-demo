@@ -2,6 +2,28 @@
 set -euo pipefail
 source "$DEMO_ROOT/tests/lib.sh"
 
+export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$ARTIFACT_DIR/xdg/config}"
+export XDG_DATA_HOME="${XDG_DATA_HOME:-$ARTIFACT_DIR/xdg/data}"
+export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$ARTIFACT_DIR/xdg/cache}"
+export BASEHARBOR_TARGET="${BASEHARBOR_TARGET:-shell-ux-static}"
+export BASEHARBOR_INSTALL_DIR="${BASEHARBOR_INSTALL_DIR:-$(dirname "$BAHA")}"
+mkdir -p "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_CACHE_HOME"
+"$BAHA" target create "$BASEHARBOR_TARGET" \
+  --provider docker \
+  --access local-docker \
+  --reference local \
+  --scope default \
+  --default >/dev/null
+
+rm -f "$DEMO_ROOT/baseharbor.yaml"
+(
+  cd "$DEMO_ROOT"
+  "$BAHA" app init demo \
+    --environment dev \
+    --workload-compose compose.yaml \
+    --workload-service demo-app >/dev/null
+)
+
 section "Bash completion, shell integration and Target-aware prompt"
 
 completion_file="$ARTIFACT_DIR/bash-completion.sh"

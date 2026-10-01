@@ -7,7 +7,7 @@ capabilities=""
 management_ui="none"
 
 case "$gate" in
-  shell-ux|lifecycle|policy|connectivity|full-destroy)
+  lifecycle|policy|connectivity|full-destroy)
     capabilities=""
     ;;
   data-capabilities)
