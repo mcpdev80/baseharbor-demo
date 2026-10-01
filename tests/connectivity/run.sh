@@ -20,7 +20,7 @@ rm -rf "$companion/.baseharbor" "$companion/baseharbor.yaml"
 (
   cd "$companion"
   "$BAHA" app inspect . > "$ARTIFACT_DIR/companion-inspect.txt"
-  "$BAHA" app init companion-app --workload-compose compose.yaml --workload-service companion-app > "$ARTIFACT_DIR/companion-init.txt"
+  "$BAHA" app init --workload-compose compose.yaml --workload-service companion-app > "$ARTIFACT_DIR/companion-init.txt"
   "$BAHA" up --yes > "$ARTIFACT_DIR/companion-up.txt"
   "$BAHA" app doctor > "$ARTIFACT_DIR/companion-doctor.txt"
 )
