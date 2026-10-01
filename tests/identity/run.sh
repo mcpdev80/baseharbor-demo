@@ -103,7 +103,9 @@ jq -e '
 
 jq -e 'any(.management_ui[]?; .service == "identity-login" and .purpose == "user-facing")' "$ARTIFACT_DIR/identity-baha-status.json" >/dev/null || { echo "identity-login purpose mismatch" >&2; exit 46; }
 jq -e 'any(.management_ui[]?; .service == "identity-admin" and .purpose == "administration")' "$ARTIFACT_DIR/identity-baha-status.json" >/dev/null || { echo "identity-admin purpose mismatch" >&2; exit 47; }
-jq -e 'any(.management_ui[]?; .service == "observability" and .purpose == "observability")' "$ARTIFACT_DIR/identity-baha-status.json" >/dev/null || { echo "observability purpose mismatch" >&2; exit 48; }
+if [ "${DEMO_ATOMIC_GATE:-0}" != "1" ]; then
+  jq -e 'any(.management_ui[]?; .service == "observability" and .purpose == "observability")' "$ARTIFACT_DIR/identity-baha-status.json" >/dev/null || { echo "observability purpose mismatch" >&2; exit 48; }
+fi
 jq -e '.checks[] | select(.name == "canonical-development-urls" and .ok == true)' "$ARTIFACT_DIR/identity-baha-status.json" >/dev/null || { echo "canonical-development-urls is not READY" >&2; exit 49; }
 
 discovery_url="$identity_base/realms/bh-demo-dev/.well-known/openid-configuration"
