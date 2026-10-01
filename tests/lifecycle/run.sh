@@ -31,7 +31,7 @@ pass "Plan / Preflight / Status / Doctor" "advanced read-only diagnostics remain
 (
   cd "$DEMO_ROOT"
   "$BAHA" app down
-  BASEHARBOR_TRACES_ENABLED=true "$BAHA" up | tee "$ARTIFACT_DIR/up-after-down.txt"
+  "$BAHA" up | tee "$ARTIFACT_DIR/up-after-down.txt"
   "$BAHA" doctor | tee "$ARTIFACT_DIR/doctor-after-resume.txt"
 )
 grep -q '^READY' "$ARTIFACT_DIR/doctor-after-resume.txt"
@@ -39,7 +39,7 @@ pass "Down / Up" "recommended repository command resumes persistent runtime"
 
 (
   cd "$DEMO_ROOT"
-  BASEHARBOR_TRACES_ENABLED=true "$BAHA" up > "$ARTIFACT_DIR/up-idempotent.txt"
+  "$BAHA" up > "$ARTIFACT_DIR/up-idempotent.txt"
 )
 grep -Eq 'already READY|No changes|READY' "$ARTIFACT_DIR/up-idempotent.txt"
 pass "Idempotency" "second baha up converged without manual repair"
