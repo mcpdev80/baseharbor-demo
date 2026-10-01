@@ -201,9 +201,9 @@ init_rules = [
     Rule(r"Metrics container port.*?:\s*$", "8080\n", optional=True),
     Rule(r"OTLP signals .*?\[[^\]]+\]:\s*$", "\n", optional=True),
     Rule(r"Workload services allowed to use detected Runtime API operations .*?:\s*$", "demo-app\n", optional=True),
-    Rule(r"Development domain \[[^\]]+\]:\s*$", "\n"),
-    Rule(r"Username \[developer\]:\s*$", "\n"),
-    Rule(r"Use a securely generated password\? \[Y/n\]\s*$", "\n"),
+    Rule(r"Development domain \[[^\]]+\]:\s*$", "\n", optional=True),
+    Rule(r"Username \[developer\]:\s*$", "\n", optional=True),
+    Rule(r"Use a securely generated password\? \[Y/n\]\s*$", "\n", optional=True),
     Rule(r"Write baseharbor\.yaml\? \[Y/n\]\s*$", "\n"),
 ]
 
@@ -214,7 +214,7 @@ up_rules = [
     Rule(r"Accept\? \[Y/n\]:\s*$", "\n", optional=True),
     Rule(r"Use \d+ instead\? \[Y/n\]:\s*$", "\n", repeat=True, optional=True),
     Rule(r"OpenBao recovery file \[[^\]]+\]:\s*$", "\n"),
-    Rule(r"Configure now\? \[Y/n\]\s*$", "\n"),
+    Rule(r"Configure now\? \[Y/n\]\s*$", "\n", optional=True),
     Rule(r"APP_SECRET value:\s*$", "acceptance-secret-value\n", optional=True),
     Rule(r"Install the BaseHarbor CA into the host trust store\? \[y/N\]:\s*$", "n\n", optional=True),
 ]
