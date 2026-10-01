@@ -9,6 +9,11 @@ from pathlib import Path
 PREFIX = {
     "sql": ("database.sql:",),
     "cache": ("cache.key-value:",),
+    "key_value": ("database.key-value:",),
+    "document_database": ("database.document:",),
+    "messaging_queue": ("messaging.queue:",),
+    "messaging_pubsub": ("messaging.pubsub:",),
+    "messaging_stream": ("messaging.stream:",),
     "object_storage": ("s3-bucket:",),
     "secrets": ("secrets-scope", "secret:"),
     "identity": ("identity:",),
@@ -71,6 +76,48 @@ app:
   environment: dev
 services:
   sql:
+    enabled: false
+    management_ui: true
+workload:
+  compose: compose.yaml
+  services:
+    - demo-app
+""",
+            "durable-ui-without-provider": """version: 1
+app:
+  id: 11111111-1111-4111-8111-111111111111
+  name: invalid-kv-ui
+  environment: dev
+services:
+  key_value:
+    enabled: false
+    management_ui: true
+workload:
+  compose: compose.yaml
+  services:
+    - demo-app
+""",
+            "document-ui-without-provider": """version: 1
+app:
+  id: 11111111-1111-4111-8111-111111111111
+  name: invalid-document-ui
+  environment: dev
+services:
+  document_database:
+    enabled: false
+    management_ui: true
+workload:
+  compose: compose.yaml
+  services:
+    - demo-app
+""",
+            "messaging-ui-without-provider": """version: 1
+app:
+  id: 11111111-1111-4111-8111-111111111111
+  name: invalid-messaging-ui
+  environment: dev
+services:
+  messaging_queue:
     enabled: false
     management_ui: true
 workload:
