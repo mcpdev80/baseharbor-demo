@@ -66,6 +66,7 @@ def main():
         negative = {
             "management-ui-without-provider": """version: 1
 app:
+  id: 11111111-1111-4111-8111-111111111111
   name: invalid-ui
   environment: dev
 services:
@@ -79,6 +80,7 @@ workload:
 """,
             "invalid-telemetry-signal": """version: 1
 app:
+  id: 11111111-1111-4111-8111-111111111111
   name: invalid-telemetry
   environment: dev
 workload:
@@ -92,6 +94,7 @@ telemetry:
 """,
             "metrics-target-not-selected": """version: 1
 app:
+  id: 11111111-1111-4111-8111-111111111111
   name: invalid-metrics
   environment: dev
 workload:
@@ -107,6 +110,7 @@ metrics:
 """,
             "runtime-permission-target-not-selected": """version: 1
 app:
+  id: 11111111-1111-4111-8111-111111111111
   name: invalid-runtime
   environment: dev
 workload:
