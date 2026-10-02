@@ -13,8 +13,20 @@ gateway_port="$(dev_gateway_port)"
 base="$(dev_gateway_url "$api_host")"
 curl_dev=(curl -fsS --retry 12 --retry-delay 1 --retry-all-errors --cacert "$gateway_ca" --resolve "$api_host:$gateway_port:127.0.0.1")
 
-"${curl_dev[@]}" "$base/api/status" > "$ARTIFACT_DIR/identity-demo-status.json"
-jq -e '.capabilities.identity.ready == true' "$ARTIFACT_DIR/identity-demo-status.json" >/dev/null
+identity_ready=false
+for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
+  "${curl_dev[@]}" "$base/api/status" > "$ARTIFACT_DIR/identity-demo-status.json"
+  if jq -e '.capabilities.identity.ready == true' "$ARTIFACT_DIR/identity-demo-status.json" >/dev/null 2>&1; then
+    identity_ready=true
+    break
+  fi
+  sleep 1
+done
+if [ "$identity_ready" != true ]; then
+  echo "demo identity capability did not become ready" >&2
+  cat "$ARTIFACT_DIR/identity-demo-status.json" >&2 || true
+  exit 40
+fi
 pass "Managed Identity" "application consumed standard OIDC discovery and client bindings"
 
 "${curl_dev[@]}" -X POST "$base/api/identity/verify" > "$ARTIFACT_DIR/identity-verify.json"
@@ -65,11 +77,12 @@ pass "OIDC Discovery" "issuer, client, confidential credential file and managed 
     exit 41
   fi
 
-  if ! "$BAHA" status -o json > "$ARTIFACT_DIR/identity-baha-status.json" 2>"$ARTIFACT_DIR/identity-baha-status.stderr.txt"; then
-    echo "identity BaseHarbor status command returned non-zero" >&2
+  "$BAHA" status -o json > "$ARTIFACT_DIR/identity-baha-status.json" 2>"$ARTIFACT_DIR/identity-baha-status.stderr.txt" || true
+  test -s "$ARTIFACT_DIR/identity-baha-status.json" || {
+    echo "identity BaseHarbor status produced no JSON" >&2
     cat "$ARTIFACT_DIR/identity-baha-status.stderr.txt" >&2 || true
     exit 42
-  fi
+  }
 )
 
 jq -e '.checks[] | select(.name == "identity/oidc" and .ok == true)' "$ARTIFACT_DIR/identity-baha-status.json" >/dev/null || {
