@@ -77,12 +77,21 @@ pass "OIDC Discovery" "issuer, client, confidential credential file and managed 
     exit 41
   fi
 
-  "$BAHA" status -o json > "$ARTIFACT_DIR/identity-baha-status.json" 2>"$ARTIFACT_DIR/identity-baha-status.stderr.txt" || true
-  test -s "$ARTIFACT_DIR/identity-baha-status.json" || {
-    echo "identity BaseHarbor status produced no JSON" >&2
-    cat "$ARTIFACT_DIR/identity-baha-status.stderr.txt" >&2 || true
+  identity_status_ready=false
+  for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
+    "$BAHA" status -o json > "$ARTIFACT_DIR/identity-baha-status.json" 2>"$ARTIFACT_DIR/identity-baha-status.stderr.txt" || true
+    if jq -e 'any(.checks[]?; .name == "identity/oidc" and .ok == true)' "$ARTIFACT_DIR/identity-baha-status.json" >/dev/null 2>&1; then
+      identity_status_ready=true
+      break
+    fi
+    sleep 1
+  done
+  if [ "$identity_status_ready" != true ]; then
+    echo "identity BaseHarbor status did not converge to READY identity/oidc" >&2
+    jq -c '.checks[]? | select(.name == "identity/oidc")' "$ARTIFACT_DIR/identity-baha-status.json" >&2 2>/dev/null || true
+    cat "$ARTIFACT_DIR/identity-baha-status.stderr.txt" >&2 2>/dev/null || true
     exit 42
-  }
+  fi
 )
 
 jq -e '.checks[] | select(.name == "identity/oidc" and .ok == true)' "$ARTIFACT_DIR/identity-baha-status.json" >/dev/null || {
