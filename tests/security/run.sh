@@ -132,9 +132,22 @@ section "Canonical development gateway security"
 
 (
   cd "$DEMO_ROOT"
-  if ! "$BAHA" status -o json > "$ARTIFACT_DIR/security-canonical-status.json" 2>"$ARTIFACT_DIR/security-canonical-status.stderr.txt"; then
-    echo "canonical gateway status command returned non-zero" >&2
-    cat "$ARTIFACT_DIR/security-canonical-status.stderr.txt" >&2 || true
+  status_ready=false
+  for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
+    set +e
+    "$BAHA" status -o json > "$ARTIFACT_DIR/security-canonical-status.json" 2>"$ARTIFACT_DIR/security-canonical-status.stderr.txt"
+    rc=$?
+    set -e
+    if [ "$rc" -eq 0 ] && jq -e '.ready == true' "$ARTIFACT_DIR/security-canonical-status.json" >/dev/null 2>&1; then
+      status_ready=true
+      break
+    fi
+    sleep 1
+  done
+  if [ "$status_ready" != true ]; then
+    echo "canonical gateway status did not converge to ready" >&2
+    cat "$ARTIFACT_DIR/security-canonical-status.json" >&2 2>/dev/null || true
+    cat "$ARTIFACT_DIR/security-canonical-status.stderr.txt" >&2 2>/dev/null || true
     exit 61
   fi
 )
