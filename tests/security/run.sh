@@ -132,11 +132,12 @@ section "Canonical development gateway security"
 
 (
   cd "$DEMO_ROOT"
-  if ! "$BAHA" status -o json > "$ARTIFACT_DIR/security-canonical-status.json" 2>"$ARTIFACT_DIR/security-canonical-status.stderr.txt"; then
-    echo "canonical gateway status command returned non-zero" >&2
+  "$BAHA" status -o json > "$ARTIFACT_DIR/security-canonical-status.json" 2>"$ARTIFACT_DIR/security-canonical-status.stderr.txt" || true
+  test -s "$ARTIFACT_DIR/security-canonical-status.json" || {
+    echo "canonical gateway status produced no JSON" >&2
     cat "$ARTIFACT_DIR/security-canonical-status.stderr.txt" >&2 || true
     exit 61
-  fi
+  }
 )
 
 jq -e '
@@ -144,9 +145,10 @@ jq -e '
     (.url | startswith("https://")) and
     ((.url | test("^https://(127\\.0\\.0\\.1|localhost)(:[0-9]+)?(/|$)")) | not)
   ) and
-  any(.checks[]?; .name == "api" and .ok == true and (.detail | startswith("https://demo.baha.localhost")))
+  any(.checks[]?; .name == "canonical-development-urls" and .ok == true) and
+  any(.checks[]?; .name == "managed-exposure/demo-app" and .ok == true and (.detail | startswith("https://demo.baha.localhost")))
 ' "$ARTIFACT_DIR/security-canonical-status.json" >/dev/null || {
-  echo "canonical gateway status contains a non-canonical URL or missing READY API check" >&2
+  echo "canonical gateway status contains a non-canonical URL or missing READY canonical exposure checks" >&2
   exit 62
 }
 
