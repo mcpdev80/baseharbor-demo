@@ -25,7 +25,10 @@ trap cleanup_companion EXIT
   "$BAHA" app doctor > "$ARTIFACT_DIR/companion-doctor.txt"
 )
 grep -q '^READY' "$ARTIFACT_DIR/companion-doctor.txt"
-pass "Companion Adoption" "second ordinary Compose app adopted through deterministic init + normal baha up"
+companion_app_name="$(awk '/^[[:space:]]*name:[[:space:]]*/ {sub(/^[[:space:]]*name:[[:space:]]*/, ""); gsub(/["'\'' ]/, ""); print; exit}' "$companion/baseharbor.yaml")"
+[ -n "$companion_app_name" ]
+printf '%s\n' "$companion_app_name" > "$ARTIFACT_DIR/companion-app-name.txt"
+pass "Companion Adoption" "second ordinary Compose app adopted through baha up"
 
 (
   cd "$companion"
@@ -36,7 +39,7 @@ pass "Companion Adoption" "second ordinary Compose app adopted through determini
 
 (
   cd "$DEMO_ROOT"
-  if ! "$BAHA" connect demo/demo-app companion-app/companion-app > "$ARTIFACT_DIR/connect.txt" 2> "$ARTIFACT_DIR/connect.stderr.txt"; then
+  if ! "$BAHA" connect demo/demo-app "$companion_app_name/companion-app" > "$ARTIFACT_DIR/connect.txt" 2> "$ARTIFACT_DIR/connect.stderr.txt"; then
     cat "$ARTIFACT_DIR/connect.stderr.txt" >&2 || true
     cat "$ARTIFACT_DIR/connectivity-runtime-containers.tsv" >&2 || true
     exit 1
@@ -44,15 +47,15 @@ pass "Companion Adoption" "second ordinary Compose app adopted through determini
   "$BAHA" connections > "$ARTIFACT_DIR/connections.txt"
 )
 grep -q 'demo' "$ARTIFACT_DIR/connections.txt"
-grep -q 'companion-app' "$ARTIFACT_DIR/connections.txt"
+grep -q "$companion_app_name" "$ARTIFACT_DIR/connections.txt"
 pass "Cross-App Connectivity" "directed connection created"
 
 (
   cd "$DEMO_ROOT"
-  "$BAHA" disconnect demo/demo-app companion-app/companion-app > "$ARTIFACT_DIR/disconnect.txt"
+  "$BAHA" disconnect demo/demo-app "$companion_app_name/companion-app" > "$ARTIFACT_DIR/disconnect.txt"
   "$BAHA" connections > "$ARTIFACT_DIR/connections-after-disconnect.txt"
 )
-! grep -q 'demo.*companion-app' "$ARTIFACT_DIR/connections-after-disconnect.txt"
+! grep -q "demo.*$companion_app_name" "$ARTIFACT_DIR/connections-after-disconnect.txt"
 pass "Cross-App Isolation" "disconnect removed directed access"
 
 (
