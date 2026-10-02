@@ -29,6 +29,8 @@ try:
         "baseharbor.target",
         "baseharbor.inspect",
         "baseharbor.workspace.resolve",
+        "baseharbor.workspace.status",
+        "baseharbor.workspace.update",
         "baseharbor.app.new",
         "baseharbor.plan",
         "baseharbor.apply",
