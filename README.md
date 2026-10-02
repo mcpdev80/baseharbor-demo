@@ -21,7 +21,7 @@ baha up
 
 That's the normal developer path.
 
-BaseHarbor v0.4.20 keeps repository workload syntax separate from portable application intent. Compose, repository-authored Quadlet and raw Kubernetes YAML are inspected through the same Workload Source Adapter boundary; this demo is the Compose source example. You can inspect the effective destination at any time with:
+BaseHarbor v0.4.21 keeps repository workload syntax separate from portable application intent. Compose, repository-authored Quadlet and raw Kubernetes YAML are inspected through the same Workload Source Adapter boundary; this demo is the Compose source example. You can inspect the effective destination at any time with:
 
 ```bash
 baha target
@@ -184,7 +184,9 @@ OIDC_CA_FILE
 
 The application calls the issuer's standard `/.well-known/openid-configuration` endpoint with the provided trust file. It does not call Keycloak administration APIs and does not depend on a BaseHarbor authentication SDK.
 
-The guided v0.4.20 demo keeps provider placement explicit and capability-first. Repository workload syntax stays outside the portable application contract: `baseharbor.yaml` contains only logical workload components. The scanner may resolve an obviously dominant repository source without persisting extra metadata; `baseharbor.repository.yaml` is written only when an explicit source choice must be retained. Shared PostgreSQL and cache Valkey remain Target-owned with application-isolated resources; durable key-value, document-database and messaging capabilities are exercised through dedicated atomic provider gates so their heavier application-scoped providers do not inflate every guided run.
+The guided v0.4.21 demo keeps provider placement explicit and capability-first. Repository workload syntax stays outside the portable application contract: `baseharbor.yaml` contains only logical workload components.
+
+For v0.4.21, availability stays equally small in portable intent: a global `ha: true|false` plus sparse per-component overrides where needed. Provider/runtime topology, replica/member identities and failure-domain mechanics remain BaseHarbor realization details. `baha status` and `baha doctor` report the resolved availability truth and fail closed when a selected realization cannot satisfy the requested guarantee. Management credentials, application-service credentials and internal machine identities remain separate ownership classes; the demo never receives provider-admin credentials as application bindings. The scanner may resolve an obviously dominant repository source without persisting extra metadata; `baseharbor.repository.yaml` is written only when an explicit source choice must be retained. Shared PostgreSQL and cache Valkey remain Target-owned with application-isolated resources; durable key-value, document-database and messaging capabilities are exercised through dedicated atomic provider gates so their heavier application-scoped providers do not inflate every guided run.
 
 The guided demo also selects the optional management surfaces. In local dev, `baha status` reports their HTTPS URLs and semantic purpose:
 
@@ -233,7 +235,7 @@ baha app restore ./<backup>.bhbackup
 
 BaseHarbor encrypts the recovery unit, verifies it before restore and only reports success after the restored application is healthy again.
 
-BaseHarbor v0.4.20 recovery units can include managed SQL, the application-owned secret scope, managed S3 objects, BaseHarbor-owned workload volumes and selectable application log history. External data remains outside BaseHarbor ownership and unsupported state is reported explicitly instead of being silently omitted.
+BaseHarbor v0.4.21 recovery units can include managed SQL, the application-owned secret scope, managed S3 objects, BaseHarbor-owned workload volumes and selectable application log history. External data remains outside BaseHarbor ownership and unsupported state is reported explicitly instead of being silently omitted.
 
 ## Stop or remove it
 
@@ -296,7 +298,7 @@ The application describes what it needs. BaseHarbor decides how that intent is r
 Against a published BaseHarbor release:
 
 ```bash
-BASEHARBOR_VERSION=v0.4.20 bash scripts/acceptance.sh
+BASEHARBOR_VERSION=v0.4.21 bash scripts/acceptance.sh
 ```
 
 Against a candidate commit or ref:
@@ -307,7 +309,7 @@ BASEHARBOR_SOURCE_REF=<commit-or-ref> bash scripts/acceptance.sh
 
 The release validation uses independently rerunnable atomic gates. Static contract/DX gates require no provider containers; Docker and Podman gates start only the resource profile required by the selected capability. Dedicated gates cover durable key-value, MongoDB document storage, RabbitMQ messaging, managed OIDC identity, observability, reconciliation, failure, recovery and final cleanup.
 
-Each acceptance run creates an isolated explicit BaseHarbor Target for the selected runtime and isolates BaseHarbor config/state through temporary XDG config/data roots. This proves the Target boundary and the v0.4.20 source/capability/provider/runtime contracts instead of relying on repository-source syntax inside portable application intent.
+Each acceptance run creates an isolated explicit BaseHarbor Target for the selected runtime and isolates BaseHarbor config/state through temporary XDG config/data roots. This proves the Target boundary and the v0.4.21 source/capability/provider/runtime contracts instead of relying on repository-source syntax inside portable application intent.
 
 Evidence is written below `artifacts/`.
 
