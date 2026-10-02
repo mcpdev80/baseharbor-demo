@@ -11,7 +11,7 @@ gateway_ca="$XDG_DATA_HOME/baseharbor/targets/$BASEHARBOR_TARGET/developer-acces
 test -s "$gateway_ca"
 gateway_port="$(dev_gateway_port)"
 base="$(dev_gateway_url "$api_host")"
-curl_dev=(curl -fsS --cacert "$gateway_ca" --resolve "$api_host:$gateway_port:127.0.0.1")
+curl_dev=(curl -fsS --retry 12 --retry-delay 1 --retry-all-errors --cacert "$gateway_ca" --resolve "$api_host:$gateway_port:127.0.0.1")
 
 "${curl_dev[@]}" "$base/api/status" > "$ARTIFACT_DIR/identity-demo-status.json"
 jq -e '.capabilities.identity.ready == true' "$ARTIFACT_DIR/identity-demo-status.json" >/dev/null
@@ -109,7 +109,7 @@ fi
 jq -e '.checks[] | select(.name == "canonical-development-urls" and .ok == true)' "$ARTIFACT_DIR/identity-baha-status.json" >/dev/null || { echo "canonical-development-urls is not READY" >&2; exit 49; }
 
 discovery_url="$identity_base/realms/bh-demo-dev/.well-known/openid-configuration"
-if ! curl -fsS --cacert "$gateway_ca" --resolve "$identity_host:$gateway_port:127.0.0.1" "$discovery_url"   > "$ARTIFACT_DIR/identity-canonical-discovery.json" 2>"$ARTIFACT_DIR/identity-canonical-discovery.stderr.txt"; then
+if ! curl -fsS --retry 12 --retry-delay 1 --retry-all-errors --cacert "$gateway_ca" --resolve "$identity_host:$gateway_port:127.0.0.1" "$discovery_url"   > "$ARTIFACT_DIR/identity-canonical-discovery.json" 2>"$ARTIFACT_DIR/identity-canonical-discovery.stderr.txt"; then
   echo "canonical OIDC discovery through development gateway failed: $discovery_url" >&2
   cat "$ARTIFACT_DIR/identity-canonical-discovery.stderr.txt" >&2 || true
   exit 50
