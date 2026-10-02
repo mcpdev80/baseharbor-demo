@@ -57,7 +57,7 @@ exposure:
     - name: demo-app
       service: demo-app
       port: 8080
-      protocol: http
+      protocol: https
       visibility: public
 EOF
 
