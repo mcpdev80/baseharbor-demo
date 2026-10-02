@@ -4,13 +4,6 @@ source "$DEMO_ROOT/tests/lib.sh"
 
 section "Backup and restore"
 
-api_host="demo.baha.localhost"
-gateway_port="$(dev_gateway_port)"
-base="$(dev_gateway_url "$api_host")"
-gateway_ca="$XDG_DATA_HOME/baseharbor/targets/$BASEHARBOR_TARGET/developer-access/dev/gateway/runtime/ca.pem"
-test -s "$gateway_ca"
-curl_dev=(curl -fsS --cacert "$gateway_ca" --resolve "$api_host:$gateway_port:127.0.0.1")
-
 printf '%s' 'acceptance-backup-password' > "$ARTIFACT_DIR/backup.pass"
 chmod 600 "$ARTIFACT_DIR/backup.pass"
 
@@ -59,6 +52,13 @@ EOF
   printf '%s' 'acceptance-secret-value' | "$BAHA" app secret set APP_SECRET --stdin
   "$BAHA" --verbose app apply 2>&1 | tee "$ARTIFACT_DIR/recovery-apply.txt"
 )
+
+api_host="demo.baha.localhost"
+gateway_port="$(dev_gateway_port)"
+base="$(dev_gateway_url "$api_host")"
+gateway_ca="$XDG_DATA_HOME/baseharbor/targets/$BASEHARBOR_TARGET/developer-access/dev/gateway/runtime/ca.pem"
+test -s "$gateway_ca"
+curl_dev=(curl -fsS --cacert "$gateway_ca" --resolve "$api_host:$gateway_port:127.0.0.1")
 
 "${curl_dev[@]}" -X POST "$base"/api/sql > "$ARTIFACT_DIR/recovery-sql-seed.json"
 
