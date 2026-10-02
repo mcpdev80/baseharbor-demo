@@ -50,7 +50,7 @@ EOF
   set -e
 
   printf '%s' 'acceptance-secret-value' | "$BAHA" app secret set APP_SECRET --stdin
-  "$BAHA" --verbose app apply 2>&1 | tee "$ARTIFACT_DIR/recovery-apply.txt"
+  "$BAHA" --verbose up --yes 2>&1 | tee "$ARTIFACT_DIR/recovery-apply.txt"
 )
 
 api_host="demo.baha.localhost"
