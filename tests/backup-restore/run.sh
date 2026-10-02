@@ -52,6 +52,13 @@ runtime:
 logs:
   collect:
     - application
+exposure:
+  http:
+    - name: demo-app
+      service: demo-app
+      port: 8080
+      protocol: http
+      visibility: public
 EOF
 
   "$BAHA" app init --tls local --yes
