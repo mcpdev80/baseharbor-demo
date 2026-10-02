@@ -36,9 +36,15 @@ app:
   environment: dev
 
 workload:
-  compose: tests/debug-restore-route/compose.yaml
-  services:
+  components:
     - debug-app
+EOF
+
+cat >"$DEMO_ROOT/baseharbor.repository.yaml" <<'EOF'
+version: 1
+workload-source:
+  kind: compose
+  path: tests/debug-restore-route/compose.yaml
 EOF
 
 source "$DEMO_ROOT/tests/lib.sh"

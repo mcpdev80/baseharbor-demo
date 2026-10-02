@@ -13,7 +13,7 @@ chmod 600 "$ARTIFACT_DIR/backup.pass"
   cd "$DEMO_ROOT"
   "$BAHA" app destroy --yes || true
 )
-rm -rf "$DEMO_ROOT/.baseharbor" "$DEMO_ROOT/baseharbor.yaml"
+rm -rf "$DEMO_ROOT/.baseharbor" "$DEMO_ROOT/baseharbor.yaml" "$DEMO_ROOT/baseharbor.repository.yaml"
 
 (
   cd "$DEMO_ROOT"
@@ -23,8 +23,8 @@ rm -rf "$DEMO_ROOT/.baseharbor" "$DEMO_ROOT/baseharbor.yaml"
     --cache \
     --s3-bucket uploads \
     --require-secret APP_SECRET \
-    --workload-compose compose.yaml \
-    --workload-service demo-app
+    --workload-source compose:compose.yaml \
+    --workload-component demo-app
 
   # The demo workload uses the Runtime Resource API to create S3 resources.
   # Explicit recovery init must preserve that authorization just like guided
@@ -49,9 +49,6 @@ runtime:
         - demo-app
       operations:
         - runtime.create
-logs:
-  collect:
-    - application
 exposure:
   http:
     - name: demo-app
@@ -59,6 +56,9 @@ exposure:
       port: 8080
       protocol: https
       visibility: public
+logs:
+  collect:
+    - application
 EOF
 
   "$BAHA" app init --tls local --yes
