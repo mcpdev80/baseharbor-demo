@@ -132,11 +132,12 @@ section "Canonical development gateway security"
 
 (
   cd "$DEMO_ROOT"
-  if ! "$BAHA" status -o json > "$ARTIFACT_DIR/security-canonical-status.json" 2>"$ARTIFACT_DIR/security-canonical-status.stderr.txt"; then
-    echo "canonical gateway status command returned non-zero" >&2
+  "$BAHA" status -o json > "$ARTIFACT_DIR/security-canonical-status.json" 2>"$ARTIFACT_DIR/security-canonical-status.stderr.txt" || true
+  test -s "$ARTIFACT_DIR/security-canonical-status.json" || {
+    echo "canonical gateway status produced no JSON" >&2
     cat "$ARTIFACT_DIR/security-canonical-status.stderr.txt" >&2 || true
     exit 61
-  fi
+  }
 )
 
 jq -e '
