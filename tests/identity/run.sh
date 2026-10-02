@@ -13,8 +13,20 @@ gateway_port="$(dev_gateway_port)"
 base="$(dev_gateway_url "$api_host")"
 curl_dev=(curl -fsS --retry 12 --retry-delay 1 --retry-all-errors --cacert "$gateway_ca" --resolve "$api_host:$gateway_port:127.0.0.1")
 
-"${curl_dev[@]}" "$base/api/status" > "$ARTIFACT_DIR/identity-demo-status.json"
-jq -e '.capabilities.identity.ready == true' "$ARTIFACT_DIR/identity-demo-status.json" >/dev/null
+identity_ready=false
+for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
+  if "${curl_dev[@]}" "$base/api/status" > "$ARTIFACT_DIR/identity-demo-status.json" 2>"$ARTIFACT_DIR/identity-demo-status.stderr.txt" && jq -e '.capabilities.identity.ready == true' "$ARTIFACT_DIR/identity-demo-status.json" >/dev/null 2>&1; then
+    identity_ready=true
+    break
+  fi
+  sleep 1
+done
+if [ "$identity_ready" != true ]; then
+  echo "managed identity capability did not converge to ready" >&2
+  cat "$ARTIFACT_DIR/identity-demo-status.json" >&2 2>/dev/null || true
+  cat "$ARTIFACT_DIR/identity-demo-status.stderr.txt" >&2 2>/dev/null || true
+  exit 40
+fi
 pass "Managed Identity" "application consumed standard OIDC discovery and client bindings"
 
 "${curl_dev[@]}" -X POST "$base/api/identity/verify" > "$ARTIFACT_DIR/identity-verify.json"
@@ -65,9 +77,22 @@ pass "OIDC Discovery" "issuer, client, confidential credential file and managed 
     exit 41
   fi
 
-  if ! "$BAHA" status -o json > "$ARTIFACT_DIR/identity-baha-status.json" 2>"$ARTIFACT_DIR/identity-baha-status.stderr.txt"; then
-    echo "identity BaseHarbor status command returned non-zero" >&2
-    cat "$ARTIFACT_DIR/identity-baha-status.stderr.txt" >&2 || true
+  status_ready=false
+  for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
+    set +e
+    "$BAHA" status -o json > "$ARTIFACT_DIR/identity-baha-status.json" 2>"$ARTIFACT_DIR/identity-baha-status.stderr.txt"
+    rc=$?
+    set -e
+    if [ "$rc" -eq 0 ] && jq -e '.ready == true' "$ARTIFACT_DIR/identity-baha-status.json" >/dev/null 2>&1; then
+      status_ready=true
+      break
+    fi
+    sleep 1
+  done
+  if [ "$status_ready" != true ]; then
+    echo "identity BaseHarbor status did not converge to ready" >&2
+    cat "$ARTIFACT_DIR/identity-baha-status.json" >&2 2>/dev/null || true
+    cat "$ARTIFACT_DIR/identity-baha-status.stderr.txt" >&2 2>/dev/null || true
     exit 42
   fi
 )
