@@ -45,6 +45,13 @@ runtime:
         - demo-app
       operations:
         - runtime.create
+exposure:
+  http:
+    - name: demo-app
+      service: demo-app
+      port: 8080
+      protocol: https
+      visibility: public
 logs:
   collect:
     - application
