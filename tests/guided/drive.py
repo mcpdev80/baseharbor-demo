@@ -32,13 +32,16 @@ class Rule:
 
 ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 
-def root_compose_response(match, text):
+def root_workload_source_response(match, text):
     clean = ANSI_ESCAPE.sub("", text)
-    candidates = re.findall(r"(?m)^\s*(\d+)[.)]\s+([^\r\n]*?compose\.ya?ml)\s*$", clean)
-    for number, path in candidates:
-        if path.strip() == "compose.yaml":
+    candidates = re.findall(
+        r"(?m)^\s*(\d+)[.)]\s+(compose|quadlet|kubernetes)\s+([^\r\n]+?)\s*$",
+        clean,
+    )
+    for number, kind, path in candidates:
+        if kind == "compose" and path.strip() == "compose.yaml":
             return number + "\n"
-    raise RuntimeError("root compose.yaml was not offered by guided init")
+    raise RuntimeError("root Compose workload source was not offered by guided init")
 
 def selected_capabilities():
     raw = os.environ.get("BASEHARBOR_GUIDED_CAPABILITIES")
@@ -181,7 +184,7 @@ def run_tty(name, argv, rules, env=None, timeout=900):
 init_rules = [
     Rule(r"Application name \[[^\]]+\]:\s*$", "demo\n"),
     Rule(r"Environment \[[^\]]+\]:\s*$", "\n"),
-    Rule(r"Multiple Compose files were detected\..*?>\s*$", callback=root_compose_response),
+    Rule(r"Multiple workload sources detected:.*?Workload source.*?:\s*$", callback=root_workload_source_response, optional=True),
     Rule(r"Select application capabilities.*?13\. Application logs", callback=capability_selection_response),
     Rule(r"PostgreSQL management UI\? \[y/N\]\s*$", callback=lambda m, t: "y\r" if management_ui_enabled("sql") else "n\r", optional=True),
     Rule(r"Cache management UI\? \[y/N\]\s*$", callback=lambda m, t: "y\r" if management_ui_enabled("cache") else "n\r", optional=True),

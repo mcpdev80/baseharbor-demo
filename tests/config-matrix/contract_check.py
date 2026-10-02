@@ -79,8 +79,7 @@ services:
     enabled: false
     management_ui: true
 workload:
-  compose: compose.yaml
-  services:
+  components:
     - demo-app
 """,
             "durable-ui-without-provider": """version: 1
@@ -93,8 +92,7 @@ services:
     enabled: false
     management_ui: true
 workload:
-  compose: compose.yaml
-  services:
+  components:
     - demo-app
 """,
             "document-ui-without-provider": """version: 1
@@ -107,8 +105,7 @@ services:
     enabled: false
     management_ui: true
 workload:
-  compose: compose.yaml
-  services:
+  components:
     - demo-app
 """,
             "messaging-ui-without-provider": """version: 1
@@ -121,8 +118,7 @@ services:
     enabled: false
     management_ui: true
 workload:
-  compose: compose.yaml
-  services:
+  components:
     - demo-app
 """,
             "invalid-telemetry-signal": """version: 1
@@ -131,8 +127,7 @@ app:
   name: invalid-telemetry
   environment: dev
 workload:
-  compose: compose.yaml
-  services:
+  components:
     - demo-app
 telemetry:
   otlp:
@@ -145,8 +140,7 @@ app:
   name: invalid-metrics
   environment: dev
 workload:
-  compose: compose.yaml
-  services:
+  components:
     - demo-app
 metrics:
   sources:
@@ -161,8 +155,7 @@ app:
   name: invalid-runtime
   environment: dev
 workload:
-  compose: compose.yaml
-  services:
+  components:
     - demo-app
 runtime:
   permissions:

@@ -47,7 +47,7 @@ fail() {
 }
 
 clean_generated_state() {
-  rm -rf "$DEMO_ROOT/.baseharbor" "$DEMO_ROOT/baseharbor.yaml" "$DEMO_ROOT/envs/dev/baseharbor.yaml" "$DEMO_ROOT/envs/test/baseharbor.yaml" "$DEMO_ROOT/envs/prod/baseharbor.yaml"
+  rm -rf "$DEMO_ROOT/.baseharbor" "$DEMO_ROOT/baseharbor.yaml" "$DEMO_ROOT/baseharbor.repository.yaml" "$DEMO_ROOT/envs/dev/baseharbor.yaml" "$DEMO_ROOT/envs/test/baseharbor.yaml" "$DEMO_ROOT/envs/prod/baseharbor.yaml"
 }
 
 assert_no_secret_leak() {

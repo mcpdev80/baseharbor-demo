@@ -6,7 +6,6 @@ section "Cross-application connectivity"
 companion_parent="$(mktemp -d)"
 companion="$companion_parent/companion-app"
 cp -a "$DEMO_ROOT/companion-app" "$companion"
-
 cleanup_companion() {
   set +e
   if [ -d "$companion" ]; then
@@ -32,8 +31,19 @@ printf '%s\n' "$companion_app_name" > "$ARTIFACT_DIR/companion-app-name.txt"
 pass "Companion Adoption" "second ordinary Compose app adopted through baha up"
 
 (
+  cd "$companion"
+  "$BAHA" app inspect . -o json > "$ARTIFACT_DIR/companion-inspect-after-up.json"
+  "$BAHA" status -o json > "$ARTIFACT_DIR/companion-status.json"
+)
+"$CONTAINER_CLI" ps -a --format '{{.ID}}	{{.Names}}	{{.Label "com.docker.compose.project"}}	{{.Label "com.docker.compose.service"}}' > "$ARTIFACT_DIR/connectivity-runtime-containers.tsv" 2>&1 || true
+
+(
   cd "$DEMO_ROOT"
-  "$BAHA" connect demo/demo-app "$companion_app_name/companion-app" > "$ARTIFACT_DIR/connect.txt"
+  if ! "$BAHA" connect demo/demo-app "$companion_app_name/companion-app" > "$ARTIFACT_DIR/connect.txt" 2> "$ARTIFACT_DIR/connect.stderr.txt"; then
+    cat "$ARTIFACT_DIR/connect.stderr.txt" >&2 || true
+    cat "$ARTIFACT_DIR/connectivity-runtime-containers.tsv" >&2 || true
+    exit 1
+  fi
   "$BAHA" connections > "$ARTIFACT_DIR/connections.txt"
 )
 grep -q 'demo' "$ARTIFACT_DIR/connections.txt"

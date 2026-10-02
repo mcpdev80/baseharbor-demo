@@ -229,7 +229,7 @@ while IFS= read -r gate; do
   fi
 
   printf '\n>>> demo-%s\n' "$gate"
-  if [ "${DEMO_ATOMIC_GATE:-0}" = "1" ] && [ "$gate" != "guided" ] && [ "$gate" != "config-matrix" ] && [ "$gate" != "init" ] && [ "$gate" != "mcp" ] && [ "$gate" != "agent" ] && [ "$gate" != "backup-restore" ]; then
+  if [ "${DEMO_ATOMIC_GATE:-0}" = "1" ] && [ "$gate" != "guided" ] && [ "$gate" != "config-matrix" ] && [ "$gate" != "init" ] && [ "$gate" != "mcp" ] && [ "$gate" != "agent" ]; then
     bash "$DEMO_ROOT/tests/atomic-bootstrap.sh" "$gate"
   fi
   set +e

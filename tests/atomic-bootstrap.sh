@@ -7,7 +7,7 @@ capabilities=""
 management_ui="none"
 
 case "$gate" in
-  lifecycle|policy|connectivity|full-destroy)
+  lifecycle|policy|connectivity|full-destroy|backup-restore)
     capabilities=""
     ;;
   data-capabilities)
