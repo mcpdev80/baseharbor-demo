@@ -85,7 +85,7 @@ def capability_selection_response(match, text):
     keys.append("\n")
     return keys
 
-def run_tty(name, argv, rules, env=None, timeout=900):
+def run_tty(name, argv, rules, env=None, timeout=900, no_output_timeout=None):
     log_path = ARTIFACT_DIR / f"{name}.txt"
     merged_env = os.environ.copy()
     if env:
@@ -156,6 +156,14 @@ def run_tty(name, argv, rules, env=None, timeout=900):
                             break
 
             now = time.monotonic()
+            if no_output_timeout is not None and now - last_output > no_output_timeout:
+                proc.kill()
+                elapsed = int(now - started)
+                silent = int(now - last_output)
+                raise RuntimeError(
+                    f"{name} exceeded no-output timeout: elapsed={elapsed}s no-output={silent}s "
+                    f"limit={no_output_timeout}s"
+                )
             if now - last_heartbeat >= 15:
                 elapsed = int(now - started)
                 silent = int(now - last_output)
@@ -237,7 +245,8 @@ run_tty(
     "guided-up",
     [BAHA, "--verbose", "up"],
     up_rules,
-    timeout=1200,
+    timeout=600,
+    no_output_timeout=120,
 )
 
 print("[phase] guided up: READY reached; returning to acceptance gate", flush=True)
