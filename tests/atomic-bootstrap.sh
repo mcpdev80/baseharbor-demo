@@ -3,36 +3,11 @@ set -euo pipefail
 source "$DEMO_ROOT/tests/lib.sh"
 
 gate="${1:?gate is required}"
-capabilities=""
-management_ui="none"
-
-case "$gate" in
-  lifecycle|policy|connectivity|full-destroy|backup-restore)
-    capabilities=""
-    ;;
-  data-capabilities)
-    capabilities="1,2,8,9"
-    ;;
-  observability)
-    capabilities="11,12,13"
-    ;;
-  identity)
-    capabilities="10"
-    management_ui="identity"
-    ;;
-  security)
-    capabilities="1,2,8,10,12"
-    ;;
-  reconciliation)
-    capabilities="1"
-    ;;
-  failure)
-    capabilities="11"
-    ;;
-  *)
-    exit 0
-    ;;
-esac
+registry="$DEMO_ROOT/tests/gate-resources.json"
+test -s "$registry"
+jq -e --arg gate "$gate" 'has($gate) and .[$gate].class == "runtime"' "$registry" >/dev/null || exit 0
+capabilities="$(jq -r --arg gate "$gate" '.[$gate].guided_selection // ""' "$registry")"
+management_ui="$(jq -r --arg gate "$gate" '.[$gate].management_ui // "none"' "$registry")"
 
 clean_generated_state
 rm -rf "$XDG_CONFIG_HOME/baseharbor" "$XDG_DATA_HOME/baseharbor" "$XDG_DATA_HOME/baseharbor-recovery"
