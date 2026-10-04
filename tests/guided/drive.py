@@ -235,6 +235,7 @@ up_rules = [
     Rule(r"OpenBao recovery file \[[^\]]+\]:\s*$", "\n"),
     Rule(r"Configure now\? \[Y/n\]\s*$", "\n", optional=True),
     Rule(r"APP_SECRET value:\s*$", "acceptance-secret-value\n", optional=True),
+    Rule(r"APP_SECRET value again:\s*$", "acceptance-secret-value\n", optional=True),
     Rule(r"Install the BaseHarbor CA into the host trust store\? \[y/N\]:\s*$", "n\n", optional=True),
 ]
 
