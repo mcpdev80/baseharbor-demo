@@ -11,7 +11,7 @@ chmod 600 "$ARTIFACT_DIR/backup.pass"
 # application-owned workload storage and application log history.
 (
   cd "$DEMO_ROOT"
-  "$BAHA" app destroy --yes || true
+  "$BAHA" app destroy --yes
 )
 rm -rf "$DEMO_ROOT/.baseharbor" "$DEMO_ROOT/baseharbor.yaml" "$DEMO_ROOT/baseharbor.repository.yaml"
 
