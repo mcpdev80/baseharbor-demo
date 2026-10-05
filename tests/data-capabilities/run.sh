@@ -30,7 +30,7 @@ jq -e '.bucket|length>0' "$ARTIFACT_DIR/object.json" >/dev/null
 pass "Object Storage" "S3 put"
 
 "${curl_dev[@]}" -X POST "$base/api/secret" | tee "$ARTIFACT_DIR/secret.json" | jq -e '.present==true and .value_exposed==false' >/dev/null
-! grep -Fq 'acceptance-secret-value' "$ARTIFACT_DIR/secret.json"
+assert_no_grep_match -Fq 'acceptance-secret-value' "$ARTIFACT_DIR/secret.json"
 jq -e '.capabilities.secrets.ready==true' "$ARTIFACT_DIR/data-status.json" >/dev/null
 pass "Secrets" "dedicated binding verification without value exposure"
 

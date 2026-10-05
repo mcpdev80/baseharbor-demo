@@ -64,6 +64,16 @@ assert_no_secret_leak() {
   return 0
 }
 
+
+assert_no_grep_match() {
+  local status=0
+  grep "$@" >/dev/null || status=$?
+  if [ "$status" -ne 1 ]; then
+    echo "negative content assertion failed (grep exit $status)" >&2
+    return 1
+  fi
+}
+
 remove_managed_service_for_reconcile() {
   local service="$1"
   local project="$2"

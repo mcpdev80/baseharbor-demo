@@ -169,7 +169,7 @@ jq -e '
   any(.verified_result[]; .id=="doctor:postgres shared isolation" and .status=="verified")
 ' "$ARTIFACT_DIR/recovery-evidence-after-restore.json" >/dev/null
 
-! grep -Fq 'baseharbor_admin' "$ARTIFACT_DIR/recovery-evidence-after-restore.json"
+assert_no_grep_match -Fq 'baseharbor_admin' "$ARTIFACT_DIR/recovery-evidence-after-restore.json"
 assert_no_secret_leak "$ARTIFACT_DIR/recovery-evidence-after-restore.json"
 
 pass "Backup / Restore" "SQL + secrets + S3 + workload storage + log history restored with verified evidence"
