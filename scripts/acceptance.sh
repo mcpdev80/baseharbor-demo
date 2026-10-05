@@ -218,14 +218,26 @@ while IFS= read -r gate; do
 
   # Suite mode preserves dependency ordering. Atomic mode deliberately
   # bootstraps only the selected gate's minimal fixture instead.
+  failed_dependency=""
   if [ "${DEMO_ATOMIC_GATE:-0}" != "1" ]; then
     while IFS= read -r dependency; do
       [ -n "$dependency" ] || continue
-      if [ -z "${gate_status[$dependency]:-}" ]; then
-        echo "Gate order is invalid: $gate requires $dependency before it has run" >&2
-        exit 2
-      fi
+      case "${gate_status[$dependency]:-}" in
+        PASS) ;;
+        "")
+          echo "Gate order is invalid: $gate requires $dependency before it has run" >&2
+          exit 2
+          ;;
+        *)
+          failed_dependency="$dependency"
+          ;;
+      esac
     done < <(jq -r --arg gate "$gate" '.[] | select(.name == $gate) | .requires[]' "$GATE_REGISTRY")
+  fi
+
+  if [ -n "$failed_dependency" ]; then
+    record_group "$gate" BLOCKED "not executed because prerequisite $failed_dependency did not pass"
+    continue
   fi
 
   printf '\n>>> demo-%s\n' "$gate"
