@@ -14,7 +14,10 @@ echo "[phase] guided: destroy previous acceptance runtime before pristine init"
 ) | tee "$ARTIFACT_DIR/guided-pristine-cleanup.txt"
 test ! -e "$XDG_CONFIG_HOME/baseharbor"
 test ! -e "$XDG_DATA_HOME/baseharbor"
-test ! -e "$XDG_DATA_HOME/baseharbor-recovery"
+# Recovery files are operator-held and intentionally survive full destroy.
+# This isolated acceptance fixture owns its recovery directory and clears it
+# only after the managed runtime has been successfully destroyed.
+rm -rf "$XDG_DATA_HOME/baseharbor-recovery"
 clean_generated_state
 "$BAHA" target create "$BASEHARBOR_TARGET"   --provider "$BASEHARBOR_TEST_RUNTIME"   --access "local-$BASEHARBOR_TEST_RUNTIME"   --reference local   --scope default   --default >/dev/null
 
