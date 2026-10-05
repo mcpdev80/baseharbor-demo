@@ -11,7 +11,7 @@ chmod 600 "$ARTIFACT_DIR/backup.pass"
 # application-owned workload storage and application log history.
 (
   cd "$DEMO_ROOT"
-  "$BAHA" app destroy --yes || true
+  "$BAHA" app destroy --yes
 )
 rm -rf "$DEMO_ROOT/.baseharbor" "$DEMO_ROOT/baseharbor.yaml" "$DEMO_ROOT/baseharbor.repository.yaml"
 
@@ -169,7 +169,7 @@ jq -e '
   any(.verified_result[]; .id=="doctor:postgres shared isolation" and .status=="verified")
 ' "$ARTIFACT_DIR/recovery-evidence-after-restore.json" >/dev/null
 
-! grep -Fq 'baseharbor_admin' "$ARTIFACT_DIR/recovery-evidence-after-restore.json"
+assert_no_grep_match -Fq 'baseharbor_admin' "$ARTIFACT_DIR/recovery-evidence-after-restore.json"
 assert_no_secret_leak "$ARTIFACT_DIR/recovery-evidence-after-restore.json"
 
 pass "Backup / Restore" "SQL + secrets + S3 + workload storage + log history restored with verified evidence"

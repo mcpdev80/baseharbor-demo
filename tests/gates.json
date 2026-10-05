@@ -9,9 +9,7 @@
   },
   {
     "name": "shell-ux",
-    "requires": [
-      "guided"
-    ]
+    "requires": []
   },
   {
     "name": "init",

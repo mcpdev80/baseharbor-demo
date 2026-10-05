@@ -55,7 +55,7 @@ pass "Cross-App Connectivity" "directed connection created"
   "$BAHA" disconnect demo/demo-app "$companion_app_name/companion-app" > "$ARTIFACT_DIR/disconnect.txt"
   "$BAHA" connections > "$ARTIFACT_DIR/connections-after-disconnect.txt"
 )
-! grep -q "demo.*$companion_app_name" "$ARTIFACT_DIR/connections-after-disconnect.txt"
+assert_no_grep_match -q "demo.*$companion_app_name" "$ARTIFACT_DIR/connections-after-disconnect.txt"
 pass "Cross-App Isolation" "disconnect removed directed access"
 
 (

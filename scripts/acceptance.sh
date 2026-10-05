@@ -208,7 +208,9 @@ report_and_exit() {
   exit "$rc"
 }
 
-while IFS= read -r gate; do
+# Keep the registry off stdin: workload exec may consume inherited input.
+mapfile -t ordered_gates < <(jq -r '.[].name' "$GATE_REGISTRY")
+for gate in "${ordered_gates[@]}"; do
   [ "${selected[$gate]:-0}" = "1" ] || continue
   script="$DEMO_ROOT/tests/$gate/run.sh"
   test -x "$script" || test -f "$script" || {
@@ -218,14 +220,26 @@ while IFS= read -r gate; do
 
   # Suite mode preserves dependency ordering. Atomic mode deliberately
   # bootstraps only the selected gate's minimal fixture instead.
+  failed_dependency=""
   if [ "${DEMO_ATOMIC_GATE:-0}" != "1" ]; then
     while IFS= read -r dependency; do
       [ -n "$dependency" ] || continue
-      if [ -z "${gate_status[$dependency]:-}" ]; then
-        echo "Gate order is invalid: $gate requires $dependency before it has run" >&2
-        exit 2
-      fi
+      case "${gate_status[$dependency]:-}" in
+        PASS) ;;
+        "")
+          echo "Gate order is invalid: $gate requires $dependency before it has run" >&2
+          exit 2
+          ;;
+        *)
+          failed_dependency="$dependency"
+          ;;
+      esac
     done < <(jq -r --arg gate "$gate" '.[] | select(.name == $gate) | .requires[]' "$GATE_REGISTRY")
+  fi
+
+  if [ -n "$failed_dependency" ]; then
+    record_group "$gate" BLOCKED "not executed because prerequisite $failed_dependency did not pass"
+    continue
   fi
 
   printf '\n>>> demo-%s\n' "$gate"
@@ -257,7 +271,16 @@ while IFS= read -r gate; do
   mark_remaining_blocked "$gate"
   echo "demo-$gate failed and the shared acceptance runtime is not usable; aborting remaining gates." >&2
   report_and_exit 70
-done < <(jq -r '.[].name' "$GATE_REGISTRY")
+done
+
+# A successful report must include every selected gate, even if execution
+# unexpectedly stops without returning a failing gate.
+for gate in "${ordered_gates[@]}"; do
+  [ "${selected[$gate]:-0}" = "1" ] || continue
+  if [ -z "${gate_status[$gate]:-}" ]; then
+    record_group "$gate" ERROR "selected acceptance gate did not execute"
+  fi
+done
 
 set +e
 bash "$DEMO_ROOT/scripts/report.sh" "$ARTIFACT_DIR/results.tsv"

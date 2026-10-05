@@ -2,10 +2,16 @@
 set -euo pipefail
 source "$DEMO_ROOT/tests/lib.sh"
 
-export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$ARTIFACT_DIR/xdg/config}"
-export XDG_DATA_HOME="${XDG_DATA_HOME:-$ARTIFACT_DIR/xdg/data}"
-export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$ARTIFACT_DIR/xdg/cache}"
-export BASEHARBOR_TARGET="${BASEHARBOR_TARGET:-shell-ux-static}"
+fixture_root="$(mktemp -d)"
+trap 'rm -rf "$fixture_root"' EXIT
+fixture_repository="$fixture_root/repository"
+mkdir -p "$fixture_repository"
+cp "$DEMO_ROOT/compose.yaml" "$fixture_repository/compose.yaml"
+cp -a "$DEMO_ROOT/demo-app" "$fixture_repository/demo-app"
+export XDG_CONFIG_HOME="$fixture_root/xdg/config"
+export XDG_DATA_HOME="$fixture_root/xdg/data"
+export XDG_CACHE_HOME="$fixture_root/xdg/cache"
+export BASEHARBOR_TARGET="shell-ux-static"
 export BASEHARBOR_INSTALL_DIR="${BASEHARBOR_INSTALL_DIR:-$(dirname "$BAHA")}"
 mkdir -p "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_CACHE_HOME"
 "$BAHA" target create "$BASEHARBOR_TARGET" \
@@ -15,9 +21,8 @@ mkdir -p "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_CACHE_HOME"
   --scope default \
   --default >/dev/null
 
-rm -f "$DEMO_ROOT/baseharbor.yaml" "$DEMO_ROOT/baseharbor.repository.yaml"
 (
-  cd "$DEMO_ROOT"
+  cd "$fixture_repository"
   "$BAHA" app init demo \
     --environment dev \
     --workload-source compose:compose.yaml \
@@ -43,7 +48,7 @@ grep -q '_baha_prompt_command()' "$shell_init_file"
 "$BAHA" config prompt   --enable   --preset compact   --position before-path   --environment always   --show-application   --text-only > "$prompt_config_file"
 
 (
-  cd "$DEMO_ROOT"
+  cd "$fixture_repository"
   "$BAHA" prompt --plain > "$prompt_file"
 )
 

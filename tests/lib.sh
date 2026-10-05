@@ -52,8 +52,26 @@ clean_generated_state() {
 
 assert_no_secret_leak() {
   local file="$1"
-  ! grep -Fq 'acceptance-secret-value' "$file"
-  ! grep -Eqi '(AWS_SECRET_ACCESS_KEY|APP_SECRET)=([^<]|$)' "$file"
+  if [ ! -f "$file" ] || [ ! -r "$file" ]; then
+    echo "secret-disclosure evidence file is missing or unreadable: $file" >&2
+    return 1
+  fi
+  if grep -Fq 'acceptance-secret-value' "$file" ||
+     grep -Eqi '(AWS_SECRET_ACCESS_KEY|APP_SECRET)=([^<]|$)' "$file"; then
+    echo "secret disclosure detected in $file" >&2
+    return 1
+  fi
+  return 0
+}
+
+
+assert_no_grep_match() {
+  local status=0
+  grep "$@" >/dev/null || status=$?
+  if [ "$status" -ne 1 ]; then
+    echo "negative content assertion failed (grep exit $status)" >&2
+    return 1
+  fi
 }
 
 remove_managed_service_for_reconcile() {

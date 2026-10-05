@@ -27,8 +27,8 @@ test -s "$workdir/baseharbor.yaml"
 grep -q '^workload:' "$workdir/baseharbor.yaml"
 grep -q '^  components:' "$workdir/baseharbor.yaml"
 grep -q '^    - demo-app$' "$workdir/baseharbor.yaml"
-! grep -q '^  compose:' "$workdir/baseharbor.yaml"
-! grep -q '^  services:' "$workdir/baseharbor.yaml"
+assert_no_grep_match -q '^  compose:' "$workdir/baseharbor.yaml"
+assert_no_grep_match -q '^  services:' "$workdir/baseharbor.yaml"
 test ! -e "$workdir/baseharbor.repository.yaml"
 
 jq -e '.workload_source_resolution.schema_version == "baseharbor.workload-source-resolution/v1"' "$ARTIFACT_DIR/inspect.json" >/dev/null
@@ -42,9 +42,9 @@ grep -q '^runtime:' "$workdir/baseharbor.yaml"
 
 # Suggested-only OTLP/log collection and heuristic secret names are intentionally
 # not promoted into the portable contract by --quick.
-! grep -q '^telemetry:' "$workdir/baseharbor.yaml"
-! grep -q '^logs:' "$workdir/baseharbor.yaml"
-! grep -q '^secrets:' "$workdir/baseharbor.yaml"
+assert_no_grep_match -q '^telemetry:' "$workdir/baseharbor.yaml"
+assert_no_grep_match -q '^logs:' "$workdir/baseharbor.yaml"
+assert_no_grep_match -q '^secrets:' "$workdir/baseharbor.yaml"
 
 pass "Repository Inspection" "read-only human + standardized source-resolution JSON"
 pass "Application Init Quick" "single-source Compose -> source-neutral workload.components; no source metadata needed"
