@@ -208,7 +208,9 @@ report_and_exit() {
   exit "$rc"
 }
 
-while IFS= read -r gate; do
+# Keep the registry off stdin: workload exec may consume inherited input.
+mapfile -t ordered_gates < <(jq -r '.[].name' "$GATE_REGISTRY")
+for gate in "${ordered_gates[@]}"; do
   [ "${selected[$gate]:-0}" = "1" ] || continue
   script="$DEMO_ROOT/tests/$gate/run.sh"
   test -x "$script" || test -f "$script" || {
@@ -269,7 +271,16 @@ while IFS= read -r gate; do
   mark_remaining_blocked "$gate"
   echo "demo-$gate failed and the shared acceptance runtime is not usable; aborting remaining gates." >&2
   report_and_exit 70
-done < <(jq -r '.[].name' "$GATE_REGISTRY")
+done
+
+# A successful report must include every selected gate, even if execution
+# unexpectedly stops without returning a failing gate.
+for gate in "${ordered_gates[@]}"; do
+  [ "${selected[$gate]:-0}" = "1" ] || continue
+  if [ -z "${gate_status[$gate]:-}" ]; then
+    record_group "$gate" ERROR "selected acceptance gate did not execute"
+  fi
+done
 
 set +e
 bash "$DEMO_ROOT/scripts/report.sh" "$ARTIFACT_DIR/results.tsv"
