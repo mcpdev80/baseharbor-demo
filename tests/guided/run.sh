@@ -112,9 +112,27 @@ test "$swagger_code" -ge 200
 test "$swagger_code" -lt 400
 
 if [ "${DEMO_ATOMIC_GATE:-0}" != "1" ]; then
-  grep -q 'postgres/default.*scope=shared owner=demo/dev' "$ARTIFACT_DIR/guided-status.txt"
-  grep -q 'valkey.*app-isolated cache resource' "$ARTIFACT_DIR/guided-status.txt"
-  grep -q 'cross-application access isolation verified' "$ARTIFACT_DIR/guided-status.txt"
+  (
+    cd "$DEMO_ROOT"
+    "$BAHA" status -o json > "$ARTIFACT_DIR/guided-status.json"
+  )
+  jq -e '
+    .ready == true and
+    any(.checks[];
+      .name == "postgres/default" and .ok == true and
+      (.detail | contains("scope=shared owner=demo/dev"))
+    ) and
+    any(.checks[];
+      .name == "valkey" and .ok == true and
+      (.detail | contains("app-isolated Valkey resource")) and
+      (.detail | contains("shared Target provider"))
+    ) and
+    any(.checks[];
+      .name == "postgres/isolation" and .ok == true and
+      (.detail | contains("cross-application access isolation verified"))
+    )
+  ' "$ARTIFACT_DIR/guided-status.json" >/dev/null
+  assert_no_secret_leak "$ARTIFACT_DIR/guided-status.json"
 fi
 
 if grep -Eq 'https://(127\.0\.0\.1|localhost):[0-9]+' "$ARTIFACT_DIR/guided-status.txt"; then
