@@ -21,13 +21,18 @@ mkdir -p "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_CACHE_HOME"
   --scope default \
   --default >/dev/null
 
-(
-  cd "$fixture_repository"
-  "$BAHA" app init demo \
-    --environment dev \
-    --workload-source compose:compose.yaml \
-    --workload-component demo-app >/dev/null
-)
+# Prompt/completion are read-only shell surfaces. A repository manifest is
+# input to this fixture; it neither bootstraps nor claims Core readiness.
+cat > "$fixture_repository/baseharbor.yaml" <<'YAML'
+version: 1
+app:
+  id: 11111111-1111-4111-8111-111111111111
+  name: demo
+  environment: dev
+workload:
+  components:
+    - demo-app
+YAML
 
 section "Bash completion, shell integration and Target-aware prompt"
 

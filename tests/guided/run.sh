@@ -35,6 +35,10 @@ else
 fi
 
 test -s "$DEMO_ROOT/baseharbor.yaml"
+
+# Preserve positive deterministic init coverage after actual first-application
+# Core setup. Static init covers the safe denial before Core exists.
+bash "$DEMO_ROOT/tests/init/run.sh"
 compose_after="$(sha256sum "$DEMO_ROOT/compose.yaml" | awk '{print $1}')"
 test "$compose_before" = "$compose_after"
 

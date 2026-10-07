@@ -17,7 +17,40 @@ before="$(sha256sum "$workdir/compose.yaml" | awk '{print $1}')"
   "$BAHA" app inspect . | tee "$ARTIFACT_DIR/inspect.txt"
   "$BAHA" app inspect . -o json > "$ARTIFACT_DIR/inspect.json"
   jq -e . "$ARTIFACT_DIR/inspect.json" >/dev/null
-  "$BAHA" app init --quick | tee "$ARTIFACT_DIR/init-quick.txt"
+)
+
+if [ -z "$CONTAINER_CLI" ]; then
+  (
+    cd "$workdir"
+    if "$BAHA" --no-input app init --quick > "$ARTIFACT_DIR/init-core-required.txt" 2>&1; then
+      fail "Core prerequisite" "init unexpectedly succeeded without Core"
+      exit 1
+    fi
+    grep -Fq 'BaseHarbor needs its Core services before the first application can run.' "$ARTIFACT_DIR/init-core-required.txt"
+    if "$BAHA" --no-input app init demo --sql -o json > "$ARTIFACT_DIR/init-core-required.out" 2> "$ARTIFACT_DIR/init-core-required.json"; then
+      fail "Core prerequisite" "deterministic init unexpectedly succeeded without Core"
+      exit 1
+    fi
+    test ! -s "$ARTIFACT_DIR/init-core-required.out"
+    jq -e '.error.code == "capability_missing" and .error.cause == "core_required" and .error.retryable == true' "$ARTIFACT_DIR/init-core-required.json" >/dev/null
+  )
+  test "$before" = "$(sha256sum "$workdir/compose.yaml" | awk '{print $1}')"
+  test ! -e "$workdir/baseharbor.yaml"
+  test ! -e "$workdir/baseharbor.repository.yaml"
+  test ! -e "$workdir/.baseharbor"
+  jq -e '.workload_source_resolution.state == "selected" and .workload_source_resolution.selected.path == "compose.yaml"' "$ARTIFACT_DIR/inspect.json" >/dev/null
+  jq -e '.workload_evidence.components[] | select(.id == "demo-app")' "$ARTIFACT_DIR/inspect.json" >/dev/null
+  assert_no_secret_leak "$ARTIFACT_DIR/init-core-required.json"
+  pass "Repository Inspection" "read-only inspection remains available before Core setup"
+  pass "Core prerequisite" "non-interactive quick and deterministic init fail closed without source mutation"
+  exit 0
+fi
+
+# Positive quick-init is exercised after real Core setup in the native guided
+# journey. No static fixture manufactures READY installation state.
+(
+  cd "$workdir"
+  "$BAHA" --no-input app init --quick | tee "$ARTIFACT_DIR/init-quick.txt"
 )
 
 after="$(sha256sum "$workdir/compose.yaml" | awk '{print $1}')"

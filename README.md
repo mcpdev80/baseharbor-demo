@@ -74,7 +74,7 @@ baha config prompt
 `baha config prompt` opens the guided prompt wizard. Completion and prompt integration are optional developer conveniences and do not change Target identity or deployment ownership.
 
 - `inspect` shows what BaseHarbor detects without changing the repository.
-- `init` turns the detected application intent into `baseharbor.yaml`.
+- Static `init` checks read-only inspection and typed, mutation-free rejection before Core setup. Native Docker/Podman guided journeys additionally verify quick init against a READY Core and its source-neutral `baseharbor.yaml`.
 - `up` converges the managed services, secrets, runtime bindings and application workload.
 
 On the first run BaseHarbor can ask for required setup such as the OpenBao recovery location and application-owned secrets. After that, the application should be ready.
