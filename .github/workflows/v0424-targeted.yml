@@ -9,14 +9,14 @@ concurrency:
   cancel-in-progress: false
 jobs:
   recovery:
-    if: contains(github.event.head_commit.message, '[demo-runtime]')
+    if: contains(github.event.head_commit.message, '[demo-runtime]') || contains(github.event.head_commit.message, '[demo-podman-runtime]')
     name: Demo install and backup recovery · ${{ matrix.runtime }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        runtime: [docker, podman]
+        runtime: ${{ fromJSON(contains(github.event.head_commit.message, '[demo-podman-runtime]') && '["podman"]' || '["docker","podman"]') }}
     env:
       BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
       BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:demo-v024

@@ -14,7 +14,9 @@ engine = os.environ["CONTAINER_CLI"]
 target = os.environ["BASEHARBOR_TARGET"].replace(".", "-")
 if engine not in {"docker", "podman"}:
     raise SystemExit("native default topology requires Docker or Podman")
-ids = subprocess.check_output([engine, "ps", "-a", "--filter", "label=com.docker.compose.project", "--format", "{{.ID}}"], text=True).split()
+# Enumerate native IDs first. Podman's label-presence filter differs between
+# versions; ownership is checked against inspect labels below on both engines.
+ids = subprocess.check_output([engine, "ps", "-a", "--format", "{{.ID}}"], text=True).split()
 if not ids:
     raise SystemExit("native inventory is empty")
 # Inspect output stays in memory: credentials/environment/bind paths are never
