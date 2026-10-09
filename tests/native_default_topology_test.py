@@ -47,6 +47,20 @@ class NativeTopologyQualificationTests(unittest.TestCase):
                 self.invoke(self.fixture() + [self.container("seaweedfs-node-2", "chrislusf/seaweedfs:4")], path)
             self.assertFalse(path.exists())
 
+    def test_separate_shared_keycloak_database_is_not_mistaken_for_a_single_topology(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / "qualified.json"
+            with self.assertRaisesRegex(SystemExit, "duplicate shared default provider"):
+                self.invoke(self.fixture() + [self.container("keycloak-db", "postgres:18", "bh-test-identity-shared")], path)
+            self.assertFalse(path.exists())
+
+    def test_separate_single_shared_provider_on_another_project_blocks_acceptance(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / "qualified.json"
+            with self.assertRaisesRegex(SystemExit, "duplicate shared default provider"):
+                self.invoke(self.fixture() + [self.container("shared-postgres-dev", "postgres:18", "bh-test-shared")], path)
+            self.assertFalse(path.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

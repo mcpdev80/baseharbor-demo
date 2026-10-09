@@ -331,12 +331,12 @@ func (a *app) identityAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"issuer": os.Getenv("OIDC_ISSUER"),
-		"client_id_present": strings.TrimSpace(os.Getenv("OIDC_CLIENT_ID")) != "",
-		"scopes": strings.Fields(os.Getenv("OIDC_SCOPES")),
+		"issuer":                     os.Getenv("OIDC_ISSUER"),
+		"client_id_present":          strings.TrimSpace(os.Getenv("OIDC_CLIENT_ID")) != "",
+		"scopes":                     strings.Fields(os.Getenv("OIDC_SCOPES")),
 		"client_secret_file_present": strings.TrimSpace(os.Getenv("OIDC_CLIENT_SECRET_FILE")) != "",
-		"trust_file_present": strings.TrimSpace(os.Getenv("OIDC_CA_FILE")) != "",
-		"discovery_verified": true,
+		"trust_file_present":         strings.TrimSpace(os.Getenv("OIDC_CA_FILE")) != "",
+		"discovery_verified":         true,
 	})
 }
 
@@ -378,6 +378,7 @@ func (a *app) cacheAction(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 	key := "baseharbor-demo:" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	key = firstEnv("REDIS_KEY_PREFIX", "VALKEY_KEY_PREFIX") + key
 	if err := a.cache.Set(ctx, key, "portable-cache-value", 60*time.Second).Err(); err != nil {
 		writeError(w, err.Error())
 		return

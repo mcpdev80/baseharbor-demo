@@ -366,4 +366,6 @@ https://localhost:8080
 
 The certificate is intentionally local/self-signed in standalone mode. Under BaseHarbor, certificate issuance, projection and trust are managed by BaseHarbor instead.
 
-The v0.4.24 development candidate is pinned in `baseharbor-core.ref` to Core `2800457038ac0620704df1e55bdb9d71ed65bc06`. The installer uses this immutable source by default; explicit `BASEHARBOR_SOURCE_REF` or `BASEHARBOR_VERSION` selections take precedence. Native default-topology, reconciliation and backup/restore qualification is recorded in Core PR #837 and issue #851; this branch does not authorize a pre-release.
+The v0.4.24 development candidate is pinned in `baseharbor-core.ref` to Core `dcee74f061c2688b6ec658b0490cb95a35bf9866`. The installer uses this immutable source by default; explicit `BASEHARBOR_SOURCE_REF` or `BASEHARBOR_VERSION` selections take precedence. Native default-topology, reconciliation and backup/restore qualification is recorded in Core PR #837 and issue #851; this branch does not authorize a pre-release.
+
+Shared cache bindings supply `REDIS_KEY_PREFIX` / `VALKEY_KEY_PREFIX`; the demo prefixes its keys so separate applications can safely consume one Core-owned Valkey provider. Native qualification rejects additional Shared SQL deployments, including a separate Keycloak database server. AppScoped remains an explicit independent deployment.

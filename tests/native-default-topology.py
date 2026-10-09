@@ -62,6 +62,14 @@ if not required <= observed:
 violations = [f"{project}/{provider}/{root}: {count} members" for (project, provider, root), count in groups.items() if count != 1]
 if violations:
     raise SystemExit("unexpected implicit default HA: " + "; ".join(violations))
+physical_members = {}
+for (_, provider, _), count in groups.items():
+    physical_members[provider] = physical_members.get(provider, 0) + count
+duplicates = [f"{provider}: {count} physical members across projects" for provider, count in physical_members.items() if count != 1]
+if duplicates:
+    raise SystemExit("duplicate shared default provider: " + "; ".join(duplicates))
+if any(row["service"] == "keycloak-db" or row["service"].startswith("keycloak-db-member-") for row in rows):
+    raise SystemExit("shared Keycloak must consume Core PostgreSQL, not own a SQL server")
 summary = {"schema": "baseharbor.demo-native-topology/v1", "runtime": engine, "ha_requested": False, "ha_active": False, "members": [{"project": project, "provider": provider, "instance": root, "count": count} for (project, provider, root), count in sorted(groups.items())], "services": sorted(rows, key=lambda row: (row["project"], row["service"]))}
 Path(args.output).write_text(json.dumps(summary, indent=2) + "\n")
-print("Native default demo topology PASS: each data/service group has one member; helpers excluded")
+print("Native default demo topology PASS: exactly one physical provider per type across projects; helpers excluded")
