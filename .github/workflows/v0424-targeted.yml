@@ -64,4 +64,5 @@ jobs:
           path: |
             ${{ runner.temp }}/demo-evidence/results.tsv
             ${{ runner.temp }}/demo-evidence/report.md
+            ${{ runner.temp }}/demo-evidence/native-topology-*.json
           if-no-files-found: warn
