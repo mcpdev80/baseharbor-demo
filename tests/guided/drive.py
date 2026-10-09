@@ -190,6 +190,11 @@ def run_tty(name, argv, rules, env=None, timeout=900, no_output_timeout=None):
                 return
 
 init_rules = [
+    Rule(r"Set them up now\? \[Y/n\]\s*$", "y\n"),
+    Rule(r"Is this installation running on a machine where you write code\?.*?Choice \[1\]:\s*$", "1\n"),
+    Rule(r"OpenBao recovery file \[[^\]]+\]:\s*$", "\n", optional=True),
+    Rule(r"Accept\? \[Y/n\]:\s*$", "\n", optional=True),
+    Rule(r"Use \d+ instead\? \[Y/n\]:\s*$", "\n", repeat=True, optional=True),
     Rule(r"Application name \[[^\]]+\]:\s*$", "demo\n"),
     Rule(r"Environment \[[^\]]+\]:\s*$", "\n"),
     Rule(r"Multiple workload sources detected:.*?Workload source.*?:\s*$", callback=root_workload_source_response, optional=True),
@@ -232,7 +237,7 @@ up_rules = [
     Rule(r"OpenBao host port \[\d+\]:\s*$", "\n", optional=True),
     Rule(r"Accept\? \[Y/n\]:\s*$", "\n", optional=True),
     Rule(r"Use \d+ instead\? \[Y/n\]:\s*$", "\n", repeat=True, optional=True),
-    Rule(r"OpenBao recovery file \[[^\]]+\]:\s*$", "\n"),
+    Rule(r"OpenBao recovery file \[[^\]]+\]:\s*$", "\n", optional=True),
     Rule(r"Configure now\? \[Y/n\]\s*$", "\n", optional=True),
     Rule(r"APP_SECRET value:\s*$", "acceptance-secret-value\n", optional=True),
     Rule(r"APP_SECRET value again:\s*$", "acceptance-secret-value\n", optional=True),
@@ -240,7 +245,7 @@ up_rules = [
 ]
 
 print("[phase] guided init: interactive capability selection", flush=True)
-run_tty("guided-init", [BAHA, "app", "init"], init_rules)
+run_tty("guided-init", [BAHA, "app", "init"], init_rules, no_output_timeout=120)
 print("[phase] guided up: provision providers, bindings and workload", flush=True)
 run_tty(
     "guided-up",
