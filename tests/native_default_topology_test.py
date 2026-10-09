@@ -23,8 +23,11 @@ class NativeTopologyQualificationTests(unittest.TestCase):
         return {"Config": {"Image": image, "Env": ["PRIVATE_VALUE=must-not-persist"], "Labels": {"com.docker.compose.project": project, "com.docker.compose.service": service}}, "State": {"Running": True}}
 
     def invoke(self, containers, output):
-        with patch.dict(os.environ, {"CONTAINER_CLI": "podman", "BASEHARBOR_TARGET": "test"}), patch.object(sys, "argv", ["native-default-topology.py", "--output", str(output)]), patch("subprocess.check_output", side_effect=["owned-id\n", json.dumps(containers)]):
+        with patch.dict(os.environ, {"CONTAINER_CLI": "podman", "BASEHARBOR_TARGET": "test", "XDG_CONFIG_HOME": "/isolated/baseharbor/config", "XDG_DATA_HOME": "/isolated/baseharbor/data"}), patch.object(sys, "argv", ["native-default-topology.py", "--output", str(output)]), patch("subprocess.check_output", side_effect=["owned-id\n", json.dumps(containers)]) as native:
             runpy.run_path(str(Path(__file__).with_name("native-default-topology.py")), run_name="__main__")
+            for call in native.call_args_list:
+                self.assertNotIn("XDG_CONFIG_HOME", call.kwargs["env"])
+                self.assertNotIn("XDG_DATA_HOME", call.kwargs["env"])
 
     def test_auxiliary_and_foreign_resources_never_become_replicas_or_leak_secrets(self):
         with tempfile.TemporaryDirectory() as root:

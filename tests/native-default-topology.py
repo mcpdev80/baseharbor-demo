@@ -14,14 +14,20 @@ engine = os.environ["CONTAINER_CLI"]
 target = os.environ["BASEHARBOR_TARGET"].replace(".", "-")
 if engine not in {"docker", "podman"}:
     raise SystemExit("native default topology requires Docker or Podman")
+native_environment = dict(os.environ)
+if engine == "podman":
+    # Match Core's native Podman command environment. The demo XDG paths are
+    # BaseHarbor state isolation, not a separate Podman container store.
+    native_environment.pop("XDG_CONFIG_HOME", None)
+    native_environment.pop("XDG_DATA_HOME", None)
 # Enumerate native IDs first. Podman's label-presence filter differs between
 # versions; ownership is checked against inspect labels below on both engines.
-ids = subprocess.check_output([engine, "ps", "-a", "--format", "{{.ID}}"], text=True).split()
+ids = subprocess.check_output([engine, "ps", "-a", "--format", "{{.ID}}"], text=True, env=native_environment).split()
 if not ids:
     raise SystemExit("native inventory is empty")
 # Inspect output stays in memory: credentials/environment/bind paths are never
 # printed, written or copied into the public qualification artifact.
-native = json.loads(subprocess.check_output([engine, "inspect", *ids], text=True))
+native = json.loads(subprocess.check_output([engine, "inspect", *ids], text=True, env=native_environment))
 groups = {}
 rows = []
 for item in native:
