@@ -19,16 +19,19 @@ jobs:
         runtime: [docker, podman]
     env:
       BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
-      BASEHARBOR_SOURCE_DIR: ${{ runner.temp }}/demo-core-source
-      BASEHARBOR_INSTALL_DIR: ${{ runner.temp }}/demo-bin
       BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:demo-v024
-      ARTIFACT_DIR: ${{ runner.temp }}/demo-evidence
       DEMO_ATOMIC_GATE: '1'
     steps:
       - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+      - name: Bind isolated fixture paths
+        shell: bash
+        run: |
+          echo "BASEHARBOR_SOURCE_DIR=$RUNNER_TEMP/demo-core-source" >> "$GITHUB_ENV"
+          echo "BASEHARBOR_INSTALL_DIR=$RUNNER_TEMP/demo-bin" >> "$GITHUB_ENV"
+          echo "ARTIFACT_DIR=$RUNNER_TEMP/demo-evidence" >> "$GITHUB_ENV"
       - name: Resolve immutable Core
         id: core
         shell: bash
