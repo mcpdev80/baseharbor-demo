@@ -1,0 +1,64 @@
+name: v0.4.24 targeted Demo recovery
+on:
+  push:
+    branches: [work/v0.4.24-ecosystem-release]
+permissions:
+  contents: read
+concurrency:
+  group: demo-v024-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  recovery:
+    if: contains(github.event.head_commit.message, '[demo-runtime]')
+    name: Demo install and backup recovery · ${{ matrix.runtime }}
+    runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [docker, podman]
+    env:
+      BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
+      BASEHARBOR_SOURCE_DIR: ${{ runner.temp }}/demo-core-source
+      BASEHARBOR_INSTALL_DIR: ${{ runner.temp }}/demo-bin
+      BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:demo-v024
+      ARTIFACT_DIR: ${{ runner.temp }}/demo-evidence
+      DEMO_ATOMIC_GATE: '1'
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Resolve immutable Core
+        id: core
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidate="$(cat baseharbor-core.ref)"
+          [[ "$candidate" =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$candidate" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v7.0.1
+        with:
+          repository: mcpdev80/baseharbor
+          ref: ${{ steps.core.outputs.sha }}
+          path: .core-runtime-tools
+          persist-credentials: false
+      - name: Prepare isolated rootless runtime
+        run: bash .core-runtime-tools/scripts/ci-core-rootless-runtime.sh
+      - uses: actions/setup-go@v7
+        with:
+          go-version: 1.27.2
+          cache: false
+      - name: Install exact pinned Core binary and runtime image
+        run: bash scripts/install-baseharbor.sh
+      - name: Targeted native application backup and restore
+        run: bash scripts/acceptance.sh backup-restore
+      - name: Retain public result summary
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: demo-v024-${{ matrix.runtime }}-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/demo-evidence/results.tsv
+            ${{ runner.temp }}/demo-evidence/report.md
+          if-no-files-found: warn

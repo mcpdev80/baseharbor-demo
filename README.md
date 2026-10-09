@@ -365,3 +365,5 @@ https://localhost:8080
 ```
 
 The certificate is intentionally local/self-signed in standalone mode. Under BaseHarbor, certificate issuance, projection and trust are managed by BaseHarbor instead.
+
+The v0.4.24 development candidate is pinned in `baseharbor-core.ref` to Core `8179a497295e6815cfa0cb4e8ab3371c49ac5f61`. The installer uses this immutable source by default; explicit `BASEHARBOR_SOURCE_REF` or `BASEHARBOR_VERSION` selections take precedence. Runtime qualification is recorded in Core PR #837; this branch does not authorize a pre-release.
