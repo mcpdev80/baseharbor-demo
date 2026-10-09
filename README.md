@@ -7,31 +7,31 @@
 
 This repository starts as an ordinary application repository: no committed `baseharbor.yaml`, no prepared BaseHarbor state and no provider-specific application contract.
 
-## v0.4.23 candidate
+## v0.4.24 release-candidate compatibility
 
-v0.4.23 is being qualified and is not approved for pre-release yet. The published
-release remains v0.4.22. Run candidate acceptance with an explicit immutable Core
-commit; the release candidate also pins this Demo repository to an exact commit.
+v0.4.24 is in development and has **not been published**. The current Core HA
+recovery development head is `67aec49dc9218d8f9ecbd26805df62eed4e99df3`
+([Core PR #837](https://github.com/mcpdev80/baseharbor/pull/837)).
+This is a **development reference, not a qualified immutable Demo/Core release pin**.
+Full Demo acceptance must run against the final selected Core SHA.
 
-BaseHarbor Core includes SQL, Secrets and Identity, realized by PostgreSQL,
-OpenBao and Keycloak. The Web Console is optional. When the first application
-needs Core services, guided setup offers to bootstrap them and continues the
-original application workflow only after verified Core readiness. A retry
-reconciles the same owned installation.
+The Core manages required SQL, Secrets and Identity using PostgreSQL, OpenBao
+and Keycloak. Web Console and remote Node Connector are optional ecosystem
+components and require version-matched contracts and live acceptance.
 
-The setup asks whether this is a development or deployment machine. This changes
-source/workspace defaults; TLS and protected credentials remain required. Core
-can also be set up without this Demo, another application or a repository through
-`baha up --control-plane-only`.
+The setup distinguishes developer and deployment machines. Capability
+placement can be shared or application-isolated. The first application can
+bootstrap its Core when necessary, then resume only after verified readiness.
 
-Core capabilities are mandatory; provider placement may be shared or
-application-isolated. This Demo's shared-provider examples describe its selected
-reference topology. Additional isolation can add provider instances and resource
-consumption. Use measured observations for the selected topology rather than
-assuming a universal memory minimum.
+For v0.4.24, application SQL and cache operations are `baha app sql` and
+`baha app cache`. Deprecated `app psql` and `app valkey` aliases are not
+part of the documented interface. For remote Targets, enroll and connect the
+Node before selecting that Target.
 
-An optional Console connects to one selected Core in the same installation and
-security boundary. Same-origin HTTPS is the preferred topology.
+**Release acceptance outstanding:** final joint-SHA Docker/Podman journeys,
+Node enrollment/reconnect/revocation, Console OIDC/RBAC, and completed live
+HA cutover and coordinated rollback. Older passing Demo gates do not qualify
+the final v0.4.24 candidate.
 
 ## Try it
 
