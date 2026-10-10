@@ -10,13 +10,13 @@ This repository starts as an ordinary application repository: no committed `base
 ## v0.4.24 release-candidate compatibility
 
 v0.4.24 is in development and has **not been published**. The current Core HA
-recovery development head is `c020244f32634fe84adddafb97c6e441cb0fe665`
+recovery development head is `7655c3c97525f0587c96223e658d497c61f0aa9b`
 ([Core PR #837](https://github.com/mcpdev80/baseharbor/pull/837)).
 This immutable development source is pinned in `baseharbor-core.ref`.
 Docker/Podman standard-topology acceptance passed in run `38009135327` on Core
-`ad8e2f2b923a3bb36750783c3be1a1b817b7d06f`. Subsequent Core changes affect
-HA-only credential rotation and acceptance fixtures; the default runtime paths
-are unchanged. Final ecosystem acceptance requires the matching immutable
+`ad8e2f2b923a3bb36750783c3be1a1b817b7d06f`. Subsequent Core changes correct HA-only credential rotation, CLI/MCP handling
+and diagnostics; standard provider topology and engine ownership are unchanged.
+CLI/MCP corrections have targeted local regression and joint native qualification. Final ecosystem acceptance requires the matching immutable
 Core, Console and Node Connector commits.
 
 The Core manages required SQL, Secrets and Identity using PostgreSQL, OpenBao
@@ -33,9 +33,9 @@ part of the documented interface. For remote Targets, enroll and connect the
 Node before selecting that Target.
 
 **Release acceptance outstanding:** final joint-SHA Docker/Podman journeys,
-Node enrollment/reconnect/revocation, Console OIDC/RBAC, and completed live
-HA cutover and coordinated rollback. Older passing Demo gates do not qualify
-the final v0.4.24 candidate.
+Node enrollment/reconnect/revocation and Console OIDC/RBAC. Core native HA
+cutover/recovery and standard Demo topology already have targeted evidence;
+source scopes and final qualification are recorded in Core PR #837.
 
 ## Try it
 
@@ -370,6 +370,6 @@ https://localhost:8080
 
 The certificate is intentionally local/self-signed in standalone mode. Under BaseHarbor, certificate issuance, projection and trust are managed by BaseHarbor instead.
 
-The v0.4.24 development candidate is pinned in `baseharbor-core.ref` to Core `c020244f32634fe84adddafb97c6e441cb0fe665`. The installer uses this immutable source by default; explicit `BASEHARBOR_SOURCE_REF` or `BASEHARBOR_VERSION` selections take precedence. Native default-topology, reconciliation and backup/restore qualification is recorded in Core PR #837 and issue #851; this branch does not authorize a pre-release.
+The v0.4.24 development candidate is pinned in `baseharbor-core.ref` to Core `7655c3c97525f0587c96223e658d497c61f0aa9b`. The installer uses this immutable source by default; explicit `BASEHARBOR_SOURCE_REF` or `BASEHARBOR_VERSION` selections take precedence. Native default-topology, reconciliation and backup/restore qualification is recorded in Core PR #837 and issue #851; this branch does not authorize a pre-release.
 
 Shared cache bindings supply `REDIS_KEY_PREFIX` / `VALKEY_KEY_PREFIX`; the demo prefixes its keys so separate applications can safely consume one Core-owned Valkey provider. Native qualification rejects additional Shared SQL deployments, including a separate Keycloak database server. AppScoped remains an explicit independent deployment.
