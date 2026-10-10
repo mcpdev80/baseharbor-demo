@@ -38,12 +38,14 @@ for item in native:
     if not project.startswith("bh-" + target + "-"):
         continue
     image = str(config.get("Image") or item.get("ImageName") or "")
+    # Native inspect may return a digest-only reference without a tag.
+    image_repository = image.split("@", 1)[0].rsplit("/", 1)[-1].split(":", 1)[0]
     running = bool((item.get("State") or {}).get("Running"))
     auxiliary = bool(re.search(r"(?:-admin|-init|-access|-ui)$|sentinel|etcd", service))
     provider = ""
     if not auxiliary:
         for name, marker in [("postgresql", "postgres:"), ("postgresql", "spilo-"), ("openbao", "openbao:"), ("keycloak", "keycloak:"), ("seaweedfs", "seaweedfs:"), ("valkey", "valkey:"), ("prometheus", "prometheus:"), ("otel-collector", "opentelemetry-collector"), ("loki", "loki:"), ("tempo", "tempo:"), ("rabbitmq", "rabbitmq:"), ("mongodb", "mongo:")]:
-            if marker in image:
+            if (image_repository == marker[:-1] if marker.endswith(":") else marker in image_repository):
                 provider = name
                 break
     if provider:

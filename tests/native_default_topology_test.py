@@ -40,6 +40,26 @@ class NativeTopologyQualificationTests(unittest.TestCase):
             self.assertNotIn("foreign-project", result)
             self.assertTrue(all(m["count"] == 1 for m in json.loads(result)["members"]))
 
+    def test_digest_pinned_native_provider_images_are_classified(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / "qualified.json"
+            containers = self.fixture()
+            for item in containers:
+                repository = item["Config"]["Image"].rsplit(":", 1)[0]
+                item["Config"]["Image"] = repository + "@sha256:" + "b" * 64
+            self.invoke(containers, path)
+            self.assertEqual({m["provider"] for m in json.loads(path.read_text())["members"]},
+                             {"postgresql", "openbao", "keycloak", "seaweedfs", "valkey", "loki"})
+
+    def test_foreign_digest_pinned_keycloak_cannot_satisfy_required_provider(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / "qualified.json"
+            containers = [c for c in self.fixture() if c["Config"]["Labels"]["com.docker.compose.service"] != "keycloak-1"]
+            containers.append(self.container("keycloak-1", "quay.io/keycloak/keycloak@sha256:" + "b" * 64, "foreign-project"))
+            with self.assertRaisesRegex(SystemExit, "required native default providers absent: keycloak"):
+                self.invoke(containers, path)
+            self.assertFalse(path.exists())
+
     def test_native_extra_data_member_blocks_default_acceptance(self):
         with tempfile.TemporaryDirectory() as root:
             path = Path(root) / "qualified.json"
