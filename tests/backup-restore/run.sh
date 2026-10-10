@@ -38,7 +38,8 @@ needle = "    - name: APP_SECRET\n"
 replacement = "    - name: APP_SECRET\n      generate:\n        type: random\n        length: 32\n"
 if needle not in s:
     raise SystemExit("APP_SECRET requirement not found in generated manifest")
-p.write_text(s.replace(needle, replacement, 1))
+s = s.replace(needle, replacement, 1)
+p.write_text(s)
 PY
 
   cat >> baseharbor.yaml <<'EOF'
@@ -67,6 +68,9 @@ EOF
 )
 
 api_host="demo.baha.localhost"
+python3 "$DEMO_ROOT/tests/native-default-topology.py" --output "$ARTIFACT_DIR/native-topology-before.json"
+( cd "$DEMO_ROOT" && "$BAHA" up --yes )
+python3 "$DEMO_ROOT/tests/native-default-topology.py" --output "$ARTIFACT_DIR/native-topology-repeated-up.json"
 gateway_port="$(dev_gateway_port)"
 base="$(dev_gateway_url "$api_host")"
 gateway_ca="$XDG_DATA_HOME/baseharbor/targets/$BASEHARBOR_TARGET/developer-access/dev/gateway/runtime/ca.pem"
@@ -116,6 +120,7 @@ curl -sS --cacert "$gateway_ca" --resolve "$api_host:$gateway_port:127.0.0.1" -o
 )
 
 grep -q '^READY' "$ARTIFACT_DIR/restore-doctor.txt"
+python3 "$DEMO_ROOT/tests/native-default-topology.py" --output "$ARTIFACT_DIR/native-topology-after-restore.json"
 
 post_restore_ready=false
 for attempt in 1 2 3 4 5 6; do

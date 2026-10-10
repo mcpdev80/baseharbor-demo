@@ -4,6 +4,11 @@ set -euo pipefail
 install_dir="${BASEHARBOR_INSTALL_DIR:-$PWD/.tools/bin}"
 source_ref="${BASEHARBOR_SOURCE_REF:-}"
 version="${BASEHARBOR_VERSION:-}"
+if [ -z "$source_ref" ] && [ -z "$version" ]; then
+  candidate_file="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/baseharbor-core.ref"
+  source_ref="$(cat "$candidate_file")"
+  [[ "$source_ref" =~ ^[0-9a-f]{40}$ ]] || { echo "Invalid immutable Core candidate." >&2; exit 1; }
+fi
 container_cli="${BASEHARBOR_TEST_RUNTIME:-}"
 if [ -z "$container_cli" ]; then
   if command -v docker >/dev/null 2>&1; then

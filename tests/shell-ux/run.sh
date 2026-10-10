@@ -23,10 +23,7 @@ mkdir -p "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_CACHE_HOME"
 
 (
   cd "$fixture_repository"
-  "$BAHA" app init demo \
-    --environment dev \
-    --workload-source compose:compose.yaml \
-    --workload-component demo-app >/dev/null
+  python3 "$DEMO_ROOT/tests/static-adopt-fixture.py" "$BAHA" "$fixture_repository" demo demo-app "$ARTIFACT_DIR/shell-source-adopt.json"
 )
 
 section "Bash completion, shell integration and Target-aware prompt"

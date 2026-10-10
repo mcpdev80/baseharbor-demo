@@ -7,31 +7,15 @@
 
 This repository starts as an ordinary application repository: no committed `baseharbor.yaml`, no prepared BaseHarbor state and no provider-specific application contract.
 
-## v0.4.23 candidate
+## BaseHarbor v0.4.24 compatibility
 
-v0.4.23 is being qualified and is not approved for pre-release yet. The published
-release remains v0.4.22. Run candidate acceptance with an explicit immutable Core
-commit; the release candidate also pins this Demo repository to an exact commit.
+The v0.4.24 candidate has completed Docker/Podman pre-release validation; publication is still pending. `baseharbor-core.ref` is the authoritative immutable Core source used by this demo. Documentation updates do not change that tested source.
 
-BaseHarbor Core includes SQL, Secrets and Identity, realized by PostgreSQL,
-OpenBao and Keycloak. The Web Console is optional. When the first application
-needs Core services, guided setup offers to bootstrap them and continues the
-original application workflow only after verified Core readiness. A retry
-reconciles the same owned installation.
+Core provides mandatory SQL, Secrets and Identity through PostgreSQL, OpenBao and Keycloak. Shared consumers reuse Core-owned providers with separate database users and cache namespaces; HA requires explicit intent. The first application can bootstrap Core when needed and continue after verified readiness.
 
-The setup asks whether this is a development or deployment machine. This changes
-source/workspace defaults; TLS and protected credentials remain required. Core
-can also be set up without this Demo, another application or a repository through
-`baha up --control-plane-only`.
+Use `baha app sql` and `baha app cache` for application data access. For remote Targets, enroll and connect the Node Connector before selecting the Target. The optional Console uses the same protected Core operations.
 
-Core capabilities are mandatory; provider placement may be shared or
-application-isolated. This Demo's shared-provider examples describe its selected
-reference topology. Additional isolation can add provider instances and resource
-consumption. Use measured observations for the selected topology rather than
-assuming a universal memory minimum.
-
-An optional Console connects to one selected Core in the same installation and
-security boundary. Same-origin HTTPS is the preferred topology.
+The completed joint native acceptance covers demo journeys, managed enrollment, reconnect/revocation, Console OIDC/RBAC, remote application lifecycle, logs, terminal and credential/CA rotation. Release status and qualification are recorded in [Core PR #837](https://github.com/mcpdev80/baseharbor/pull/837).
 
 ## Try it
 
@@ -91,7 +75,7 @@ baha doctor
 The demo UI exercises real integrations for:
 
 - shared PostgreSQL with an application-isolated database and role
-- shared Valkey provider lifecycle with an application-isolated cache service
+- shared Valkey with application-isolated ACL credentials and key prefixes
 - S3-compatible object storage
 - secrets
 - metrics
@@ -324,7 +308,7 @@ The application describes what it needs. BaseHarbor decides how that intent is r
 Against a published BaseHarbor release:
 
 ```bash
-BASEHARBOR_VERSION=v0.4.22 bash scripts/acceptance.sh
+BASEHARBOR_SOURCE_REF="$(cat baseharbor-core.ref)" bash scripts/acceptance.sh
 ```
 
 Against a candidate commit or ref:
@@ -365,3 +349,7 @@ https://localhost:8080
 ```
 
 The certificate is intentionally local/self-signed in standalone mode. Under BaseHarbor, certificate issuance, projection and trust are managed by BaseHarbor instead.
+
+The v0.4.24 tested Core source is pinned in `baseharbor-core.ref`. The installer uses that immutable source by default; explicit `BASEHARBOR_SOURCE_REF` or `BASEHARBOR_VERSION` selections take precedence. Use the source pin while v0.4.24 is not yet published. Standard topology, reconciliation and backup/restore have completed native acceptance; see [Core PR #837](https://github.com/mcpdev80/baseharbor/pull/837).
+
+Shared cache bindings supply `REDIS_KEY_PREFIX` / `VALKEY_KEY_PREFIX`; the demo prefixes its keys so separate applications can safely consume one Core-owned Valkey provider. Native qualification rejects additional Shared SQL deployments, including a separate Keycloak database server. AppScoped remains an explicit independent deployment.

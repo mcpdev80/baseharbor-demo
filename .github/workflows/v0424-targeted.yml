@@ -1,0 +1,69 @@
+name: v0.4.24 targeted Demo recovery
+on:
+  push:
+    branches: [work/v0.4.24-ecosystem-release]
+permissions:
+  contents: read
+concurrency:
+  group: demo-v024-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  recovery:
+    if: contains(github.event.head_commit.message, '[demo-runtime]') || contains(github.event.head_commit.message, '[demo-podman-runtime]') || contains(github.event.head_commit.message, '[demo-docker-runtime]')
+    name: Demo install and backup recovery · ${{ matrix.runtime }}
+    runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: ${{ fromJSON(contains(github.event.head_commit.message, '[demo-podman-runtime]') && '["podman"]' || contains(github.event.head_commit.message, '[demo-docker-runtime]') && '["docker"]' || '["docker","podman"]') }}
+    env:
+      BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
+      BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:demo-v024
+      DEMO_ATOMIC_GATE: '1'
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Bind isolated fixture paths
+        shell: bash
+        run: |
+          echo "BASEHARBOR_SOURCE_DIR=$RUNNER_TEMP/demo-core-source" >> "$GITHUB_ENV"
+          echo "BASEHARBOR_INSTALL_DIR=$RUNNER_TEMP/demo-bin" >> "$GITHUB_ENV"
+          echo "ARTIFACT_DIR=$RUNNER_TEMP/demo-evidence" >> "$GITHUB_ENV"
+      - name: Resolve immutable Core
+        id: core
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidate="$(cat baseharbor-core.ref)"
+          [[ "$candidate" =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$candidate" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v7.0.1
+        with:
+          repository: mcpdev80/baseharbor
+          ref: ${{ steps.core.outputs.sha }}
+          path: .core-runtime-tools
+          persist-credentials: false
+      - name: Prepare isolated rootless runtime
+        run: bash .core-runtime-tools/scripts/ci-core-rootless-runtime.sh
+      - uses: actions/setup-go@v7
+        with:
+          go-version: 1.27.2
+          cache: false
+      - name: Install exact pinned Core binary and runtime image
+        run: bash scripts/install-baseharbor.sh
+      - name: Targeted native application backup and restore
+        run: bash scripts/acceptance.sh backup-restore
+      - name: Retain public result summary
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: demo-v024-${{ matrix.runtime }}-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/demo-evidence/results.tsv
+            ${{ runner.temp }}/demo-evidence/report.md
+            ${{ runner.temp }}/demo-evidence/native-topology-*.json
+            ${{ runner.temp }}/baseharbor-public-image-cache-${{ matrix.runtime }}.log
+          if-no-files-found: warn
