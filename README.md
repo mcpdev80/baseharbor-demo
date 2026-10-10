@@ -7,35 +7,15 @@
 
 This repository starts as an ordinary application repository: no committed `baseharbor.yaml`, no prepared BaseHarbor state and no provider-specific application contract.
 
-## v0.4.24 release-candidate compatibility
+## BaseHarbor v0.4.24 compatibility
 
-v0.4.24 is in development and has **not been published**. The current Core HA
-recovery development head is `d5417bde378b130b831d847e7d6ced5322d4997a`
-([Core PR #837](https://github.com/mcpdev80/baseharbor/pull/837)).
-This immutable development source is pinned in `baseharbor-core.ref`.
-Docker/Podman standard-topology acceptance passed in run `38009135327` on Core
-`ad8e2f2b923a3bb36750783c3be1a1b817b7d06f`. Subsequent Core changes correct HA-only credential rotation, CLI/MCP handling
-and diagnostics; standard provider topology and engine ownership are unchanged.
-CLI/MCP corrections have targeted local regression and joint native qualification. Final ecosystem acceptance requires the matching immutable
-Core, Console and Node Connector commits.
+The v0.4.24 candidate has completed Docker/Podman pre-release validation; publication is still pending. `baseharbor-core.ref` is the authoritative immutable Core source used by this demo. Documentation updates do not change that tested source.
 
-The Core manages required SQL, Secrets and Identity using PostgreSQL, OpenBao
-and Keycloak. Web Console and remote Node Connector are optional ecosystem
-components and require version-matched contracts and live acceptance.
+Core provides mandatory SQL, Secrets and Identity through PostgreSQL, OpenBao and Keycloak. Shared consumers reuse Core-owned providers with separate database users and cache namespaces; HA requires explicit intent. The first application can bootstrap Core when needed and continue after verified readiness.
 
-The setup distinguishes developer and deployment machines. Capability
-placement can be shared or application-isolated. The first application can
-bootstrap its Core when necessary, then resume only after verified readiness.
+Use `baha app sql` and `baha app cache` for application data access. For remote Targets, enroll and connect the Node Connector before selecting the Target. The optional Console uses the same protected Core operations.
 
-For v0.4.24, application SQL and cache operations are `baha app sql` and
-`baha app cache`. Deprecated `app psql` and `app valkey` aliases are not
-part of the documented interface. For remote Targets, enroll and connect the
-Node before selecting that Target.
-
-**Release acceptance outstanding:** final joint-SHA Docker/Podman journeys,
-Node enrollment/reconnect/revocation and Console OIDC/RBAC. Core native HA
-cutover/recovery and standard Demo topology already have targeted evidence;
-source scopes and final qualification are recorded in Core PR #837.
+The completed joint native acceptance covers demo journeys, managed enrollment, reconnect/revocation, Console OIDC/RBAC, remote application lifecycle, logs, terminal and credential/CA rotation. Release status and qualification are recorded in [Core PR #837](https://github.com/mcpdev80/baseharbor/pull/837).
 
 ## Try it
 
@@ -328,7 +308,7 @@ The application describes what it needs. BaseHarbor decides how that intent is r
 Against a published BaseHarbor release:
 
 ```bash
-BASEHARBOR_VERSION=v0.4.22 bash scripts/acceptance.sh
+BASEHARBOR_SOURCE_REF="$(cat baseharbor-core.ref)" bash scripts/acceptance.sh
 ```
 
 Against a candidate commit or ref:
@@ -370,6 +350,6 @@ https://localhost:8080
 
 The certificate is intentionally local/self-signed in standalone mode. Under BaseHarbor, certificate issuance, projection and trust are managed by BaseHarbor instead.
 
-The v0.4.24 development candidate is pinned in `baseharbor-core.ref` to Core `d5417bde378b130b831d847e7d6ced5322d4997a`. The installer uses this immutable source by default; explicit `BASEHARBOR_SOURCE_REF` or `BASEHARBOR_VERSION` selections take precedence. Native default-topology, reconciliation and backup/restore qualification is recorded in Core PR #837 and issue #851; this branch does not authorize a pre-release.
+The v0.4.24 tested Core source is pinned in `baseharbor-core.ref`. The installer uses that immutable source by default; explicit `BASEHARBOR_SOURCE_REF` or `BASEHARBOR_VERSION` selections take precedence. Use the source pin while v0.4.24 is not yet published. Standard topology, reconciliation and backup/restore have completed native acceptance; see [Core PR #837](https://github.com/mcpdev80/baseharbor/pull/837).
 
 Shared cache bindings supply `REDIS_KEY_PREFIX` / `VALKEY_KEY_PREFIX`; the demo prefixes its keys so separate applications can safely consume one Core-owned Valkey provider. Native qualification rejects additional Shared SQL deployments, including a separate Keycloak database server. AppScoped remains an explicit independent deployment.
