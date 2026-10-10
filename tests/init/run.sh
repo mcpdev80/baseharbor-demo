@@ -17,7 +17,16 @@ before="$(sha256sum "$workdir/compose.yaml" | awk '{print $1}')"
   "$BAHA" app inspect . | tee "$ARTIFACT_DIR/inspect.txt"
   "$BAHA" app inspect . -o json > "$ARTIFACT_DIR/inspect.json"
   jq -e . "$ARTIFACT_DIR/inspect.json" >/dev/null
-  "$BAHA" app init --quick | tee "$ARTIFACT_DIR/init-quick.txt"
+  if "$BAHA" init --quick --json > "$ARTIFACT_DIR/init-no-core.json" 2>&1; then
+    fail "Initialization consent" "fresh noninteractive initialization accepted a missing Core"
+  fi
+  jq -e '.error.cause == "core_required"' "$ARTIFACT_DIR/init-no-core.json" >/dev/null
+  test ! -e baseharbor.yaml
+  test ! -e .baseharbor
+  python3 "$DEMO_ROOT/tests/static-adopt-fixture.py" "$BAHA" "$workdir" demo demo-app "$ARTIFACT_DIR/source-adopt.json"
+  manifest_before="$(sha256sum baseharbor.yaml | awk '{print $1}')"
+  "$BAHA" init --quick | tee "$ARTIFACT_DIR/init-quick.txt"
+  test "$manifest_before" = "$(sha256sum baseharbor.yaml | awk '{print $1}')"
 )
 
 after="$(sha256sum "$workdir/compose.yaml" | awk '{print $1}')"
@@ -38,8 +47,6 @@ jq -e '.workload_source_resolution.selected.kind == "compose"' "$ARTIFACT_DIR/in
 jq -e '.workload_source_resolution.selected.path == "compose.yaml"' "$ARTIFACT_DIR/inspect.json" >/dev/null
 jq -e '.workload_evidence.components[] | select(.id == "demo-app")' "$ARTIFACT_DIR/inspect.json" >/dev/null
 
-grep -q '^runtime:' "$workdir/baseharbor.yaml"
-
 # Suggested-only OTLP/log collection and heuristic secret names are intentionally
 # not promoted into the portable contract by --quick.
 assert_no_grep_match -q '^telemetry:' "$workdir/baseharbor.yaml"
@@ -47,4 +54,5 @@ assert_no_grep_match -q '^logs:' "$workdir/baseharbor.yaml"
 assert_no_grep_match -q '^secrets:' "$workdir/baseharbor.yaml"
 
 pass "Repository Inspection" "read-only human + standardized source-resolution JSON"
-pass "Application Init Quick" "single-source Compose -> source-neutral workload.components; no source metadata needed"
+pass "Initialization consent" "missing Core fails closed without repository mutation; real first-use bootstrap is covered by native guided gates"
+pass "Application Init Quick" "explicit MCP source authoring and idempotent CLI quick init preserve source-neutral workload.components and existing intent"
