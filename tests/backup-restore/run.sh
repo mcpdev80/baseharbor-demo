@@ -39,11 +39,6 @@ replacement = "    - name: APP_SECRET\n      generate:\n        type: random\n  
 if needle not in s:
     raise SystemExit("APP_SECRET requirement not found in generated manifest")
 s = s.replace(needle, replacement, 1)
-# Identity is selected through the portable manifest, not an app-init flag.
-services = "\nservices:\n"
-if s.count(services) != 1:
-    raise SystemExit("services section not found in generated recovery manifest")
-s = s.replace(services, services + "  identity:\n    enabled: true\n", 1)
 p.write_text(s)
 PY
 
