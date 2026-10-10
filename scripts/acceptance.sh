@@ -54,24 +54,36 @@ printf '[acceptance] target: creating %s on %s\n' "$BASEHARBOR_TARGET" "$BASEHAR
   --default >/dev/null
 printf '[acceptance] target: ready\n'
 
+# BaseHarbor keeps Podman storage in the host runtime context. The demo's
+# XDG directories isolate application state, not container storage.
+runtime_cmd() {
+  if [ "$BASEHARBOR_TEST_RUNTIME" = podman ]; then
+    env -u XDG_CONFIG_HOME -u XDG_DATA_HOME podman "$@"
+  else
+    docker "$@"
+  fi
+}
+
 cleanup() {
   status=$?
   set +e
   cd "$DEMO_ROOT"
   printf '[acceptance] cleanup: begin (exit=%s)\n' "$status" >&2
-  "$BASEHARBOR_TEST_RUNTIME" ps -q | xargs -r "$BASEHARBOR_TEST_RUNTIME" unpause >/dev/null 2>&1
+  for id in $(runtime_cmd ps -q 2>/dev/null); do
+    runtime_cmd unpause "$id" >/dev/null 2>&1 || true
+  done
 
   if [ "$status" -ne 0 ]; then
     diagnostics="$ARTIFACT_DIR/runtime-diagnostics"
     mkdir -p "$diagnostics"
-    "$BASEHARBOR_TEST_RUNTIME" ps -a --format '{{.ID}}\t{{.Names}}\t{{.Status}}\t{{.Image}}' >"$diagnostics/containers.tsv" 2>&1 || true
-    for id in $("$BASEHARBOR_TEST_RUNTIME" ps -aq 2>/dev/null); do
-      name=$("$BASEHARBOR_TEST_RUNTIME" inspect --format '{{.Name}}' "$id" 2>/dev/null | sed 's#^/##')
+    runtime_cmd ps -a --format '{{.ID}}\t{{.Names}}\t{{.Status}}\t{{.Image}}' >"$diagnostics/containers.tsv" 2>&1 || true
+    for id in $(runtime_cmd ps -aq 2>/dev/null); do
+      name=$(runtime_cmd inspect --format '{{.Name}}' "$id" 2>/dev/null | sed 's#^/##')
       [ -n "$name" ] || name="$id"
       safe_name=$(printf '%s' "$name" | tr '/: ' '___')
-      "$BASEHARBOR_TEST_RUNTIME" inspect --format '{{json .State}}' "$id" >"$diagnostics/$safe_name.state.json" 2>&1 || true
-      "$BASEHARBOR_TEST_RUNTIME" inspect --format 'image={{.Config.Image}} name={{.Name}}' "$id" >"$diagnostics/$safe_name.identity.txt" 2>&1 || true
-      "$BASEHARBOR_TEST_RUNTIME" logs --tail 300 "$id" 2>&1 \
+      runtime_cmd inspect --format '{{json .State}}' "$id" >"$diagnostics/$safe_name.state.json" 2>&1 || true
+      runtime_cmd inspect --format 'image={{.Config.Image}} name={{.Name}}' "$id" >"$diagnostics/$safe_name.identity.txt" 2>&1 || true
+      runtime_cmd logs --tail 300 "$id" 2>&1 \
         | sed -E 's/([Pp]assword|[Ss]ecret|[Tt]oken|[Aa]ccess[_-]?[Kk]ey)([=: ]+)[^[:space:]]+/\1\2<redacted>/g' \
         >"$diagnostics/$safe_name.log" || true
     done
