@@ -21,7 +21,6 @@ rm -rf "$DEMO_ROOT/.baseharbor" "$DEMO_ROOT/baseharbor.yaml" "$DEMO_ROOT/basehar
     --environment dev \
     --sql \
     --cache \
-    --identity \
     --s3-bucket uploads \
     --require-secret APP_SECRET \
     --workload-source compose:compose.yaml \
@@ -39,7 +38,13 @@ needle = "    - name: APP_SECRET\n"
 replacement = "    - name: APP_SECRET\n      generate:\n        type: random\n        length: 32\n"
 if needle not in s:
     raise SystemExit("APP_SECRET requirement not found in generated manifest")
-p.write_text(s.replace(needle, replacement, 1))
+s = s.replace(needle, replacement, 1)
+# Identity is selected through the portable manifest, not an app-init flag.
+services = "\nservices:\n"
+if s.count(services) != 1:
+    raise SystemExit("services section not found in generated recovery manifest")
+s = s.replace(services, services + "  identity:\n    enabled: true\n", 1)
+p.write_text(s)
 PY
 
   cat >> baseharbor.yaml <<'EOF'
