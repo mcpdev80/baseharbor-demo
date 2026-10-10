@@ -245,7 +245,7 @@ up_rules = [
 ]
 
 print("[phase] guided init: interactive capability selection", flush=True)
-run_tty("guided-init", [BAHA, "app", "init"], init_rules, no_output_timeout=120)
+run_tty("guided-init", [BAHA, "init"], init_rules, no_output_timeout=120)
 print("[phase] guided up: provision providers, bindings and workload", flush=True)
 run_tty(
     "guided-up",

@@ -21,6 +21,7 @@ rm -rf "$DEMO_ROOT/.baseharbor" "$DEMO_ROOT/baseharbor.yaml" "$DEMO_ROOT/basehar
     --environment dev \
     --sql \
     --cache \
+    --identity \
     --s3-bucket uploads \
     --require-secret APP_SECRET \
     --workload-source compose:compose.yaml \

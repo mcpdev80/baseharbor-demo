@@ -17,10 +17,16 @@ before="$(sha256sum "$workdir/compose.yaml" | awk '{print $1}')"
   "$BAHA" app inspect . | tee "$ARTIFACT_DIR/inspect.txt"
   "$BAHA" app inspect . -o json > "$ARTIFACT_DIR/inspect.json"
   jq -e . "$ARTIFACT_DIR/inspect.json" >/dev/null
-  if "$BAHA" init --quick --json > "$ARTIFACT_DIR/init-no-core.json" 2>&1; then
-    fail "Initialization consent" "fresh noninteractive initialization accepted a missing Core"
-  fi
-  jq -e '.error.cause == "core_required"' "$ARTIFACT_DIR/init-no-core.json" >/dev/null
+  (
+    # Full journeys already have a Core; the negative case owns isolated state.
+    export BASEHARBOR_STATE_DIR="$workdir/no-core-state"
+    export BASEHARBOR_TARGET=init-consent-fixture
+    "$BAHA" target create "$BASEHARBOR_TARGET" --provider docker --access local-docker --reference local --scope default --default >/dev/null
+    if "$BAHA" init --quick --json > "$ARTIFACT_DIR/init-no-core.json" 2>&1; then
+      fail "Initialization consent" "fresh noninteractive initialization accepted a missing Core"
+    fi
+    jq -e '.error.cause == "core_required"' "$ARTIFACT_DIR/init-no-core.json" >/dev/null
+  )
   test ! -e baseharbor.yaml
   test ! -e .baseharbor
   python3 "$DEMO_ROOT/tests/static-adopt-fixture.py" "$BAHA" "$workdir" demo demo-app "$ARTIFACT_DIR/source-adopt.json"
