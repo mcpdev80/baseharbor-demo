@@ -60,6 +60,18 @@ class NativeTopologyQualificationTests(unittest.TestCase):
                 self.invoke(containers, path)
             self.assertFalse(path.exists())
 
+    def test_numbered_provider_admin_helpers_do_not_count_as_data_members(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / "qualified.json"
+            helpers = [self.container("seaweedfs-admin-1", "chrislusf/seaweedfs:4"),
+                       self.container("postgres-admin-1", "postgres:18"),
+                       self.container("keycloak-init-1", "quay.io/keycloak/keycloak:26")]
+            self.invoke(self.fixture() + helpers, path)
+            result = json.loads(path.read_text())
+            self.assertTrue(all(m["count"] == 1 for m in result["members"]))
+            self.assertTrue(all(row["role"] == "auxiliary" for row in result["services"]
+                                if row["service"] in {"seaweedfs-admin-1", "postgres-admin-1", "keycloak-init-1"}))
+
     def test_native_extra_data_member_blocks_default_acceptance(self):
         with tempfile.TemporaryDirectory() as root:
             path = Path(root) / "qualified.json"

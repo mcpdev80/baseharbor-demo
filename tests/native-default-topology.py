@@ -41,7 +41,7 @@ for item in native:
     # Native inspect may return a digest-only reference without a tag.
     image_repository = image.split("@", 1)[0].rsplit("/", 1)[-1].split(":", 1)[0]
     running = bool((item.get("State") or {}).get("Running"))
-    auxiliary = bool(re.search(r"(?:-admin|-init|-access|-ui)$|sentinel|etcd", service))
+    auxiliary = bool(re.search(r"(?:-admin|-init|-access|-ui)(?:-[1-9][0-9]*)?$|sentinel|etcd", service))
     provider = ""
     if not auxiliary:
         for name, marker in [("postgresql", "postgres:"), ("postgresql", "spilo-"), ("openbao", "openbao:"), ("keycloak", "keycloak:"), ("seaweedfs", "seaweedfs:"), ("valkey", "valkey:"), ("prometheus", "prometheus:"), ("otel-collector", "opentelemetry-collector"), ("loki", "loki:"), ("tempo", "tempo:"), ("rabbitmq", "rabbitmq:"), ("mongodb", "mongo:")]:
