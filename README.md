@@ -7,15 +7,23 @@
 
 This repository starts as an ordinary application repository: no committed `baseharbor.yaml`, no prepared BaseHarbor state and no provider-specific application contract.
 
-## BaseHarbor v0.4.24 compatibility
+## BaseHarbor v0.4.25 candidate compatibility
 
-The v0.4.24 candidate has completed Docker/Podman pre-release validation; publication is still pending. `baseharbor-core.ref` is the authoritative immutable Core source used by this demo. Documentation updates do not change that tested source.
+This branch prepares the demo for the v0.4.25 candidate; it is not a published
+release or a completed native acceptance claim. `baseharbor-core.ref` pins the
+exact Core source. Candidate evidence is recorded in [Core PR #881](https://github.com/mcpdev80/baseharbor/pull/881).
 
-Core provides mandatory SQL, Secrets and Identity through PostgreSQL, OpenBao and Keycloak. Shared consumers reuse Core-owned providers with separate database users and cache namespaces; HA requires explicit intent. The first application can bootstrap Core when needed and continue after verified readiness.
+This demo explicitly requests managed SQL and other capabilities; it therefore
+uses compatible existing providers or consented management Core setup. The
+management Core still includes SQL, Secrets and Identity. Other supported local
+applications without managed capability requirements can run without Core or
+login; SQL is no longer implicit. The existing ordinary application and service
+binding paths remain the compatibility test, not a new application SDK.
 
-Use `baha app sql` and `baha app cache` for application data access. For remote Targets, enroll and connect the Node Connector before selecting the Target. The optional Console uses the same protected Core operations.
-
-The completed joint native acceptance covers demo journeys, managed enrollment, reconnect/revocation, Console OIDC/RBAC, remote application lifecycle, logs, terminal and credential/CA rotation. Release status and qualification are recorded in [Core PR #837](https://github.com/mcpdev80/baseharbor/pull/837).
+Use `baha app sql` and `baha app cache`. Remote Targets require enrolled Node
+Connector access; Console uses the protected Core API. Native acceptance must
+prove Docker/rootless Podman lifecycle, backup/recovery and foreign ownership
+preservation with this immutable source before readiness is declared.
 
 ## Try it
 
