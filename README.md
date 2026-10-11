@@ -17,7 +17,8 @@ This demo explicitly requests managed SQL and other capabilities; it therefore
 uses compatible existing providers or consented management Core setup. The
 management Core still includes SQL, Secrets and Identity. Other supported local
 applications without managed capability requirements can run without Core or
-login; SQL is no longer implicit. The existing ordinary application and service
+login; SQL is no longer implicit. BaseHarbor generates application IDs during
+explicit initialization; neither authored YAML nor MCP clients supply an ID. The existing ordinary application and service
 binding paths remain the compatibility test, not a new application SDK.
 
 Use `baha app sql` and `baha app cache`. Remote Targets require enrolled Node
@@ -358,6 +359,6 @@ https://localhost:8080
 
 The certificate is intentionally local/self-signed in standalone mode. Under BaseHarbor, certificate issuance, projection and trust are managed by BaseHarbor instead.
 
-The v0.4.24 tested Core source is pinned in `baseharbor-core.ref`. The installer uses that immutable source by default; explicit `BASEHARBOR_SOURCE_REF` or `BASEHARBOR_VERSION` selections take precedence. Use the source pin while v0.4.24 is not yet published. Standard topology, reconciliation and backup/restore have completed native acceptance; see [Core PR #837](https://github.com/mcpdev80/baseharbor/pull/837).
+The candidate Core source is pinned in `baseharbor-core.ref`. The installer uses that immutable source by default; explicit `BASEHARBOR_SOURCE_REF` or `BASEHARBOR_VERSION` selections take precedence. Candidate compatibility and runtime acceptance are recorded against their actual Core/Demo sources in [Core PR #881](https://github.com/mcpdev80/baseharbor/pull/881); historical acceptance does not qualify a changed candidate.
 
 Shared cache bindings supply `REDIS_KEY_PREFIX` / `VALKEY_KEY_PREFIX`; the demo prefixes its keys so separate applications can safely consume one Core-owned Valkey provider. Native qualification rejects additional Shared SQL deployments, including a separate Keycloak database server. AppScoped remains an explicit independent deployment.

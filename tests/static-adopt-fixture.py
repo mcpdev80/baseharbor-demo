@@ -6,7 +6,6 @@ import pathlib
 import selectors
 import subprocess
 import sys
-import uuid
 
 baha, repository, name, component, output = sys.argv[1:]
 repository = pathlib.Path(repository).resolve()
@@ -49,8 +48,8 @@ try:
     tools = call(2, "tools/list", {})["tools"]
     tool = next(tool for tool in tools if tool["name"] == "baseharbor.app.adopt")
     intent = empty_value(tool["inputSchema"]["properties"]["intent"])
-    intent.update(Version=1, ApplicationID=str(uuid.uuid4()), Name=name, Environment="dev")
-    intent["Workload"]["Components"] = [component]
+    intent.update(Version=1, Name=name, Environment="dev")
+    intent["Workload"] = {"Components": [component]}
     args = {"repository": str(repository), "intent": intent}
     result = call(3, "tools/call", {"name": tool["name"], "arguments": args})
     if result.get("isError"):
