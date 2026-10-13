@@ -92,6 +92,7 @@ jq -r '.object' "$ARTIFACT_DIR/recovery-s3-seed.json" > "$ARTIFACT_DIR/recovery-
   | jq -e '.present==true and .value_exposed==false' >/dev/null
 
 curl -sS --cacert "$gateway_ca" --resolve "$api_host:$gateway_port:127.0.0.1" -o /dev/null "$base/recovery-marker-v0417" || true
+python3 "$DEMO_ROOT/tests/recovery-continuity.py" capture --private-state "$BASEHARBOR_DEMO_FIXTURE/recovery-continuity.json"
 
 (
   cd "$DEMO_ROOT"
@@ -104,7 +105,7 @@ curl -sS --cacert "$gateway_ca" --resolve "$api_host:$gateway_port:127.0.0.1" -o
 
   run_consented "$BAHA" app destroy --yes
 
-  "$BAHA" app restore "$ARTIFACT_DIR/demo.bhbackup" \
+  run_consented "$BAHA" app restore "$ARTIFACT_DIR/demo.bhbackup" \
     --password-file "$ARTIFACT_DIR/backup.pass" \
     > "$ARTIFACT_DIR/restore.txt"
 
@@ -179,5 +180,7 @@ jq -e '
 
 assert_no_grep_match -Fq 'baseharbor_admin' "$ARTIFACT_DIR/recovery-evidence-after-restore.json"
 assert_no_secret_leak "$ARTIFACT_DIR/recovery-evidence-after-restore.json"
+
+python3 "$DEMO_ROOT/tests/recovery-continuity.py" verify --private-state "$BASEHARBOR_DEMO_FIXTURE/recovery-continuity.json"
 
 pass "Backup / Restore" "SQL + secrets + S3 + workload storage + log history restored with verified evidence"
