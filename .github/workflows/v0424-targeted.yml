@@ -26,6 +26,11 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+      - name: Verify fixture consent, syntax and selected topology code
+        run: |
+          python3 -m unittest discover -s tests -p test_fixture_consent.py
+          python3 -m py_compile tests/fixture-consent.py tests/guided/drive.py tests/native-default-topology.py
+          bash -n scripts/acceptance.sh tests/backup-restore/run.sh tests/lib.sh
       - name: Bind isolated fixture paths
         shell: bash
         run: |

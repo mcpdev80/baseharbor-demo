@@ -190,8 +190,8 @@ def run_tty(name, argv, rules, env=None, timeout=900, no_output_timeout=None):
                 return
 
 init_rules = [
-    Rule(r"Set them up now\? \[Y/n\]\s*$", "y\n"),
-    Rule(r"Is this installation running on a machine where you write code\?.*?Choice \[1\]:\s*$", "1\n"),
+    Rule(r"Set them up now\? \[Y/n\]\s*$", "y\n", optional=True),
+    Rule(r"Is this installation running on a machine where you write code\?.*?Choice \[1\]:\s*$", "1\n", optional=True),
     Rule(r"OpenBao recovery file \[[^\]]+\]:\s*$", "\n", optional=True),
     Rule(r"Accept\? \[Y/n\]:\s*$", "\n", optional=True),
     Rule(r"Use \d+ instead\? \[Y/n\]:\s*$", "\n", repeat=True, optional=True),
