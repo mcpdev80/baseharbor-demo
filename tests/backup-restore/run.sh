@@ -14,7 +14,9 @@ chmod 600 "$ARTIFACT_DIR/backup.pass"
 if [ -s "$DEMO_ROOT/baseharbor.yaml" ]; then
   ( cd "$DEMO_ROOT" && run_consented "$BAHA" app destroy --yes )
 fi
-rm -rf "$DEMO_ROOT/.baseharbor" "$DEMO_ROOT/baseharbor.yaml" "$DEMO_ROOT/baseharbor.repository.yaml"
+# Preserve the system-owned source identity and retained deployment owner.
+# Editing selected capabilities must not manufacture another application ID.
+rm -f "$DEMO_ROOT/baseharbor.yaml" "$DEMO_ROOT/baseharbor.repository.yaml"
 
 (
   cd "$DEMO_ROOT"
