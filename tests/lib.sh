@@ -177,3 +177,8 @@ dev_gateway_url() {
     printf 'https://%s:%s\n' "$host" "$port"
   fi
 }
+
+# Positive native fixtures only; negative consent tests invoke Core directly.
+run_consented() {
+  python3 "$DEMO_ROOT/tests/fixture-consent.py" "$@"
+}

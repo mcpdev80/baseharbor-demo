@@ -14,8 +14,9 @@ release or a completed native acceptance claim. `baseharbor-core.ref` pins the
 exact Core source. Candidate evidence is recorded in [Core PR #881](https://github.com/mcpdev80/baseharbor/pull/881).
 
 This demo explicitly requests managed SQL and other capabilities; it therefore
-uses compatible existing providers or consented management Core setup. The
-management Core still includes SQL, Secrets and Identity. Other supported local
+resolves providers from those selected capabilities and their genuine dependencies.
+An independently enabled management Core includes SQL, Secrets and Identity;
+requesting application SQL does not itself enable that management installation. Other supported local
 applications without managed capability requirements can run without Core or
 login; SQL is no longer implicit. BaseHarbor generates application IDs during
 explicit initialization; neither authored YAML nor MCP clients supply an ID. The existing ordinary application and service

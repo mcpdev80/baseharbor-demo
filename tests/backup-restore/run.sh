@@ -9,10 +9,11 @@ chmod 600 "$ARTIFACT_DIR/backup.pass"
 
 # Build one deterministic recovery contract that exercises SQL, secrets, S3,
 # application-owned workload storage and application log history.
-(
-  cd "$DEMO_ROOT"
-  "$BAHA" app destroy --yes
-)
+# This atomic gate starts with a fresh isolated Target and no deployment owner.
+# Existing lifecycle fixtures are retired only when their canonical owner exists.
+if [ -s "$DEMO_ROOT/baseharbor.yaml" ]; then
+  ( cd "$DEMO_ROOT" && run_consented "$BAHA" app destroy --yes )
+fi
 rm -rf "$DEMO_ROOT/.baseharbor" "$DEMO_ROOT/baseharbor.yaml" "$DEMO_ROOT/baseharbor.repository.yaml"
 
 (
@@ -64,12 +65,12 @@ EOF
 
   "$BAHA" app init --tls local --yes
 
-  "$BAHA" --verbose up --yes 2>&1 | tee "$ARTIFACT_DIR/recovery-apply.txt"
+  run_consented "$BAHA" --verbose up --yes 2>&1 | tee "$ARTIFACT_DIR/recovery-apply.txt"
 )
 
 api_host="demo.baha.localhost"
 python3 "$DEMO_ROOT/tests/native-default-topology.py" --output "$ARTIFACT_DIR/native-topology-before.json"
-( cd "$DEMO_ROOT" && "$BAHA" up --yes )
+( cd "$DEMO_ROOT" && run_consented "$BAHA" up --yes )
 python3 "$DEMO_ROOT/tests/native-default-topology.py" --output "$ARTIFACT_DIR/native-topology-repeated-up.json"
 gateway_port="$(dev_gateway_port)"
 base="$(dev_gateway_url "$api_host")"
@@ -99,7 +100,7 @@ curl -sS --cacert "$gateway_ca" --resolve "$api_host:$gateway_port:127.0.0.1" -o
 
   test -s "$ARTIFACT_DIR/demo.bhbackup"
 
-  "$BAHA" app destroy --yes
+  run_consented "$BAHA" app destroy --yes
 
   "$BAHA" app restore "$ARTIFACT_DIR/demo.bhbackup" \
     --password-file "$ARTIFACT_DIR/backup.pass" \

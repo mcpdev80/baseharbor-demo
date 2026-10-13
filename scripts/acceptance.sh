@@ -39,8 +39,9 @@ bash "$DEMO_ROOT/scripts/install-baseharbor.sh"
 export BAHA="$BASEHARBOR_INSTALL_DIR/baha"
 printf '[acceptance] install: candidate ready (%s)\n' "$("$BAHA" version | head -n1)"
 export BASEHARBOR_TEST_RUNTIME="${BASEHARBOR_TEST_RUNTIME:-docker}"
-export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-/tmp/baseharbor-demo-xdg/config}"
-export XDG_DATA_HOME="${XDG_DATA_HOME:-/tmp/baseharbor-demo-xdg/data}"
+export BASEHARBOR_DEMO_FIXTURE="$(mktemp -d "${RUNNER_TEMP:-/tmp}/baseharbor-demo-fixture.XXXXXX")"
+export XDG_CONFIG_HOME="$BASEHARBOR_DEMO_FIXTURE/config"
+export XDG_DATA_HOME="$BASEHARBOR_DEMO_FIXTURE/data"
 export BASEHARBOR_TARGET="${BASEHARBOR_TARGET:-demo-${BASEHARBOR_TEST_RUNTIME}}"
 command -v "$BASEHARBOR_TEST_RUNTIME" >/dev/null 2>&1
 
@@ -91,12 +92,9 @@ cleanup() {
   fi
 
   printf '[acceptance] cleanup: destroy registered BaseHarbor state\n' >&2
-  if ! timeout --signal=TERM --kill-after=5s 90s "$BAHA" destroy --all --yes >/dev/null 2>&1; then
-    printf '[acceptance] cleanup: full destroy did not finish cleanly; falling back to app cleanup\n' >&2
-    timeout --signal=TERM --kill-after=5s 45s "$BAHA" app destroy --yes >/dev/null 2>&1 || true
-    cd "$DEMO_ROOT/companion-app"
-    timeout --signal=TERM --kill-after=5s 45s "$BAHA" app destroy --yes >/dev/null 2>&1 || true
-    rm -rf "$XDG_CONFIG_HOME/baseharbor" "$XDG_DATA_HOME/baseharbor" "$XDG_DATA_HOME/baseharbor-recovery"
+  if ! timeout --signal=TERM --kill-after=5s 90s python3 "$DEMO_ROOT/tests/fixture-consent.py" "$BAHA" destroy --all --yes >/dev/null 2>&1; then
+    printf '[acceptance] cleanup: incomplete; retained owner and diagnostics remain available\n' >&2
+    [ "$status" -ne 0 ] || status=1
   fi
   printf '[acceptance] cleanup: complete\n' >&2
   exit "$status"

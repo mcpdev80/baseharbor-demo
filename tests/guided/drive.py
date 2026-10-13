@@ -232,6 +232,8 @@ init_rules = [
 ]
 
 up_rules = [
+    Rule(r"(?:Confirm the displayed provider changes|Achtung: confirm the displayed outcome without a working alternative) \(1/[12], plan [0-9a-f]{64}\)\? \[y/N\]:\s*$", "yes\n", repeat=True, optional=True),
+    Rule(r"Achtung: confirm the displayed outcome without a working alternative \(2/2, plan [0-9a-f]{64}\)\? \[y/N\]:\s*$", "yes\n", repeat=True, optional=True),
     Rule(r"TLS:.*?3\. Local development certificate.*?>\s*$", "3\n", optional=True),
     Rule(r"PostgreSQL host port \[\d+\]:\s*$", "\n", optional=True),
     Rule(r"OpenBao host port \[\d+\]:\s*$", "\n", optional=True),
