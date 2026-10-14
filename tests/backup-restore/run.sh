@@ -183,4 +183,25 @@ assert_no_secret_leak "$ARTIFACT_DIR/recovery-evidence-after-restore.json"
 
 python3 "$DEMO_ROOT/tests/recovery-continuity.py" verify --private-state "$BASEHARBOR_DEMO_FIXTURE/recovery-continuity.json"
 
+# This public receipt contains only source bindings and completed assertions.
+# Private original-secret digests remain outside the artifact directory.
+python3 - <<'PY'
+import json, os, pathlib, re, subprocess
+root = pathlib.Path(os.environ['DEMO_ROOT'])
+core = (root / 'baseharbor-core.ref').read_text().strip()
+demo = subprocess.check_output(['git', '-C', str(root), 'rev-parse', 'HEAD'], text=True).strip()
+assert all(re.fullmatch(r'[0-9a-f]{40}', value) for value in (core, demo))
+runtime = os.environ['CONTAINER_CLI']
+assert runtime in {'docker', 'podman'}
+receipt = {'schema': 'baseharbor.demo-recovery-result/v1', 'core': core, 'demo': demo,
+           'runtime': runtime, 'result': 'success', 'run_id': os.environ.get('GITHUB_RUN_ID'),
+           'run_attempt': os.environ.get('GITHUB_RUN_ATTEMPT'),
+           'verified': {key: True for key in ['encrypted_backup', 'restore_doctor_ready',
+             'sql_original_rows_at_least_two', 's3_original_content', 'workload_original_file',
+             'original_application_and_deployment_identity', 'original_managed_secret_delivery',
+             'log_history', 'recovery_contributors', 'shared_sql_isolation', 'native_topology']},
+           'cleanup': 'not_yet_run', 'pre_release_ready': False}
+(pathlib.Path(os.environ['ARTIFACT_DIR']) / 'recovery-qualified.json').write_text(json.dumps(receipt, indent=2) + '\n')
+PY
+
 pass "Backup / Restore" "SQL + secrets + S3 + workload storage + log history restored with verified evidence"

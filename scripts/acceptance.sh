@@ -92,11 +92,24 @@ cleanup() {
   fi
 
   printf '[acceptance] cleanup: destroy registered BaseHarbor state\n' >&2
+  cleanup_result=success
   if ! timeout --signal=TERM --kill-after=5s 90s python3 "$DEMO_ROOT/tests/fixture-consent.py" "$BAHA" destroy --all --yes >/dev/null 2>&1; then
+    cleanup_result=incomplete
     printf '[acceptance] cleanup: incomplete; retained owner and diagnostics remain available\n' >&2
     [ "$status" -ne 0 ] || status=1
+  else
+    printf '[acceptance] cleanup: complete\n' >&2
   fi
-  printf '[acceptance] cleanup: complete\n' >&2
+  python3 - "$ARTIFACT_DIR/recovery-qualified.json" "$cleanup_result" "$status" <<'PY' || status=1
+import json, pathlib, sys
+path = pathlib.Path(sys.argv[1])
+if path.is_file() and not path.is_symlink():
+    receipt = json.loads(path.read_text())
+    receipt['cleanup'] = sys.argv[2]
+    if sys.argv[2] != 'success' or sys.argv[3] != '0':
+        receipt['result'] = 'failure'
+    path.write_text(json.dumps(receipt, indent=2) + '\n')
+PY
   exit "$status"
 }
 trap cleanup EXIT
