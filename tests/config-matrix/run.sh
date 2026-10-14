@@ -36,12 +36,15 @@ run_runtime_case() {
     manifest_before="$(sha256sum baseharbor.yaml | awk '{print $1}')"
     "$BAHA" app init --quick --json >"$ARTIFACT_DIR/config-matrix-$case_id-init.json"
     test "$manifest_before" = "$(sha256sum baseharbor.yaml | awk '{print $1}')"
-    if ! "$BAHA" app preflight >"$ARTIFACT_DIR/config-matrix-$case_id-preflight.txt" 2>&1; then
-      cat "$ARTIFACT_DIR/config-matrix-$case_id-preflight.txt" >&2
-      return 1
-    fi
+    # Source init is read-only. The first acknowledged apply materializes the
+    # selected providers; its internal preflight still precedes mutation. The
+    # public preflight can then verify real OpenBao/secret prerequisites.
     if ! run_consented "$BAHA" up --yes >"$ARTIFACT_DIR/config-matrix-$case_id-up.txt" 2>&1; then
       cat "$ARTIFACT_DIR/config-matrix-$case_id-up.txt" >&2
+      return 1
+    fi
+    if ! "$BAHA" app preflight >"$ARTIFACT_DIR/config-matrix-$case_id-preflight.txt" 2>&1; then
+      cat "$ARTIFACT_DIR/config-matrix-$case_id-preflight.txt" >&2
       return 1
     fi
     "$BAHA" status -o json >"$ARTIFACT_DIR/config-matrix-$case_id-status.json"
