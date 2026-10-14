@@ -284,6 +284,10 @@ for gate in "${ordered_gates[@]}"; do
     continue
   fi
 
+  # A later full-destroy gate can remove the failed runtime before EXIT.
+  # Preserve the original failure while its containers are still available.
+  bash "$DEMO_ROOT/scripts/failure-runtime-diagnostics.sh" "$gate" || true
+
   if [ "$full_suite" -ne 1 ]; then
     record_group "$gate" FAIL "selected acceptance gate failed (exit $rc)"
     report_and_exit "$rc"
