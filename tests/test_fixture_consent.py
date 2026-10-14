@@ -55,6 +55,17 @@ class ConsentTests(unittest.TestCase):
             return subprocess.CompletedProcess([], 1, json.dumps(progress).encode(), json.dumps(value).encode())
 
         self.assertEqual(fixture.installation_remainder(previous, result()), current)
+        diagnostic = {"status": "SKIPPED", "diagnostic": "unregistered-deployment-state", "target": "owned", "resource": "deployment orphan", "detail": "No runtime owner inferred; selected local state explicitly disclosed"}
+        disclosed_previous = {**previous, "discovery": [diagnostic]}
+        disclosed_current = {**current, "discovery": [diagnostic]}
+        progress = {**report, "results": report["results"] + [diagnostic]}
+        self.assertEqual(fixture.installation_remainder(disclosed_previous, result(disclosed_current, progress)), disclosed_current)
+        with self.assertRaises(ValueError):
+            fixture.installation_remainder(previous, result(disclosed_current, progress))
+        with self.assertRaises(ValueError):
+            fixture.installation_remainder(disclosed_previous, result(current, progress))
+        with self.assertRaises(ValueError):
+            fixture.installation_remainder(disclosed_previous, result(disclosed_current, {**progress, "results": report["results"] + [{**diagnostic, "detail": "changed unknown state"}]}))
         for change in ("missing", "prior", "owner", "resource", "state", "no-progress"):
             altered = copy.deepcopy(current)
             if change == "missing":
