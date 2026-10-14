@@ -19,6 +19,7 @@ jobs:
         runtime: ${{ fromJSON(contains(github.event.head_commit.message, '[demo-podman-runtime]') && '["podman"]' || contains(github.event.head_commit.message, '[demo-docker-runtime]') && '["docker"]' || '["docker","podman"]') }}
     env:
       BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
+      BASEHARBOR_DEMO_RECOVERY_MODE: ${{ contains(github.event.head_commit.message, '[demo-fresh-recovery]') && 'fresh-owner' || 'retained' }}
       BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:demo-v024
       DEMO_ATOMIC_GATE: '1'
     steps:

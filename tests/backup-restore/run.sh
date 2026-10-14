@@ -103,7 +103,48 @@ python3 "$DEMO_ROOT/tests/recovery-continuity.py" capture --private-state "$BASE
 
   test -s "$ARTIFACT_DIR/demo.bhbackup"
 
-  run_consented "$BAHA" app destroy --yes
+  # Prove recovery uses the archive rather than merely reading retained state.
+  # Restore's separate data consent explicitly authorizes losing these newer
+  # writes in the isolated application's selected recovery scope.
+  post_backup_ready=false
+  for attempt in $(seq 1 30); do
+    if "${curl_dev[@]}" "$base/healthz" 2>/dev/null | jq -e '.status=="ok"' >/dev/null; then
+      post_backup_ready=true
+      break
+    fi
+    sleep 1
+  done
+  "$post_backup_ready" || { echo 'application did not resume after backup' >&2; exit 1; }
+  "${curl_dev[@]}" -X POST "$base/api/sql" \
+    | jq -e --argjson expected "$(jq '.records + 1' "$ARTIFACT_DIR/recovery-sql-seed.json")" '.records==$expected' >/dev/null
+  "${curl_dev[@]}" -X POST --data-binary 'newer-workload-state-after-backup' "$base/api/file" \
+    | jq -e '.stored==true' >/dev/null
+
+  if [ "${BASEHARBOR_DEMO_RECOVERY_MODE:-retained}" = fresh-owner ]; then
+    # Separate explicit owned-data consent is supplied only for the actual
+    # full-reset plan. Simulate loss of the one canonical fixture owner after
+    # native reset; never recursively remove a source or foreign directory.
+    run_consented "$BAHA" app destroy --yes --full-reset
+    python3 - <<'PY'
+import json, os, pathlib, re
+root = pathlib.Path(os.environ['DEMO_ROOT']).resolve(strict=True)
+private = pathlib.Path(os.environ['BASEHARBOR_DEMO_FIXTURE']) / 'recovery-continuity.json'
+identity = json.loads(private.read_text())['identity']
+deployment = pathlib.Path(os.environ['XDG_DATA_HOME']) / 'baseharbor' / 'targets' / os.environ['BASEHARBOR_TARGET'] / 'deployments' / identity['deployment_id']
+assert not deployment.exists() and not deployment.is_symlink(), 'full reset retained deployment owner'
+owner = root / '.baseharbor' / 'apps' / 'demo'
+assert owner.resolve(strict=True) == owner and not owner.is_symlink()
+assert sorted(p.name for p in owner.iterdir()) == ['baseharbor.yaml'], 'unexpected canonical fixture owner entries'
+manifest = owner / 'baseharbor.yaml'
+assert manifest.is_file() and not manifest.is_symlink() and not manifest.stat().st_mode & 0o077
+assert re.search(r'^\s+id:\s*' + re.escape(identity['application_id']) + r'\s*$', manifest.read_text(), re.M)
+manifest.unlink()
+owner.rmdir()
+print('Fresh-owner fixture: native full reset completed; only exact original canonical fixture owner removed')
+PY
+  else
+    run_consented "$BAHA" app destroy --yes
+  fi
 
   run_consented "$BAHA" app restore "$ARTIFACT_DIR/demo.bhbackup" \
     --password-file "$ARTIFACT_DIR/backup.pass" \
@@ -150,7 +191,7 @@ if [ "$post_restore_ready" != true ]; then
 fi
 
 "${curl_dev[@]}" -X POST "$base"/api/sql \
-  | jq -e '.records>=2' >/dev/null
+  | jq -e --argjson expected "$(jq '.records + 1' "$ARTIFACT_DIR/recovery-sql-seed.json")" '.records==$expected and .records>=2' >/dev/null
 
 object_name="$(cat "$ARTIFACT_DIR/recovery-s3-object.txt")"
 "${curl_dev[@]}" "$base/api/object?name=$object_name" \
@@ -181,7 +222,11 @@ jq -e '
 assert_no_grep_match -Fq 'baseharbor_admin' "$ARTIFACT_DIR/recovery-evidence-after-restore.json"
 assert_no_secret_leak "$ARTIFACT_DIR/recovery-evidence-after-restore.json"
 
-python3 "$DEMO_ROOT/tests/recovery-continuity.py" verify --private-state "$BASEHARBOR_DEMO_FIXTURE/recovery-continuity.json"
+continuity_options=()
+if [ "${BASEHARBOR_DEMO_RECOVERY_MODE:-retained}" = fresh-owner ]; then
+  continuity_options+=(--fresh-owner)
+fi
+python3 "$DEMO_ROOT/tests/recovery-continuity.py" verify --private-state "$BASEHARBOR_DEMO_FIXTURE/recovery-continuity.json" "${continuity_options[@]}"
 
 # This public receipt contains only source bindings and completed assertions.
 # Private original-secret digests remain outside the artifact directory.
@@ -195,10 +240,11 @@ runtime = os.environ['CONTAINER_CLI']
 assert runtime in {'docker', 'podman'}
 receipt = {'schema': 'baseharbor.demo-recovery-result/v1', 'core': core, 'demo': demo,
            'runtime': runtime, 'result': 'success', 'run_id': os.environ.get('GITHUB_RUN_ID'),
+           'recovery_mode': os.environ.get('BASEHARBOR_DEMO_RECOVERY_MODE', 'retained'),
            'run_attempt': os.environ.get('GITHUB_RUN_ATTEMPT'),
            'verified': {key: True for key in ['encrypted_backup', 'restore_doctor_ready',
-             'sql_original_rows_at_least_two', 's3_original_content', 'workload_original_file',
-             'original_application_and_deployment_identity', 'original_managed_secret_delivery',
+             'sql_original_rows_at_least_two', 'sql_row_count_matches_archive', 's3_original_content', 'workload_original_file', 'newer_sql_and_file_writes_replaced_from_archive',
+             'original_application_identity', 'deployment_identity_matches_recovery_mode', 'unchanged_authored_source', 'original_managed_secret_delivery',
              'log_history', 'recovery_contributors', 'shared_sql_isolation', 'native_topology']},
            'cleanup': 'not_yet_run', 'pre_release_ready': False}
 (pathlib.Path(os.environ['ARTIFACT_DIR']) / 'recovery-qualified.json').write_text(json.dumps(receipt, indent=2) + '\n')

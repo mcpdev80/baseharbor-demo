@@ -5,6 +5,7 @@ import argparse, hashlib, json, os, pathlib, subprocess
 p = argparse.ArgumentParser()
 p.add_argument('phase', choices=['capture', 'verify'])
 p.add_argument('--private-state', required=True)
+p.add_argument('--fresh-owner', action='store_true')
 a = p.parse_args()
 engine = os.environ['CONTAINER_CLI']
 if engine not in {'docker', 'podman'}:
@@ -30,7 +31,8 @@ identity = {k: status.get(k) for k in ('application_id', 'deployment_id')}
 if not all(isinstance(v, str) and v for v in identity.values()):
     raise SystemExit('canonical application/deployment identity is unavailable')
 # Digests stay in the private fixture directory, outside public artifacts.
-state = {'identity': identity, 'secret': hashlib.sha256(secret.encode()).hexdigest()}
+state = {'identity': identity, 'secret': hashlib.sha256(secret.encode()).hexdigest(),
+         'authored_source': hashlib.sha256((pathlib.Path(os.environ['DEMO_ROOT']) / 'baseharbor.yaml').read_bytes()).hexdigest()}
 file = pathlib.Path(a.private_state)
 fixture = pathlib.Path(os.environ['BASEHARBOR_DEMO_FIXTURE']).resolve()
 if fixture not in file.resolve().parents:
@@ -42,7 +44,15 @@ if a.phase == 'capture':
 else:
     if file.is_symlink() or file.stat().st_mode & 0o077:
         raise SystemExit('continuity owner is unprotected')
-    if json.loads(file.read_text()) != state:
+    original = json.loads(file.read_text())
+    if a.fresh_owner:
+        if original['identity']['deployment_id'] == state['identity']['deployment_id']:
+            raise SystemExit('fresh-owner recovery did not materialize a new deployment owner')
+        original['identity']['deployment_id'] = state['identity']['deployment_id']
+    if original != state:
         raise SystemExit('restore replaced original application identity or delivered secret')
     file.unlink()
-    print('Original canonical identity and actual managed secret delivery verified after recovery')
+    if a.fresh_owner:
+        print('Original application identity, unchanged authored source and actual original managed secret verified after fresh-owner recovery; new deployment owner observed')
+    else:
+        print('Original canonical identity, unchanged authored source and actual managed secret delivery verified after recovery')
