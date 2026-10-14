@@ -93,9 +93,13 @@ cleanup() {
 
   printf '[acceptance] cleanup: destroy registered BaseHarbor state\n' >&2
   cleanup_result=success
-  if ! timeout --signal=TERM --kill-after=5s 90s python3 "$DEMO_ROOT/tests/fixture-consent.py" "$BAHA" destroy --all --yes >/dev/null 2>&1; then
+  # Installation teardown includes provider handoffs and ordered native stops.
+  # Match the fixture command budget; a 90-second outer timeout truncates valid cleanup.
+  timeout --signal=TERM --kill-after=5s 900s python3 "$DEMO_ROOT/tests/fixture-consent.py" "$BAHA" destroy --all --yes >/dev/null 2>&1
+  cleanup_exit=$?
+  if [ "$cleanup_exit" -ne 0 ]; then
     cleanup_result=incomplete
-    printf '[acceptance] cleanup: incomplete; retained owner and diagnostics remain available\n' >&2
+    printf '[acceptance] cleanup: incomplete (exit=%s); retained owner and diagnostics remain available\n' "$cleanup_exit" >&2
     [ "$status" -ne 0 ] || status=1
   else
     printf '[acceptance] cleanup: complete\n' >&2
