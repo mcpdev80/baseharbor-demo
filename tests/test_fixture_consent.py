@@ -60,6 +60,16 @@ class ConsentTests(unittest.TestCase):
         disclosed_current = {**current, "discovery": [diagnostic]}
         progress = {**report, "results": report["results"] + [diagnostic]}
         self.assertEqual(fixture.installation_remainder(disclosed_previous, result(disclosed_current, progress)), disclosed_current)
+        runtime_diagnostic = {**diagnostic, "diagnostic": "unregistered-target-runtime", "resource": "runtime-provider"}
+        runtime_previous = {**previous, "discovery": [runtime_diagnostic]}
+        runtime_current = {**current, "discovery": [runtime_diagnostic]}
+        runtime_progress = {**report, "results": report["results"] + [runtime_diagnostic]}
+        self.assertEqual(fixture.installation_remainder(runtime_previous, result(runtime_current, runtime_progress)), runtime_current)
+        for altered in ({**runtime_diagnostic, "diagnostic": "unknown"}, {**runtime_diagnostic, "status": "FAILED"}, {**runtime_diagnostic, "status": "DEFERRED"}):
+            with self.assertRaises(ValueError):
+                fixture.installation_remainder(runtime_previous, result(runtime_current, {**report, "results": report["results"] + [altered]}))
+        with self.assertRaises(ValueError):
+            fixture.installation_remainder(previous, result(runtime_current, runtime_progress))
         with self.assertRaises(ValueError):
             fixture.installation_remainder(previous, result(disclosed_current, progress))
         with self.assertRaises(ValueError):

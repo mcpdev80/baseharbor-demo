@@ -50,7 +50,7 @@ def installation_remainder(previous, result):
     for row in rows:
         require(row["status"] not in {"FAILED", "DEFERRED"})
         if row["status"] == "SKIPPED":
-            require(row.get("diagnostic") == "unregistered-deployment-state" and row in disclosed)
+            require(row.get("diagnostic") in {"unregistered-deployment-state", "unregistered-target-runtime"} and row in disclosed)
     progress = next_plan["continuation"]
     require(progress["previous_plan_id"] == previous["scope"]["plan_id"])
     require(next_plan["scope"]["plan_id"] != previous["scope"]["plan_id"])
