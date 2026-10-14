@@ -95,10 +95,11 @@ cleanup() {
   cleanup_result=success
   # Installation teardown includes provider handoffs and ordered native stops.
   # Match the fixture command budget; a 90-second outer timeout truncates valid cleanup.
-  timeout --signal=TERM --kill-after=5s 900s python3 "$DEMO_ROOT/tests/fixture-consent.py" "$BAHA" destroy --all --yes >/dev/null 2>&1
+  timeout --signal=TERM --kill-after=5s 900s python3 "$DEMO_ROOT/tests/fixture-consent.py" "$BAHA" destroy --all --yes >"$ARTIFACT_DIR/cleanup.json" 2>"$ARTIFACT_DIR/cleanup.stderr.txt"
   cleanup_exit=$?
   if [ "$cleanup_exit" -ne 0 ]; then
     cleanup_result=incomplete
+    cat "$ARTIFACT_DIR/cleanup.stderr.txt" >&2
     printf '[acceptance] cleanup: incomplete (exit=%s); retained owner and diagnostics remain available\n' "$cleanup_exit" >&2
     [ "$status" -ne 0 ] || status=1
   else

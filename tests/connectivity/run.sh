@@ -3,24 +3,34 @@ set -euo pipefail
 source "$DEMO_ROOT/tests/lib.sh"
 
 section "Cross-application connectivity"
-companion_parent="$(mktemp -d)"
+companion_parent="$(mktemp -d "$DEMO_ROOT/.connectivity.XXXXXX")"
 companion="$companion_parent/companion-app"
 cp -a "$DEMO_ROOT/companion-app" "$companion"
 cleanup_companion() {
+  local status=$? cleanup_status=0
   set +e
   if [ -d "$companion" ]; then
     (
       cd "$companion"
-      "$BAHA" app destroy --yes >/dev/null 2>&1 || true
+      run_consented "$BAHA" app destroy --yes --full-reset >"$ARTIFACT_DIR/companion-cleanup.json" 2>"$ARTIFACT_DIR/companion-cleanup.stderr.txt"
     )
+    cleanup_status=$?
   fi
-  rm -rf "$companion_parent"
+  if [ "$cleanup_status" -eq 0 ]; then
+    rm -rf "$companion_parent"
+  else
+    cat "$ARTIFACT_DIR/companion-cleanup.stderr.txt" >&2
+    printf 'Companion cleanup failed; source retained at %s\n' "$companion" >&2
+    [ "$status" -ne 0 ] || status="$cleanup_status"
+  fi
+  exit "$status"
 }
 trap cleanup_companion EXIT
 
 (
   cd "$companion"
   "$BAHA" app inspect . > "$ARTIFACT_DIR/companion-inspect.txt"
+  "$BAHA" app init --quick --json > "$ARTIFACT_DIR/companion-init.json"
   "$BAHA" up --yes > "$ARTIFACT_DIR/companion-up.txt"
   "$BAHA" app doctor > "$ARTIFACT_DIR/companion-doctor.txt"
 )
@@ -60,7 +70,7 @@ pass "Cross-App Isolation" "disconnect removed directed access"
 
 (
   cd "$companion"
-  "$BAHA" app destroy --yes
+  run_consented "$BAHA" app destroy --yes --full-reset >"$ARTIFACT_DIR/companion-destroy.json" 2>"$ARTIFACT_DIR/companion-destroy.stderr.txt"
 )
 trap - EXIT
 rm -rf "$companion_parent"

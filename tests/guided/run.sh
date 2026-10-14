@@ -10,7 +10,7 @@ section "Guided pristine-repository happy path"
 echo "[phase] guided: destroy previous acceptance runtime before pristine init"
 (
   cd "$DEMO_ROOT"
-  "$BAHA" destroy --all --yes
+  run_consented "$BAHA" destroy --all --yes
 ) | tee "$ARTIFACT_DIR/guided-pristine-cleanup.txt"
 test ! -e "$XDG_CONFIG_HOME/baseharbor"
 test ! -e "$XDG_DATA_HOME/baseharbor"

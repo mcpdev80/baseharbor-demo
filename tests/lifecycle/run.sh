@@ -30,8 +30,8 @@ pass "Plan / Preflight / Status / Doctor" "advanced read-only diagnostics remain
 
 (
   cd "$DEMO_ROOT"
-  "$BAHA" app down
-  "$BAHA" up | tee "$ARTIFACT_DIR/up-after-down.txt"
+  run_consented "$BAHA" app down
+  run_consented "$BAHA" up | tee "$ARTIFACT_DIR/up-after-down.txt"
   "$BAHA" doctor | tee "$ARTIFACT_DIR/doctor-after-resume.txt"
 )
 grep -q '^READY' "$ARTIFACT_DIR/doctor-after-resume.txt"
@@ -39,7 +39,11 @@ pass "Down / Up" "recommended repository command resumes persistent runtime"
 
 (
   cd "$DEMO_ROOT"
-  "$BAHA" up > "$ARTIFACT_DIR/up-idempotent.txt"
+  run_consented "$BAHA" up > "$ARTIFACT_DIR/up-idempotent.txt"
 )
-grep -Eq 'already READY|No changes|READY' "$ARTIFACT_DIR/up-idempotent.txt"
+(
+  cd "$DEMO_ROOT"
+  "$BAHA" status -o json > "$ARTIFACT_DIR/up-idempotent-status.json"
+)
+jq -e '.ready == true' "$ARTIFACT_DIR/up-idempotent-status.json" >/dev/null
 pass "Idempotency" "second baha up converged without manual repair"
