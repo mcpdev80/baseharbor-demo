@@ -52,6 +52,9 @@ def main():
             case_root.mkdir()
             shutil.copy(demo / "compose.yaml", case_root / "compose.yaml")
             render_case(renderer, matrix, case["id"], case_root)
+            initialized = run([args.baha, "app", "init", "--quick", "--json"], case_root)
+            if initialized.returncode:
+                raise SystemExit(f"{case['id']}: initialization failed:\n{initialized.stderr}")
             p = run([args.baha, "app", "plan", "-o", "json"], case_root)
             if p.returncode:
                 raise SystemExit(f"{case['id']}: plan failed:\n{p.stderr}")
@@ -71,7 +74,6 @@ def main():
         negative = {
             "management-ui-without-provider": """version: 1
 app:
-  id: 11111111-1111-4111-8111-111111111111
   name: invalid-ui
   environment: dev
 services:
@@ -84,7 +86,6 @@ workload:
 """,
             "durable-ui-without-provider": """version: 1
 app:
-  id: 11111111-1111-4111-8111-111111111111
   name: invalid-kv-ui
   environment: dev
 services:
@@ -97,7 +98,6 @@ workload:
 """,
             "document-ui-without-provider": """version: 1
 app:
-  id: 11111111-1111-4111-8111-111111111111
   name: invalid-document-ui
   environment: dev
 services:
@@ -110,7 +110,6 @@ workload:
 """,
             "messaging-ui-without-provider": """version: 1
 app:
-  id: 11111111-1111-4111-8111-111111111111
   name: invalid-messaging-ui
   environment: dev
 services:
@@ -123,7 +122,6 @@ workload:
 """,
             "invalid-telemetry-signal": """version: 1
 app:
-  id: 11111111-1111-4111-8111-111111111111
   name: invalid-telemetry
   environment: dev
 workload:
@@ -136,7 +134,6 @@ telemetry:
 """,
             "metrics-target-not-selected": """version: 1
 app:
-  id: 11111111-1111-4111-8111-111111111111
   name: invalid-metrics
   environment: dev
 workload:
@@ -151,7 +148,6 @@ metrics:
 """,
             "runtime-permission-target-not-selected": """version: 1
 app:
-  id: 11111111-1111-4111-8111-111111111111
   name: invalid-runtime
   environment: dev
 workload:
@@ -166,6 +162,15 @@ runtime:
         - runtime.create
 """,
         }
+        expected_errors = {
+            "management-ui-without-provider": "services.sql.management_ui requires",
+            "durable-ui-without-provider": "services.key_value.management_ui requires",
+            "document-ui-without-provider": "services.document_database.management_ui requires",
+            "messaging-ui-without-provider": "services.messaging.management_ui requires",
+            "invalid-telemetry-signal": "must be traces, metrics or logs",
+            "metrics-target-not-selected": "which is not selected",
+            "runtime-permission-target-not-selected": "which is not selected",
+        }
         for name, manifest in negative.items():
             case_root = root / name
             case_root.mkdir()
@@ -174,7 +179,12 @@ runtime:
             p = run([args.baha, "app", "plan", "-o", "json"], case_root)
             if p.returncode == 0:
                 raise SystemExit(f"{name}: invalid contract unexpectedly planned successfully: {p.stdout}")
-            print(f"PASS {name}: rejected before mutation")
+            result = json.loads(p.stderr or p.stdout)
+            if expected_errors[name] not in result.get("error", {}).get("message", ""):
+                raise SystemExit(f"{name}: rejected for the wrong reason: {p.stderr}")
+            if (case_root / ".baseharbor").exists() or (case_root / "baseharbor.yaml").read_text() != manifest:
+                raise SystemExit(f"{name}: invalid contract mutated authored/canonical state")
+            print(f"PASS {name}: rejected before mutation for the intended reason")
 
 if __name__ == "__main__":
     main()

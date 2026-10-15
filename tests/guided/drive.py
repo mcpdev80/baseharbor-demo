@@ -190,8 +190,8 @@ def run_tty(name, argv, rules, env=None, timeout=900, no_output_timeout=None):
                 return
 
 init_rules = [
-    Rule(r"Set them up now\? \[Y/n\]\s*$", "y\n"),
-    Rule(r"Is this installation running on a machine where you write code\?.*?Choice \[1\]:\s*$", "1\n"),
+    Rule(r"Set them up now\? \[Y/n\]\s*$", "y\n", optional=True),
+    Rule(r"Is this installation running on a machine where you write code\?.*?Choice \[1\]:\s*$", "1\n", optional=True),
     Rule(r"OpenBao recovery file \[[^\]]+\]:\s*$", "\n", optional=True),
     Rule(r"Accept\? \[Y/n\]:\s*$", "\n", optional=True),
     Rule(r"Use \d+ instead\? \[Y/n\]:\s*$", "\n", repeat=True, optional=True),
@@ -232,6 +232,10 @@ init_rules = [
 ]
 
 up_rules = [
+    Rule(r"Is this installation running on a machine where you write code\?.*?Choice \[1\]:\s*$", "1\n", optional=True),
+    Rule(r"Set them up now\? \[Y/n\]\s*$", "y\n", optional=True),
+    Rule(r"(?:Confirm the displayed provider changes|Achtung: confirm the displayed outcome without a working alternative) \(1/[12], plan [0-9a-f]{64}\)\? \[y/N\]:\s*$", "yes\n", repeat=True, optional=True),
+    Rule(r"Achtung: confirm the displayed outcome without a working alternative \(2/2, plan [0-9a-f]{64}\)\? \[y/N\]:\s*$", "yes\n", repeat=True, optional=True),
     Rule(r"TLS:.*?3\. Local development certificate.*?>\s*$", "3\n", optional=True),
     Rule(r"PostgreSQL host port \[\d+\]:\s*$", "\n", optional=True),
     Rule(r"OpenBao host port \[\d+\]:\s*$", "\n", optional=True),

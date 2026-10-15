@@ -9,10 +9,9 @@ test -s "$DEMO_ROOT/baseharbor.yaml"
 "$BAHA" app list --all-targets | tee "$ARTIFACT_DIR/full-destroy-before.txt"
 grep -q 'demo' "$ARTIFACT_DIR/full-destroy-before.txt"
 
-"$BAHA" destroy --all --yes | tee "$ARTIFACT_DIR/full-destroy.txt"
+run_consented "$BAHA" destroy --all --yes | tee "$ARTIFACT_DIR/full-destroy.txt"
 
-grep -q '^Cleanup report' "$ARTIFACT_DIR/full-destroy.txt"
-grep -q 'REMOVED' "$ARTIFACT_DIR/full-destroy.txt"
+jq -e '.destroyed == true and any(.results[]; .status == "REMOVED")' "$ARTIFACT_DIR/full-destroy.txt" >/dev/null
 
 "$BAHA" app list --all-targets | tee "$ARTIFACT_DIR/full-destroy-after.txt"
 grep -q '^No deployments registered\.$' "$ARTIFACT_DIR/full-destroy-after.txt"

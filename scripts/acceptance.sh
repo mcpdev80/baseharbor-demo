@@ -39,8 +39,9 @@ bash "$DEMO_ROOT/scripts/install-baseharbor.sh"
 export BAHA="$BASEHARBOR_INSTALL_DIR/baha"
 printf '[acceptance] install: candidate ready (%s)\n' "$("$BAHA" version | head -n1)"
 export BASEHARBOR_TEST_RUNTIME="${BASEHARBOR_TEST_RUNTIME:-docker}"
-export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-/tmp/baseharbor-demo-xdg/config}"
-export XDG_DATA_HOME="${XDG_DATA_HOME:-/tmp/baseharbor-demo-xdg/data}"
+export BASEHARBOR_DEMO_FIXTURE="$(mktemp -d "${RUNNER_TEMP:-/tmp}/baseharbor-demo-fixture.XXXXXX")"
+export XDG_CONFIG_HOME="$BASEHARBOR_DEMO_FIXTURE/config"
+export XDG_DATA_HOME="$BASEHARBOR_DEMO_FIXTURE/data"
 export BASEHARBOR_TARGET="${BASEHARBOR_TARGET:-demo-${BASEHARBOR_TEST_RUNTIME}}"
 command -v "$BASEHARBOR_TEST_RUNTIME" >/dev/null 2>&1
 
@@ -91,14 +92,29 @@ cleanup() {
   fi
 
   printf '[acceptance] cleanup: destroy registered BaseHarbor state\n' >&2
-  if ! timeout --signal=TERM --kill-after=5s 90s "$BAHA" destroy --all --yes >/dev/null 2>&1; then
-    printf '[acceptance] cleanup: full destroy did not finish cleanly; falling back to app cleanup\n' >&2
-    timeout --signal=TERM --kill-after=5s 45s "$BAHA" app destroy --yes >/dev/null 2>&1 || true
-    cd "$DEMO_ROOT/companion-app"
-    timeout --signal=TERM --kill-after=5s 45s "$BAHA" app destroy --yes >/dev/null 2>&1 || true
-    rm -rf "$XDG_CONFIG_HOME/baseharbor" "$XDG_DATA_HOME/baseharbor" "$XDG_DATA_HOME/baseharbor-recovery"
+  cleanup_result=success
+  # Installation teardown includes provider handoffs and ordered native stops.
+  # Match the fixture command budget; a 90-second outer timeout truncates valid cleanup.
+  timeout --signal=TERM --kill-after=5s 900s python3 "$DEMO_ROOT/tests/fixture-consent.py" "$BAHA" destroy --all --yes >"$ARTIFACT_DIR/cleanup.json" 2>"$ARTIFACT_DIR/cleanup.stderr.txt"
+  cleanup_exit=$?
+  if [ "$cleanup_exit" -ne 0 ]; then
+    cleanup_result=incomplete
+    cat "$ARTIFACT_DIR/cleanup.stderr.txt" >&2
+    printf '[acceptance] cleanup: incomplete (exit=%s); retained owner and diagnostics remain available\n' "$cleanup_exit" >&2
+    [ "$status" -ne 0 ] || status=1
+  else
+    printf '[acceptance] cleanup: complete\n' >&2
   fi
-  printf '[acceptance] cleanup: complete\n' >&2
+  python3 - "$ARTIFACT_DIR/recovery-qualified.json" "$cleanup_result" "$status" <<'PY' || status=1
+import json, pathlib, sys
+path = pathlib.Path(sys.argv[1])
+if path.is_file() and not path.is_symlink():
+    receipt = json.loads(path.read_text())
+    receipt['cleanup'] = sys.argv[2]
+    if sys.argv[2] != 'success' or sys.argv[3] != '0':
+        receipt['result'] = 'failure'
+    path.write_text(json.dumps(receipt, indent=2) + '\n')
+PY
   exit "$status"
 }
 trap cleanup EXIT
@@ -267,6 +283,10 @@ for gate in "${ordered_gates[@]}"; do
     record_group "$gate" PASS "selected acceptance gate passed"
     continue
   fi
+
+  # A later full-destroy gate can remove the failed runtime before EXIT.
+  # Preserve the original failure while its containers are still available.
+  bash "$DEMO_ROOT/scripts/failure-runtime-diagnostics.sh" "$gate" || true
 
   if [ "$full_suite" -ne 1 ]; then
     record_group "$gate" FAIL "selected acceptance gate failed (exit $rc)"

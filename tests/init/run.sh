@@ -18,14 +18,23 @@ before="$(sha256sum "$workdir/compose.yaml" | awk '{print $1}')"
   "$BAHA" app inspect . -o json > "$ARTIFACT_DIR/inspect.json"
   jq -e . "$ARTIFACT_DIR/inspect.json" >/dev/null
   (
-    # Full journeys already have a Core; the negative case owns isolated state.
+    # Source-only initialization owns isolated state and never installs Core.
     export BASEHARBOR_STATE_DIR="$workdir/no-core-state"
-    export BASEHARBOR_TARGET=init-consent-fixture
+    export BASEHARBOR_TARGET=init-source-fixture
     "$BAHA" target create "$BASEHARBOR_TARGET" --provider docker --access local-docker --reference local --scope default --default >/dev/null
-    if "$BAHA" init --quick --json > "$ARTIFACT_DIR/init-no-core.json" 2>&1; then
-      fail "Initialization consent" "fresh noninteractive initialization accepted a missing Core"
-    fi
-    jq -e '.error.cause == "core_required"' "$ARTIFACT_DIR/init-no-core.json" >/dev/null
+    source_root="$workdir/source-only"
+    mkdir -p "$source_root"
+    cp "$DEMO_ROOT/compose.yaml" "$source_root/compose.yaml"
+    cp -a "$DEMO_ROOT/demo-app" "$source_root/demo-app"
+    cd "$source_root"
+    "$BAHA" init --quick --json > "$ARTIFACT_DIR/init-no-core.json"
+    jq -e '.application_id | test("^[0-9a-f-]{36}$")' "$ARTIFACT_DIR/init-no-core.json" >/dev/null
+    test -d .baseharbor
+    assert_no_grep_match -q '^  id:' baseharbor.yaml
+    original="$(sha256sum baseharbor.yaml | awk '{print $1}')"
+    "$BAHA" init --quick --json > "$ARTIFACT_DIR/init-no-core-repeat.json"
+    test "$original" = "$(sha256sum baseharbor.yaml | awk '{print $1}')"
+    test ! -e "$BASEHARBOR_STATE_DIR/targets/$BASEHARBOR_TARGET/core/runtime.env"
   )
   test ! -e baseharbor.yaml
   test ! -e .baseharbor
@@ -60,5 +69,5 @@ assert_no_grep_match -q '^logs:' "$workdir/baseharbor.yaml"
 assert_no_grep_match -q '^secrets:' "$workdir/baseharbor.yaml"
 
 pass "Repository Inspection" "read-only human + standardized source-resolution JSON"
-pass "Initialization consent" "missing Core fails closed without repository mutation; real first-use bootstrap is covered by native guided gates"
+pass "Source-only initialization" "no Core or login prerequisite; stable system identity and repeat init preserve authored source; runtime remains separately qualified"
 pass "Application Init Quick" "explicit MCP source authoring and idempotent CLI quick init preserve source-neutral workload.components and existing intent"

@@ -9,11 +9,14 @@ chmod 600 "$ARTIFACT_DIR/backup.pass"
 
 # Build one deterministic recovery contract that exercises SQL, secrets, S3,
 # application-owned workload storage and application log history.
-(
-  cd "$DEMO_ROOT"
-  "$BAHA" app destroy --yes
-)
-rm -rf "$DEMO_ROOT/.baseharbor" "$DEMO_ROOT/baseharbor.yaml" "$DEMO_ROOT/baseharbor.repository.yaml"
+# This atomic gate starts with a fresh isolated Target and no deployment owner.
+# Existing lifecycle fixtures are retired only when their canonical owner exists.
+if [ -s "$DEMO_ROOT/baseharbor.yaml" ]; then
+  ( cd "$DEMO_ROOT" && run_consented "$BAHA" app destroy --yes )
+fi
+# Preserve the system-owned source identity and retained deployment owner.
+# Editing selected capabilities must not manufacture another application ID.
+rm -f "$DEMO_ROOT/baseharbor.yaml" "$DEMO_ROOT/baseharbor.repository.yaml"
 
 (
   cd "$DEMO_ROOT"
@@ -64,13 +67,13 @@ EOF
 
   "$BAHA" app init --tls local --yes
 
-  "$BAHA" --verbose up --yes 2>&1 | tee "$ARTIFACT_DIR/recovery-apply.txt"
+  run_consented "$BAHA" --verbose up --yes 2>&1 | tee "$ARTIFACT_DIR/recovery-apply.txt"
 )
 
 api_host="demo.baha.localhost"
-python3 "$DEMO_ROOT/tests/native-default-topology.py" --output "$ARTIFACT_DIR/native-topology-before.json"
-( cd "$DEMO_ROOT" && "$BAHA" up --yes )
-python3 "$DEMO_ROOT/tests/native-default-topology.py" --output "$ARTIFACT_DIR/native-topology-repeated-up.json"
+python3 "$DEMO_ROOT/tests/native-default-topology.py" --profile recovery --output "$ARTIFACT_DIR/native-topology-before.json"
+( cd "$DEMO_ROOT" && run_consented "$BAHA" up --yes )
+python3 "$DEMO_ROOT/tests/native-default-topology.py" --profile recovery --output "$ARTIFACT_DIR/native-topology-repeated-up.json"
 gateway_port="$(dev_gateway_port)"
 base="$(dev_gateway_url "$api_host")"
 gateway_ca="$XDG_DATA_HOME/baseharbor/targets/$BASEHARBOR_TARGET/developer-access/dev/gateway/runtime/ca.pem"
@@ -89,6 +92,7 @@ jq -r '.object' "$ARTIFACT_DIR/recovery-s3-seed.json" > "$ARTIFACT_DIR/recovery-
   | jq -e '.present==true and .value_exposed==false' >/dev/null
 
 curl -sS --cacert "$gateway_ca" --resolve "$api_host:$gateway_port:127.0.0.1" -o /dev/null "$base/recovery-marker-v0417" || true
+python3 "$DEMO_ROOT/tests/recovery-continuity.py" capture --private-state "$BASEHARBOR_DEMO_FIXTURE/recovery-continuity.json"
 
 (
   cd "$DEMO_ROOT"
@@ -99,9 +103,50 @@ curl -sS --cacert "$gateway_ca" --resolve "$api_host:$gateway_port:127.0.0.1" -o
 
   test -s "$ARTIFACT_DIR/demo.bhbackup"
 
-  "$BAHA" app destroy --yes
+  # Prove recovery uses the archive rather than merely reading retained state.
+  # Restore's separate data consent explicitly authorizes losing these newer
+  # writes in the isolated application's selected recovery scope.
+  post_backup_ready=false
+  for attempt in $(seq 1 30); do
+    if "${curl_dev[@]}" "$base/healthz" 2>/dev/null | jq -e '.status=="ok"' >/dev/null; then
+      post_backup_ready=true
+      break
+    fi
+    sleep 1
+  done
+  "$post_backup_ready" || { echo 'application did not resume after backup' >&2; exit 1; }
+  "${curl_dev[@]}" -X POST "$base/api/sql" \
+    | jq -e --argjson expected "$(jq '.records + 1' "$ARTIFACT_DIR/recovery-sql-seed.json")" '.records==$expected' >/dev/null
+  "${curl_dev[@]}" -X POST --data-binary 'newer-workload-state-after-backup' "$base/api/file" \
+    | jq -e '.stored==true' >/dev/null
 
-  "$BAHA" app restore "$ARTIFACT_DIR/demo.bhbackup" \
+  if [ "${BASEHARBOR_DEMO_RECOVERY_MODE:-retained}" = fresh-owner ]; then
+    # Separate explicit owned-data consent is supplied only for the actual
+    # full-reset plan. Simulate loss of the one canonical fixture owner after
+    # native reset; never recursively remove a source or foreign directory.
+    run_consented "$BAHA" app destroy --yes --full-reset
+    python3 - <<'PY'
+import json, os, pathlib, re
+root = pathlib.Path(os.environ['DEMO_ROOT']).resolve(strict=True)
+private = pathlib.Path(os.environ['BASEHARBOR_DEMO_FIXTURE']) / 'recovery-continuity.json'
+identity = json.loads(private.read_text())['identity']
+deployment = pathlib.Path(os.environ['XDG_DATA_HOME']) / 'baseharbor' / 'targets' / os.environ['BASEHARBOR_TARGET'] / 'deployments' / identity['deployment_id']
+assert not deployment.exists() and not deployment.is_symlink(), 'full reset retained deployment owner'
+owner = root / '.baseharbor' / 'apps' / 'demo'
+assert owner.resolve(strict=True) == owner and not owner.is_symlink()
+assert sorted(p.name for p in owner.iterdir()) == ['baseharbor.yaml'], 'unexpected canonical fixture owner entries'
+manifest = owner / 'baseharbor.yaml'
+assert manifest.is_file() and not manifest.is_symlink() and not manifest.stat().st_mode & 0o077
+assert re.search(r'^\s+id:\s*' + re.escape(identity['application_id']) + r'\s*$', manifest.read_text(), re.M)
+manifest.unlink()
+owner.rmdir()
+print('Fresh-owner fixture: native full reset completed; only exact original canonical fixture owner removed')
+PY
+  else
+    run_consented "$BAHA" app destroy --yes
+  fi
+
+  run_consented "$BAHA" app restore "$ARTIFACT_DIR/demo.bhbackup" \
     --password-file "$ARTIFACT_DIR/backup.pass" \
     > "$ARTIFACT_DIR/restore.txt"
 
@@ -120,7 +165,7 @@ curl -sS --cacert "$gateway_ca" --resolve "$api_host:$gateway_port:127.0.0.1" -o
 )
 
 grep -q '^READY' "$ARTIFACT_DIR/restore-doctor.txt"
-python3 "$DEMO_ROOT/tests/native-default-topology.py" --output "$ARTIFACT_DIR/native-topology-after-restore.json"
+python3 "$DEMO_ROOT/tests/native-default-topology.py" --profile recovery --output "$ARTIFACT_DIR/native-topology-after-restore.json"
 
 post_restore_ready=false
 for attempt in 1 2 3 4 5 6; do
@@ -146,7 +191,7 @@ if [ "$post_restore_ready" != true ]; then
 fi
 
 "${curl_dev[@]}" -X POST "$base"/api/sql \
-  | jq -e '.records>=2' >/dev/null
+  | jq -e --argjson expected "$(jq '.records + 1' "$ARTIFACT_DIR/recovery-sql-seed.json")" '.records==$expected and .records>=2' >/dev/null
 
 object_name="$(cat "$ARTIFACT_DIR/recovery-s3-object.txt")"
 "${curl_dev[@]}" "$base/api/object?name=$object_name" \
@@ -176,5 +221,33 @@ jq -e '
 
 assert_no_grep_match -Fq 'baseharbor_admin' "$ARTIFACT_DIR/recovery-evidence-after-restore.json"
 assert_no_secret_leak "$ARTIFACT_DIR/recovery-evidence-after-restore.json"
+
+continuity_options=()
+if [ "${BASEHARBOR_DEMO_RECOVERY_MODE:-retained}" = fresh-owner ]; then
+  continuity_options+=(--fresh-owner)
+fi
+python3 "$DEMO_ROOT/tests/recovery-continuity.py" verify --private-state "$BASEHARBOR_DEMO_FIXTURE/recovery-continuity.json" "${continuity_options[@]}"
+
+# This public receipt contains only source bindings and completed assertions.
+# Private original-secret digests remain outside the artifact directory.
+python3 - <<'PY'
+import json, os, pathlib, re, subprocess
+root = pathlib.Path(os.environ['DEMO_ROOT'])
+core = (root / 'baseharbor-core.ref').read_text().strip()
+demo = subprocess.check_output(['git', '-C', str(root), 'rev-parse', 'HEAD'], text=True).strip()
+assert all(re.fullmatch(r'[0-9a-f]{40}', value) for value in (core, demo))
+runtime = os.environ['CONTAINER_CLI']
+assert runtime in {'docker', 'podman'}
+receipt = {'schema': 'baseharbor.demo-recovery-result/v1', 'core': core, 'demo': demo,
+           'runtime': runtime, 'result': 'success', 'run_id': os.environ.get('GITHUB_RUN_ID'),
+           'recovery_mode': os.environ.get('BASEHARBOR_DEMO_RECOVERY_MODE', 'retained'),
+           'run_attempt': os.environ.get('GITHUB_RUN_ATTEMPT'),
+           'verified': {key: True for key in ['encrypted_backup', 'restore_doctor_ready',
+             'sql_original_rows_at_least_two', 'sql_row_count_matches_archive', 's3_original_content', 'workload_original_file', 'newer_sql_and_file_writes_replaced_from_archive',
+             'original_application_identity', 'deployment_identity_matches_recovery_mode', 'unchanged_authored_source', 'original_managed_secret_delivery',
+             'log_history', 'recovery_contributors', 'shared_sql_isolation', 'native_topology']},
+           'cleanup': 'not_yet_run', 'pre_release_ready': False}
+(pathlib.Path(os.environ['ARTIFACT_DIR']) / 'recovery-qualified.json').write_text(json.dumps(receipt, indent=2) + '\n')
+PY
 
 pass "Backup / Restore" "SQL + secrets + S3 + workload storage + log history restored with verified evidence"

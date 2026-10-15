@@ -6,9 +6,14 @@ section "Capability config matrix"
 
 python3 "$DEMO_ROOT/tests/config-matrix/contract_check.py"   --baha "$BAHA"   --demo-root "$DEMO_ROOT"   | tee "$ARTIFACT_DIR/config-matrix-contract.txt"
 
-matrix_root="$(mktemp -d)"
+matrix_root="$(mktemp -d "$DEMO_ROOT/.config-matrix.XXXXXX")"
 cleanup_matrix() {
-  rm -rf "$matrix_root"
+  local status=$?
+  if [ "$status" -eq 0 ]; then
+    rm -rf "$matrix_root"
+  else
+    printf 'Config matrix failed; source retained at %s\n' "$matrix_root" >&2
+  fi
 }
 trap cleanup_matrix EXIT
 
@@ -28,12 +33,18 @@ run_runtime_case() {
     cd "$case_root"
     export DEMO_HTTP_PORT="$port"
 
-    if ! "$BAHA" app preflight >"$ARTIFACT_DIR/config-matrix-$case_id-preflight.txt" 2>&1; then
-      cat "$ARTIFACT_DIR/config-matrix-$case_id-preflight.txt" >&2
+    manifest_before="$(sha256sum baseharbor.yaml | awk '{print $1}')"
+    "$BAHA" app init --quick --json >"$ARTIFACT_DIR/config-matrix-$case_id-init.json"
+    test "$manifest_before" = "$(sha256sum baseharbor.yaml | awk '{print $1}')"
+    # Source init is read-only. The first acknowledged apply materializes the
+    # selected providers; its internal preflight still precedes mutation. The
+    # public preflight can then verify real OpenBao/secret prerequisites.
+    if ! run_consented "$BAHA" up --yes >"$ARTIFACT_DIR/config-matrix-$case_id-up.txt" 2>&1; then
+      cat "$ARTIFACT_DIR/config-matrix-$case_id-up.txt" >&2
       return 1
     fi
-    if ! "$BAHA" up --yes >"$ARTIFACT_DIR/config-matrix-$case_id-up.txt" 2>&1; then
-      cat "$ARTIFACT_DIR/config-matrix-$case_id-up.txt" >&2
+    if ! "$BAHA" app preflight >"$ARTIFACT_DIR/config-matrix-$case_id-preflight.txt" 2>&1; then
+      cat "$ARTIFACT_DIR/config-matrix-$case_id-preflight.txt" >&2
       return 1
     fi
     "$BAHA" status -o json >"$ARTIFACT_DIR/config-matrix-$case_id-status.json"
@@ -80,11 +91,11 @@ run_runtime_case() {
         ;;
     esac
 
-    "$BAHA" app down >"$ARTIFACT_DIR/config-matrix-$case_id-down.txt"
-    "$BAHA" up --yes >"$ARTIFACT_DIR/config-matrix-$case_id-reup.txt"
+    run_consented "$BAHA" app down >"$ARTIFACT_DIR/config-matrix-$case_id-down.txt"
+    run_consented "$BAHA" up --yes >"$ARTIFACT_DIR/config-matrix-$case_id-reup.txt"
     "$BAHA" doctor >"$ARTIFACT_DIR/config-matrix-$case_id-redoctor.txt"
     grep -q '^READY' "$ARTIFACT_DIR/config-matrix-$case_id-redoctor.txt"
-    "$BAHA" app destroy --yes >"$ARTIFACT_DIR/config-matrix-$case_id-destroy.txt"
+    run_consented "$BAHA" app destroy --yes --full-reset >"$ARTIFACT_DIR/config-matrix-$case_id-destroy.txt"
   )
 
   assert_no_secret_leak "$ARTIFACT_DIR/config-matrix-$case_id-status.json"

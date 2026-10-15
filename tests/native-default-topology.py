@@ -9,6 +9,7 @@ from pathlib import Path
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--output", required=True)
+parser.add_argument("--profile", choices=("default", "recovery"), default="default")
 args = parser.parse_args()
 engine = os.environ["CONTAINER_CLI"]
 target = os.environ["BASEHARBOR_TARGET"].replace(".", "-")
@@ -57,8 +58,12 @@ for item in native:
     rows.append({"project": project, "service": service, "role": provider or "auxiliary", "running": running, "volumes": volumes})
 if not rows:
     raise SystemExit("no selected demo-owned native containers found")
-required = {"postgresql", "openbao", "keycloak", "seaweedfs", "valkey", "loki"}
+required = {"postgresql", "openbao", "seaweedfs", "valkey", "loki"}
+if args.profile == "default":
+    required.add("keycloak")
 observed = {provider for _, provider, _ in groups}
+if args.profile == "recovery" and "keycloak" in observed:
+    raise SystemExit("recovery fixture enabled unrequested Identity/management Core")
 if not required <= observed:
     raise SystemExit("required native default providers absent: " + ",".join(sorted(required - observed)))
 violations = [f"{project}/{provider}/{root}: {count} members" for (project, provider, root), count in groups.items() if count != 1]
@@ -72,6 +77,6 @@ if duplicates:
     raise SystemExit("duplicate shared default provider: " + "; ".join(duplicates))
 if any(row["service"] == "keycloak-db" or row["service"].startswith("keycloak-db-member-") for row in rows):
     raise SystemExit("shared Keycloak must consume Core PostgreSQL, not own a SQL server")
-summary = {"schema": "baseharbor.demo-native-topology/v1", "runtime": engine, "ha_requested": False, "ha_active": False, "members": [{"project": project, "provider": provider, "instance": root, "count": count} for (project, provider, root), count in sorted(groups.items())], "services": sorted(rows, key=lambda row: (row["project"], row["service"]))}
+summary = {"selected_profile": args.profile, "schema": "baseharbor.demo-native-topology/v1", "runtime": engine, "ha_requested": False, "ha_active": False, "members": [{"project": project, "provider": provider, "instance": root, "count": count} for (project, provider, root), count in sorted(groups.items())], "services": sorted(rows, key=lambda row: (row["project"], row["service"]))}
 Path(args.output).write_text(json.dumps(summary, indent=2) + "\n")
 print("Native default demo topology PASS: exactly one physical provider per type across projects; helpers excluded")

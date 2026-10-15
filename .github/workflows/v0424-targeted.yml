@@ -1,7 +1,7 @@
-name: v0.4.24 targeted Demo recovery
+name: Targeted Demo compatibility
 on:
   push:
-    branches: [work/v0.4.24-ecosystem-release]
+    branches: [work/v0.4.24-ecosystem-release, work/v0.4.25-ecosystem-release]
 permissions:
   contents: read
 concurrency:
@@ -19,6 +19,7 @@ jobs:
         runtime: ${{ fromJSON(contains(github.event.head_commit.message, '[demo-podman-runtime]') && '["podman"]' || contains(github.event.head_commit.message, '[demo-docker-runtime]') && '["docker"]' || '["docker","podman"]') }}
     env:
       BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
+      BASEHARBOR_DEMO_RECOVERY_MODE: ${{ contains(github.event.head_commit.message, '[demo-fresh-recovery]') && 'fresh-owner' || 'retained' }}
       BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:demo-v024
       DEMO_ATOMIC_GATE: '1'
     steps:
@@ -26,6 +27,11 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+      - name: Verify fixture consent, syntax and selected topology code
+        run: |
+          python3 -m unittest discover -s tests -p test_fixture_consent.py
+          python3 -m py_compile tests/fixture-consent.py tests/guided/drive.py tests/native-default-topology.py
+          bash -n scripts/acceptance.sh tests/backup-restore/run.sh tests/lib.sh
       - name: Bind isolated fixture paths
         shell: bash
         run: |
@@ -50,7 +56,7 @@ jobs:
         run: bash .core-runtime-tools/scripts/ci-core-rootless-runtime.sh
       - uses: actions/setup-go@v7
         with:
-          go-version: 1.27.2
+          go-version-file: .core-runtime-tools/go.mod
           cache: false
       - name: Install exact pinned Core binary and runtime image
         run: bash scripts/install-baseharbor.sh
@@ -65,5 +71,6 @@ jobs:
             ${{ runner.temp }}/demo-evidence/results.tsv
             ${{ runner.temp }}/demo-evidence/report.md
             ${{ runner.temp }}/demo-evidence/native-topology-*.json
+            ${{ runner.temp }}/demo-evidence/recovery-qualified.json
             ${{ runner.temp }}/baseharbor-public-image-cache-${{ matrix.runtime }}.log
           if-no-files-found: warn
