@@ -21,6 +21,15 @@ redact() {
   python3 "$DEMO_ROOT/scripts/redact-runtime-diagnostics.py"
 }
 
+# These standard read-only results expose references and consequences, not env
+# values. Retain the actual pending union before later cleanup removes its owner.
+for command in plan status; do
+  (
+    cd "$DEMO_ROOT"
+    timeout --signal=TERM --kill-after=3s 25s "$BAHA" app "$command" --json 2>&1
+  ) | head -c 1048576 | redact >"$output/application-$command.json" || true
+done
+
 runtime_cmd ps -a --format '{{.ID}}\t{{.Names}}\t{{.Status}}\t{{.Image}}' | redact >"$output/containers.tsv"
 for id in $(runtime_cmd ps -aq 2>/dev/null); do
   name="$(runtime_cmd inspect --format '{{.Name}}' "$id" 2>/dev/null)"
