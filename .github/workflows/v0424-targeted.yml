@@ -90,3 +90,5 @@ jobs:
             ${{ runner.temp }}/demo-evidence/recovery-qualified.json
             ${{ runner.temp }}/baseharbor-public-image-cache-${{ matrix.runtime }}.log
           if-no-files-found: warn
+
+# re-trigger verified Core serveability pre-check [demo-runtime]
