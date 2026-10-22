@@ -44,7 +44,23 @@ jobs:
         run: |
           set -euo pipefail
           candidate="$(cat baseharbor-core.ref)"
-          [[ "$candidate" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$candidate" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "baseharbor-core.ref is not a 40-hex Core SHA: ${candidate:?}" >&2
+            exit 1
+          }
+          # actions/checkout@v7.0.1 fetches a pinned Core SHA with a shallow
+          # single-object fetch (`git fetch origin <40hex>`), which aborts with
+          # an invalid `+refs/heads/<sha>*` refspec when the pinned develop-tip
+          # object is momentarily unserveable (a force-push mid-run) before the
+          # runner records a per-step failure. Verify the object id is serveable
+          # up front via the GitHub commits API and fail fast, so the checkout
+          # never drops into the branch-prefix fallback.
+          code="$(curl -s -o /dev/null -w '%{http_code}' \
+            "https://api.github.com/repos/mcpdev80/baseharbor/commits/$candidate")"
+          if [ "$code" != "200" ]; then
+            echo "Core SHA $candidate not serveable from baseharbor (API $code)" >&2
+            exit 1
+          fi
           echo "sha=$candidate" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v7.0.1
         with:
