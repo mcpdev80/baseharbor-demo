@@ -8,6 +8,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 import sys
+import copy
 
 os.environ.setdefault("BASEHARBOR_TEST_RUNTIME", "docker")
 spec = importlib.util.spec_from_file_location("demo_native_new_edit", Path(__file__).with_name("new_edit.py"))
@@ -17,6 +18,48 @@ import new_edit as guided
 
 
 class SentinelIdentityTest(unittest.TestCase):
+    def test_canonical_postgres_layout_excludes_same_image_admin_and_init(self):
+        # Layouts from Core internal/runtime/assets/compose-single.yaml,
+        # application/runtime_postgres.go and shared_postgres_single.go.
+        # These are role/metadata regressions, not native SQL success mocks.
+        server = {"Config": {"Image": "docker.io/library/postgres:18-alpine",
+            "Labels": {"com.docker.compose.service": "postgres-member-1"},
+            "Env": ["POSTGRES_USER=fixture", "POSTGRES_PASSWORD=fixture", "POSTGRES_DB=fixture"]},
+            "State": {"Running": True}, "Mounts": [{"Type": "volume", "Name": "owned-postgres-data-1",
+                "Destination": "/var/lib/postgresql", "RW": True}]}
+        for service in ["postgres-member-1", "postgres", "shared-postgres-dev"]:
+            with self.subTest(server=service):
+                actual = copy.deepcopy(server)
+                actual["Config"]["Labels"] = {"com.docker.compose.service": service, "io.podman.compose.service": service}
+                self.assertTrue(fixture.is_postgres_server(actual))
+        for service, environment in [("postgres-admin", ["PGPASSWORD=fixture"]),
+                ("postgres-init", ["POSTGRES_USER=fixture", "POSTGRES_DB=postgres", "PGPASSWORD=fixture"])]:
+            with self.subTest(helper=service):
+                actual = copy.deepcopy(server)
+                actual["Config"]["Labels"]["com.docker.compose.service"] = service
+                actual["Config"]["Env"] = environment
+                actual["Mounts"] = [{"Type": "bind", "Destination": "/run/baseharbor/postgres-ca/ca.pem", "RW": False}]
+                self.assertFalse(fixture.is_postgres_server(actual))
+                # Same image and even a misleading data mount cannot promote a
+                # canonical admin/init service into the real SQL server role.
+                actual["Mounts"] = server["Mounts"]
+                actual["Config"]["Env"] = server["Config"]["Env"]
+                self.assertFalse(fixture.is_postgres_server(actual))
+        for mutation in ["missing-data", "tmpfs-data", "read-only-data", "conflicting-service", "missing-password"]:
+            with self.subTest(invalid=mutation):
+                actual = copy.deepcopy(server)
+                if mutation == "missing-data":
+                    actual["Mounts"] = []
+                elif mutation == "tmpfs-data":
+                    actual["Mounts"][0]["Type"] = "tmpfs"
+                elif mutation == "read-only-data":
+                    actual["Mounts"][0]["RW"] = False
+                elif mutation == "conflicting-service":
+                    actual["Config"]["Labels"]["io.podman.compose.service"] = "postgres-admin"
+                else:
+                    actual["Config"]["Env"] = ["POSTGRES_USER=fixture", "POSTGRES_DB=fixture"]
+                self.assertFalse(fixture.is_postgres_server(actual))
+
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)

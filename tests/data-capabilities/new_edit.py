@@ -125,6 +125,32 @@ def inspect(identifier):
     return values[0]
 
 
+def is_postgres_server(item):
+    """Recognize the canonical single-server layouts, not same-image helpers.
+
+    Core compose-single.yaml uses postgres-member-1; the application renderer
+    uses postgres for New's default SQL instance; shared_postgres_single.go
+    uses shared-postgres-<environment>. All three mount a persistent RW data
+    volume at /var/lib/postgresql and expose these keys to their own process.
+    Admin/init containers have neither this server role nor that data volume.
+    """
+    config = item.get("Config") or {}
+    labels = config.get("Labels") or {}
+    services = [labels[key] for key in ("com.docker.compose.service", "io.podman.compose.service") if key in labels]
+    if not services or any(service != services[0] for service in services):
+        return False
+    service = services[0]
+    if not (service == "postgres" or re.fullmatch(r"postgres-member-[1-9][0-9]*|shared-postgres-[a-z0-9]+(?:-[a-z0-9]+)*", service)):
+        return False
+    image = config.get("Image", "").split("@", 1)[0].split(":", 1)[0].split("/")[-1]
+    environment_keys = {entry.split("=", 1)[0] for entry in config.get("Env") or []}
+    data = [mount for mount in item.get("Mounts") or [] if mount.get("Destination") == "/var/lib/postgresql"]
+    return (image == "postgres" and item.get("State", {}).get("Running") is True
+            and {"POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_DB"} <= environment_keys
+            and len(data) == 1 and data[0].get("Type") == "volume"
+            and bool(data[0].get("Name")) and data[0].get("RW") is True)
+
+
 def owned_postgres():
     preview = json.loads(cli(ROOT, "destroy", "--all", "--json"))
     if preview.get("preview") is not True or preview.get("destroyed") is not False:
@@ -140,8 +166,7 @@ def owned_postgres():
             raise RuntimeError("observed container ownership differs from Core's exact project inventory")
         if item.get("Name", "").lstrip("/") != resource["name"].lstrip("/"):
             raise RuntimeError("native name differs from Core's observed inventory")
-        image = item.get("Config", {}).get("Image", "")
-        if image.split(":")[0].split("/")[-1] == "postgres":
+        if is_postgres_server(item):
             result[item["Id"]] = item
     return result
 
