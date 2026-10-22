@@ -150,3 +150,7 @@ if [ "${DEMO_ATOMIC_GATE:-0}" = "1" ]; then
 else
   pass "Guided Adoption Happy Path" "pristine repository -> source-neutral components + full capability selection -> canonical HTTPS routes -> READY"
 fi
+
+section "Actual New/Edit zero-needs application journey"
+python3 "$DEMO_ROOT/tests/guided/new_edit.py"
+pass "New/Edit Zero Needs" "actual New run + No/Cancel unchanged + native CLI/JSON/MCP Footprint parity"

@@ -1,7 +1,7 @@
 name: Targeted Demo compatibility
 on:
   push:
-    branches: [work/v0.4.24-ecosystem-release, work/v0.4.25-ecosystem-release]
+    branches: [work/v0.4.24-ecosystem-release, work/v0.4.25-ecosystem-release, work/v0.4.26-ecosystem-release]
 permissions:
   contents: read
 concurrency:
