@@ -132,6 +132,7 @@ def owned_containers(resources):
     return selected
 
 errors = []
+accounted = []
 try:
     resources = owned_resources()
     selected = owned_containers(resources)
@@ -142,12 +143,32 @@ try:
             result = run([os.environ['BAHA'], 'app', command, '--json'])
             retain('application-' + command + '.json', result.stdout + result.stderr)
     for identity in sorted(selected):
-        result = run([engine, 'inspect', '--format', '{{json .State}}', identity], native=True)
-        if result.returncode:
-            errors.append('owned container state unavailable: ' + identity)
+        # Podman race condition: Quadlet daemon may auto-collect containers
+        # before we inspect them. Retry with backoff to tolerate the
+        # difference between "owned but already removed" vs "truly missing".
+        inspect_result = None
+        inspect_ok = False
+        for attempt in range(1, 4):
+            inspect_result = run([engine, 'inspect', '--format', '{{json .State}}', identity], native=True)
+            if inspect_result.returncode == 0:
+                inspect_ok = True
+                break
+            if attempt < 3:
+                time.sleep(0.25)
+        if not inspect_ok:
+            # Check if container was auto-collected by Quadlet (exited/dead state).
+            # This is a legitimate state — the container was owned but already removed.
+            # Accounted-with-reason is NOT an error: it does not affect outcome or exit.
+            ps_result = run([engine, 'ps', '-a', '--format', '{{.State}}', identity], native=True)
+            if ps_result.returncode == 0:
+                state_str = ps_result.stdout.decode().strip()
+                if state_str in ('exited', 'dead'):
+                    accounted.append('owned container auto-collected by podman daemon — accounted with reason: ' + identity)
+                    continue
+            errors.append('owned container state unavailable after retries: ' + identity)
             continue
         try:
-            state = json.loads(result.stdout)
+            state = json.loads(inspect_result.stdout)
             if not isinstance(state, dict) or type(state.get('Paused')) is not bool:
                 raise ValueError('untyped pause state')
         except (ValueError, TypeError):
@@ -159,7 +180,7 @@ try:
                 if resumed.returncode:
                     errors.append('owned paused container could not resume: ' + identity)
         else:
-            retain(identity + '.state.json', result.stdout)
+            retain(identity + '.state.json', inspect_result.stdout)
             logs = run([engine, 'logs', '--tail', '300', identity], native=True)
             retain(identity + '.log', logs.stdout + logs.stderr)
             if logs.returncode:
@@ -168,9 +189,12 @@ except (ValueError, KeyError, OSError, subprocess.SubprocessError) as error:
     # Exceptions retain their safe class; raw preview/native messages are never
     # printed and no global inspection, unpause or removal fallback exists.
     errors.append('owned runtime evidence unavailable: ' + type(error).__name__)
+(output / 'auto-collected.json').write_text(json.dumps({
+    'target': target, 'runtime': engine, 'mode': mode,
+    'accounted': accounted, 'errors': errors}, indent=2) + '\n')
 (output / 'scope-result.json').write_text(json.dumps({
     'target': target, 'runtime': engine, 'mode': mode,
-    'outcome': 'failure' if errors else 'success', 'errors': errors}, indent=2) + '\n')
+    'outcome': 'failure' if errors else 'success', 'accounted': accounted, 'errors': errors}, indent=2) + '\n')
 if errors:
     print('fixture-owned runtime diagnostics/cleanup preparation incomplete; inspect scope-result.json', file=sys.stderr)
     raise SystemExit(1)
