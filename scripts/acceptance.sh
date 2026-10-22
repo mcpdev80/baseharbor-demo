@@ -67,28 +67,19 @@ runtime_cmd() {
 
 cleanup() {
   status=$?
+  # A cancellation enters the same bounded cleanup once. Further signals must
+  # not interrupt the fresh owner/teardown context halfway through recovery.
+  trap - EXIT
+  trap '' INT TERM
   set +e
   cd "$DEMO_ROOT"
   printf '[acceptance] cleanup: begin (exit=%s)\n' "$status" >&2
-  for id in $(runtime_cmd ps -q 2>/dev/null); do
-    runtime_cmd unpause "$id" >/dev/null 2>&1 || true
-  done
-
+  # Resume only exact native resources in Core's current read-only owner
+  # inventory. A foreign paused sentinel is neither an error nor permission.
+  cleanup_preparation=0
+  bash "$DEMO_ROOT/scripts/failure-runtime-diagnostics.sh" cleanup-preparation --unpause-owned || cleanup_preparation=$?
   if [ "$status" -ne 0 ]; then
-    diagnostics="$ARTIFACT_DIR/runtime-diagnostics"
-    mkdir -p "$diagnostics"
-    runtime_cmd ps -a --format '{{.ID}}\t{{.Names}}\t{{.Status}}\t{{.Image}}' >"$diagnostics/containers.tsv" 2>&1 || true
-    for id in $(runtime_cmd ps -aq 2>/dev/null); do
-      name=$(runtime_cmd inspect --format '{{.Name}}' "$id" 2>/dev/null | sed 's#^/##')
-      [ -n "$name" ] || name="$id"
-      safe_name=$(printf '%s' "$name" | tr '/: ' '___')
-      runtime_cmd inspect --format '{{json .State}}' "$id" >"$diagnostics/$safe_name.state.json" 2>&1 || true
-      runtime_cmd inspect --format 'image={{.Config.Image}} name={{.Name}}' "$id" >"$diagnostics/$safe_name.identity.txt" 2>&1 || true
-      runtime_cmd logs --tail 300 "$id" 2>&1 \
-        | sed -E 's/([Pp]assword|[Ss]ecret|[Tt]oken|[Aa]ccess[_-]?[Kk]ey)([=: ]+)[^[:space:]]+/\1\2<redacted>/g' \
-        >"$diagnostics/$safe_name.log" || true
-    done
-    printf '[acceptance] cleanup: captured runtime diagnostics\n' >&2
+    bash "$DEMO_ROOT/scripts/failure-runtime-diagnostics.sh" cleanup || true
   fi
 
   printf '[acceptance] cleanup: destroy registered BaseHarbor state\n' >&2
@@ -97,15 +88,27 @@ cleanup() {
   # Match the fixture command budget; a 90-second outer timeout truncates valid cleanup.
   timeout --signal=TERM --kill-after=5s 900s python3 "$DEMO_ROOT/tests/fixture-consent.py" "$BAHA" destroy --all --yes >"$ARTIFACT_DIR/cleanup.json" 2>"$ARTIFACT_DIR/cleanup.stderr.txt"
   cleanup_exit=$?
-  if [ "$cleanup_exit" -ne 0 ]; then
+  foreign_check=0
+  foreign_remove=0
+  # The heavy New/Edit gate hands off its own private sentinel receipt. Verify
+  # preservation after the actual acceptance teardown, before its separate
+  # exact-owner cleanup. A failed check must still attempt that bounded cleanup.
+  if [ -e "$BASEHARBOR_DEMO_FIXTURE/new-edit-foreign.json" ] || [ -L "$BASEHARBOR_DEMO_FIXTURE/new-edit-foreign.json" ]; then
+    timeout --signal=TERM --kill-after=5s 180s python3 "$DEMO_ROOT/tests/data-capabilities/new_edit.py" --foreign-check >"$ARTIFACT_DIR/foreign-check.txt" 2>&1 || foreign_check=$?
+    timeout --signal=TERM --kill-after=5s 180s python3 "$DEMO_ROOT/tests/data-capabilities/new_edit.py" --foreign-remove >"$ARTIFACT_DIR/foreign-remove.txt" 2>&1 || foreign_remove=$?
+  elif [ -e "$ARTIFACT_DIR/new-edit-sql.json" ] || [ -L "$ARTIFACT_DIR/new-edit-sql.json" ]; then
+    foreign_check=1
+    printf 'native New/Edit evidence lacks its private foreign sentinel owner receipt\n' >"$ARTIFACT_DIR/foreign-check.txt"
+  fi
+  if [ "$cleanup_exit" -ne 0 ] || [ "$cleanup_preparation" -ne 0 ] || [ "$foreign_check" -ne 0 ] || [ "$foreign_remove" -ne 0 ]; then
     cleanup_result=incomplete
     cat "$ARTIFACT_DIR/cleanup.stderr.txt" >&2
-    printf '[acceptance] cleanup: incomplete (exit=%s); retained owner and diagnostics remain available\n' "$cleanup_exit" >&2
+    printf '[acceptance] cleanup: incomplete (destroy=%s preparation=%s foreign-check=%s foreign-remove=%s); retained owner and diagnostics remain available\n' "$cleanup_exit" "$cleanup_preparation" "$foreign_check" "$foreign_remove" >&2
     [ "$status" -ne 0 ] || status=1
   else
     printf '[acceptance] cleanup: complete\n' >&2
   fi
-  python3 - "$ARTIFACT_DIR/recovery-qualified.json" "$cleanup_result" "$status" <<'PY' || status=1
+  python3 - "$ARTIFACT_DIR/recovery-qualified.json" "$cleanup_result" "$status" <<'PY' || { [ "$status" -ne 0 ] || status=1; }
 import json, pathlib, sys
 path = pathlib.Path(sys.argv[1])
 if path.is_file() and not path.is_symlink():
@@ -118,6 +121,8 @@ PY
   exit "$status"
 }
 trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 
 declare -A selected=()

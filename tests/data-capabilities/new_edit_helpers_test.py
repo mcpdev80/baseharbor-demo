@@ -1,0 +1,136 @@
+#!/usr/bin/env python3
+"""Identity/permission regressions only; these mocks are not native evidence."""
+import importlib.util
+import json
+import os
+from pathlib import Path
+import tempfile
+import unittest
+from unittest.mock import patch
+import sys
+
+os.environ.setdefault("BASEHARBOR_TEST_RUNTIME", "docker")
+spec = importlib.util.spec_from_file_location("demo_native_new_edit", Path(__file__).with_name("new_edit.py"))
+fixture = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(fixture)
+import new_edit as guided
+
+
+class SentinelIdentityTest(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.env = patch.dict(os.environ, {"BASEHARBOR_DEMO_FIXTURE": self.directory.name, "BASEHARBOR_TARGET": "fixture"})
+        self.env.start()
+        self.addCleanup(self.env.stop)
+        self.nonce = "a" * 32
+        self.identifier = "b" * 64
+        project = "foreign-new-edit-" + self.nonce[:12]
+        labels = {fixture.OWNER_LABEL: self.nonce, "com.docker.compose.project": project, "io.podman.compose.project": project}
+        self.item = {"Id": self.identifier, "Created": "2026-10-21T00:00:00Z",
+            "Name": "/bh-new-edit-foreign-" + self.nonce[:12], "State": {"Paused": True}, "Config": {"Labels": labels}}
+        self.volume = {"Name": project, "CreatedAt": "2026-10-21T00:00:00Z", "Labels": {fixture.OWNER_LABEL: self.nonce}}
+        self.receipt = {"version": "demo-new-edit-foreign/v1", "runtime": fixture.RUNTIME, "target": "fixture",
+            "nonce": self.nonce, "container_id": self.identifier, "created": self.item["Created"],
+            "labels": labels, "volume_name": project, "volume": self.volume}
+        self.path = Path(self.directory.name) / "new-edit-foreign.json"
+        self.calls = []
+
+    def write_receipt(self):
+        self.path.write_text(json.dumps(self.receipt))
+        self.path.chmod(0o600)
+
+    def native(self, *arguments, **kwargs):
+        self.calls.append(arguments)
+        if arguments[0] == "inspect":
+            self.assertEqual(arguments[1], self.identifier)
+            return json.dumps([self.item]).encode()
+        if arguments[:2] == ("volume", "inspect"):
+            self.assertEqual(arguments[2], self.volume["Name"])
+            return json.dumps([self.volume]).encode()
+        return b""
+
+    def test_missing_receipt_does_not_invoke_runtime(self):
+        with patch.object(fixture, "native", side_effect=self.native):
+            fixture.foreign_finalize()
+            fixture.foreign_finalize(remove=True)
+        self.assertEqual(self.calls, [])
+
+    def test_public_success_without_private_identity_blocks_proof(self):
+        (Path(self.directory.name) / "new-edit-sql.json").write_text("{}")
+        with patch.object(fixture, "ARTIFACT_DIR", Path(self.directory.name)), patch.object(fixture, "native", side_effect=self.native):
+            with self.assertRaises(RuntimeError):
+                fixture.foreign_finalize()
+            fixture.foreign_finalize(remove=True)
+        self.assertEqual(self.calls, [])
+
+    def test_pause_failure_blocks_proof_but_exact_owner_can_remove(self):
+        self.write_receipt()
+        self.item["State"]["Paused"] = False
+        with patch.object(fixture, "native", side_effect=self.native):
+            with self.assertRaises(RuntimeError):
+                fixture.foreign_finalize()
+            fixture.foreign_finalize(remove=True)
+        self.assertIn(("rm", "-f", self.identifier), self.calls)
+        self.assertIn(("volume", "rm", self.volume["Name"]), self.calls)
+        self.assertFalse(self.path.exists())
+
+    def test_replaced_native_identity_never_removes_resources(self):
+        self.write_receipt()
+        self.item["Created"] = "replaced"
+        with patch.object(fixture, "native", side_effect=self.native):
+            with self.assertRaises(RuntimeError):
+                fixture.foreign_finalize(remove=True)
+        self.assertEqual(self.calls, [("inspect", self.identifier)])
+
+    def test_world_readable_or_symlink_receipt_is_rejected(self):
+        self.write_receipt()
+        self.path.chmod(0o644)
+        with self.assertRaises(RuntimeError):
+            fixture.read_receipt()
+        self.path.unlink()
+        self.path.symlink_to(Path(self.directory.name) / "missing")
+        with self.assertRaises(RuntimeError):
+            fixture.read_receipt()
+
+    def test_actual_child_engine_context_and_metadata_only_snapshot(self):
+        root = Path(self.directory.name)
+        audit = root / "engine-calls.jsonl"
+        program = "#!" + sys.executable + "\n" + '''import json, os, sys
+data = {key: os.environ.get(key) for key in ["XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_RUNTIME_DIR"]}
+with open(os.environ["DEMO_ENV_AUDIT"], "a") as output:
+    output.write(json.dumps({"arguments": sys.argv[1:], "environment": data}) + "\\n")
+if sys.argv[1:] == ["env"]:
+    print(json.dumps(data))
+'''
+        with patch.dict(os.environ, {"XDG_CONFIG_HOME": str(root / "config"),
+                "XDG_DATA_HOME": str(root / "data"), "XDG_RUNTIME_DIR": "/run/user/fixture",
+                "DEMO_ENV_AUDIT": str(audit)}):
+            for runtime in ["podman", "docker"]:
+                executable = root / runtime
+                executable.write_text(program)
+                executable.chmod(0o700)
+                with patch.object(fixture, "RUNTIME", str(executable)):
+                    actual = json.loads(fixture.native("env"))
+                expected_config = None if runtime == "podman" else str(root / "config")
+                expected_data = None if runtime == "podman" else str(root / "data")
+                self.assertEqual(actual, {"XDG_CONFIG_HOME": expected_config,
+                    "XDG_DATA_HOME": expected_data, "XDG_RUNTIME_DIR": "/run/user/fixture"})
+                audit.unlink()
+                with patch.dict(os.environ, {"BASEHARBOR_TEST_RUNTIME": str(executable)}), patch.object(guided, "ROOT", root):
+                    guided.state_snapshot(root)
+                calls = [json.loads(line) for line in audit.read_text().splitlines()]
+                self.assertEqual([call["arguments"] for call in calls], [
+                    ["ps", "-a", "--no-trunc", "--format", "{{.ID}}\t{{.Names}}\t{{.State}}"],
+                    ["volume", "ls", "-q"], ["network", "ls", "-q"]])
+                self.assertTrue(all(call["environment"] == actual for call in calls))
+                # Public baha commands must still use the isolated fixture state.
+                with patch.object(guided, "BAHA", str(executable)):
+                    baha_environment = json.loads(guided.cli(root, "env"))
+                self.assertEqual(baha_environment["XDG_CONFIG_HOME"], str(root / "config"))
+                self.assertEqual(baha_environment["XDG_DATA_HOME"], str(root / "data"))
+                self.assertEqual(os.environ["XDG_CONFIG_HOME"], str(root / "config"))
+
+
+if __name__ == "__main__":
+    unittest.main()

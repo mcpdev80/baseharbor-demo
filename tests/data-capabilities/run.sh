@@ -38,3 +38,7 @@ pass "Secrets" "dedicated binding verification without value exposure"
 pass "Runtime Resources" "application-time resource request accepted through mTLS broker"
 
 assert_no_secret_leak "$ARTIFACT_DIR/data-status.json"
+
+section "Actual New/Edit SQL lifecycle and preservation"
+python3 "$DEMO_ROOT/tests/data-capabilities/new_edit.py" "$base" "$gateway_ca" "$api_host:$gateway_port:127.0.0.1"
+pass "New/Edit SQL Lifecycle" "actual SQL New, add/remove, compatible provider switch; own/shared data and foreign paused resources preserved"

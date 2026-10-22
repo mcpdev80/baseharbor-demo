@@ -97,6 +97,8 @@ try:
         "baseharbor.workspace.status",
         "baseharbor.workspace.update",
         "baseharbor.app.new",
+        "baseharbor.app.edit",
+        "baseharbor.app.footprint.show",
         "baseharbor.plan",
         "baseharbor.apply",
         "baseharbor.status",
@@ -123,6 +125,7 @@ try:
     if names != expected:
         raise RuntimeError(f"MCP contract mismatch: missing={sorted(expected - names)} unexpected={sorted(names - expected)}")
     read_only = {
+        "baseharbor.app.footprint.show",
         "baseharbor.release.check",
         "baseharbor.control-plane.status",
         "baseharbor.control-plane.doctor",
@@ -187,5 +190,7 @@ finally:
     try: p.wait(timeout=2)
     except subprocess.TimeoutExpired: p.kill()
 PY
+python3 "$DEMO_ROOT/tests/mcp/new-edit-static.py" "$BAHA" "$ARTIFACT_DIR/mcp-new-edit-static.json"
+assert_no_secret_leak "$ARTIFACT_DIR/mcp-new-edit-static.json"
 assert_no_secret_leak "$ARTIFACT_DIR/mcp.json"
 pass "MCP" "bounded semantic lifecycle stdio surface"

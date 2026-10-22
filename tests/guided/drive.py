@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 import os
+import fcntl
 import pty
 import re
 import select
 import subprocess
 import sys
+import struct
+import termios
 import time
 from pathlib import Path
 
-ROOT = Path(os.environ["DEMO_ROOT"])
-BAHA = os.environ["BAHA"]
-ARTIFACT_DIR = Path(os.environ["ARTIFACT_DIR"])
-ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
+ROOT = Path(os.environ.get("DEMO_ROOT", Path(__file__).resolve().parents[2]))
+BAHA = os.environ.get("BAHA", "baha")
+ARTIFACT_DIR = Path(os.environ.get("ARTIFACT_DIR", ROOT / "artifacts"))
 
 class Rule:
     def __init__(self, pattern, response=None, callback=None, repeat=False, optional=False):
@@ -85,16 +87,21 @@ def capability_selection_response(match, text):
     keys.append("\n")
     return keys
 
-def run_tty(name, argv, rules, env=None, timeout=900, no_output_timeout=None):
+def run_tty(name, argv, rules, env=None, timeout=900, no_output_timeout=None,
+            cwd=None, expected_returncodes=(0,)):
+    ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
     log_path = ARTIFACT_DIR / f"{name}.txt"
     merged_env = os.environ.copy()
     if env:
         merged_env.update(env)
 
     master, slave = pty.openpty()
+    # Bubble Tea requires an actual terminal size; an uninitialized PTY can
+    # otherwise render no needs rows at all.
+    fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 60, 140, 0, 0))
     proc = subprocess.Popen(
         argv,
-        cwd=ROOT,
+        cwd=cwd or ROOT,
         stdin=slave,
         stdout=slave,
         stderr=slave,
@@ -108,86 +115,92 @@ def run_tty(name, argv, rules, env=None, timeout=900, no_output_timeout=None):
     last_heartbeat = started
     buffer = ""
     cursor = 0
-    with log_path.open("wb") as log:
-        while True:
-            if time.monotonic() - started > timeout:
-                proc.kill()
-                raise RuntimeError(f"{name} timed out")
+    try:
+        with log_path.open("wb") as log:
+            while True:
+                if time.monotonic() - started > timeout:
+                    proc.kill()
+                    raise RuntimeError(f"{name} timed out")
 
-            ready, _, _ = select.select([master], [], [], 0.2)
-            if ready:
-                try:
-                    chunk = os.read(master, 4096)
-                except OSError:
-                    chunk = b""
-                if chunk:
-                    last_output = time.monotonic()
-                    log.write(chunk)
-                    log.flush()
-                    sys.stdout.buffer.write(chunk)
-                    sys.stdout.buffer.flush()
-                    buffer += chunk.decode("utf-8", errors="replace").replace("\r", "")
-                    if len(buffer) > 65536:
-                        buffer = buffer[-65536:]
-                        cursor = min(cursor, len(buffer))
-
-                    search_text = buffer[cursor:]
-                    responded = True
-                    while responded:
-                        responded = False
-                        for rule in rules:
-                            if rule.used and not rule.repeat:
-                                continue
-                            match = rule.match(search_text)
-                            if not match:
-                                continue
-                            value = rule.value(match, buffer)
-                            if value is not None:
-                                if isinstance(value, (list, tuple)):
-                                    for key in value:
-                                        os.write(master, key.encode())
-                                        time.sleep(0.05)
-                                else:
-                                    os.write(master, value.encode())
-                            rule.used += 1
-                            cursor += match.end()
-                            search_text = buffer[cursor:]
-                            responded = True
-                            break
-
-            now = time.monotonic()
-            if no_output_timeout is not None and now - last_output > no_output_timeout:
-                proc.kill()
-                elapsed = int(now - started)
-                silent = int(now - last_output)
-                raise RuntimeError(
-                    f"{name} exceeded no-output timeout: elapsed={elapsed}s no-output={silent}s "
-                    f"limit={no_output_timeout}s"
-                )
-            if now - last_heartbeat >= 15:
-                elapsed = int(now - started)
-                silent = int(now - last_output)
-                print(f"\n[progress] {name}: still running · elapsed={elapsed}s · no-output={silent}s", flush=True)
-                last_heartbeat = now
-
-            rc = proc.poll()
-            if rc is not None:
-                try:
-                    while True:
+                ready, _, _ = select.select([master], [], [], 0.2)
+                if ready:
+                    try:
                         chunk = os.read(master, 4096)
-                        if not chunk:
-                            break
+                    except OSError:
+                        chunk = b""
+                    if chunk:
+                        last_output = time.monotonic()
                         log.write(chunk)
+                        log.flush()
                         sys.stdout.buffer.write(chunk)
-                except OSError:
-                    pass
-                os.close(master)
-                if rc != 0:
-                    raise RuntimeError(f"{name} failed with exit code {rc}")
-                missing = [r.pattern.pattern for r in rules if not r.optional and not r.used]
-                if missing:
-                    raise RuntimeError(f"{name} completed without expected prompts: {missing}")
-                return
+                        sys.stdout.buffer.flush()
+                        buffer += chunk.decode("utf-8", errors="replace").replace("\r", "")
+                        if len(buffer) > 65536:
+                            removed = len(buffer) - 65536
+                            buffer = buffer[removed:]
+                            cursor = max(0, cursor - removed)
+
+                        search_text = buffer[cursor:]
+                        responded = True
+                        while responded:
+                            responded = False
+                            for rule in rules:
+                                if rule.used and not rule.repeat:
+                                    continue
+                                match = rule.match(search_text)
+                                if not match:
+                                    continue
+                                value = rule.value(match, buffer)
+                                if value is not None:
+                                    if isinstance(value, (list, tuple)):
+                                        for key in value:
+                                            os.write(master, key.encode())
+                                            time.sleep(0.05)
+                                    else:
+                                        os.write(master, value.encode())
+                                rule.used += 1
+                                cursor += match.end()
+                                search_text = buffer[cursor:]
+                                responded = True
+                                break
+
+                now = time.monotonic()
+                if no_output_timeout is not None and now - last_output > no_output_timeout:
+                    proc.kill()
+                    elapsed = int(now - started)
+                    silent = int(now - last_output)
+                    raise RuntimeError(
+                        f"{name} exceeded no-output timeout: elapsed={elapsed}s no-output={silent}s "
+                        f"limit={no_output_timeout}s"
+                    )
+                if now - last_heartbeat >= 15:
+                    elapsed = int(now - started)
+                    silent = int(now - last_output)
+                    print(f"\n[progress] {name}: still running · elapsed={elapsed}s · no-output={silent}s", flush=True)
+                    last_heartbeat = now
+
+                rc = proc.poll()
+                if rc is not None:
+                    try:
+                        while True:
+                            chunk = os.read(master, 4096)
+                            if not chunk:
+                                break
+                            log.write(chunk)
+                            sys.stdout.buffer.write(chunk)
+                    except OSError:
+                        pass
+                    if rc not in expected_returncodes:
+                        raise RuntimeError(f"{name} failed with exit code {rc}")
+                    missing = [r.pattern.pattern for r in rules if not r.optional and not r.used]
+                    if missing:
+                        raise RuntimeError(f"{name} completed without expected prompts: {missing}")
+                    return rc
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+        proc.wait(timeout=5)
+        os.close(master)
 
 init_rules = [
     Rule(r"Set them up now\? \[Y/n\]\s*$", "y\n", optional=True),
@@ -248,15 +261,15 @@ up_rules = [
     Rule(r"Install the BaseHarbor CA into the host trust store\? \[y/N\]:\s*$", "n\n", optional=True),
 ]
 
-print("[phase] guided init: interactive capability selection", flush=True)
-run_tty("guided-init", [BAHA, "init"], init_rules, no_output_timeout=120)
-print("[phase] guided up: provision providers, bindings and workload", flush=True)
-run_tty(
-    "guided-up",
-    [BAHA, "--verbose", "up"],
-    up_rules,
-    timeout=600,
-    no_output_timeout=120,
-)
-
-print("[phase] guided up: READY reached; returning to acceptance gate", flush=True)
+if __name__ == "__main__":
+    print("[phase] guided init: interactive capability selection", flush=True)
+    run_tty("guided-init", [BAHA, "init"], init_rules, no_output_timeout=120)
+    print("[phase] guided up: provision providers, bindings and workload", flush=True)
+    run_tty(
+        "guided-up",
+        [BAHA, "--verbose", "up"],
+        up_rules,
+        timeout=600,
+        no_output_timeout=120,
+    )
+    print("[phase] guided up: READY reached; returning to acceptance gate", flush=True)
