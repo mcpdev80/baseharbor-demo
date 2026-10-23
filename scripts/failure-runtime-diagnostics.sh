@@ -38,9 +38,20 @@ native_env = dict(os.environ)
 if engine == 'podman':
     native_env.pop('XDG_CONFIG_HOME', None)
     native_env.pop('XDG_DATA_HOME', None)
-deadline = time.monotonic() + 60
+# The podman rootless daemon is socket-activated and can stall on its first
+# native call after a long acceptance run (observed: a single `podman ps` on a
+# cold runner exceeds the 20s per-call ceiling and raises TimeoutExpired, which
+# surfaces as a spurious cleanup-preparation=1 even though every owned container
+# is present). Allow a longer overall budget and a wider first-call ceiling for
+# podman; a genuinely hung call still times out within this budget.
+deadline = time.monotonic() + (90 if engine == 'podman' else 60)
+# Per-call ceiling: podman's rootless daemon is socket-activated and can stall
+# on its first native call after a long acceptance run; docker stays tight.
+call_limit = 60 if engine == 'podman' else 20
 
-def run(args, *, native=False, limit=20, inputdata=None):
+def run(args, *, native=False, limit=0, inputdata=None):
+    if limit == 0:
+        limit = call_limit
     remaining = deadline - time.monotonic()
     if remaining <= 0:
         raise TimeoutError('owned runtime diagnostic budget exhausted')
