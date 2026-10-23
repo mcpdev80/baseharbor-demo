@@ -167,6 +167,27 @@ os.execv(sys.executable,[sys.executable,*args])
         self.assertTrue(all(row['xdg_present'] for row in self.recorded() if row['program'] == 'baha'))
         self.assertEqual([['unpause', OWN]], [args for args in self.native_actions() if args[0] == 'unpause'])
 
+    def test_two_owned_containers_in_one_project_both_unpaused(self):
+        second = 'e' * 64
+        second_name = self.project + '-app-1'
+        self.state['preview']['resources'].append({
+            'target': self.target, 'project': self.project,
+            'kind': 'container', 'name': second_name})
+        self.state['rows'].append([second, second_name, self.project, '', 'app', ''])
+        self.state['containers'][second] = {'Paused': True, 'Running': True}
+        result = self.invoke('--unpause-owned')
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual({OWN, second},
+                         {args[-1] for args in self.native_actions() if args[0] == 'unpause'})
+        state = json.loads(self.state_file.read_text())
+        self.assertFalse(state['containers'][OWN]['Paused'])
+        self.assertFalse(state['containers'][second]['Paused'])
+        self.assertTrue(all(state['containers'][identity]['Paused']
+                            for identity in (FOREIGN, CONFLICT, UNLISTED)))
+        receipt = json.loads((self.artifacts / 'failure-runtime/test/scope-result.json').read_text())
+        self.assertEqual('success', receipt['outcome'])
+        self.assertEqual([], receipt['errors'])
+
     def test_missing_unknown_or_failed_owner_never_uses_global_fallback(self):
         mutations = [lambda: self.state.update(preview_error=True),
                      lambda: self.state.update(preview=[]),

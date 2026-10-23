@@ -108,12 +108,12 @@ def owned_containers(resources):
     selected = {}
     accounted_missing = []
     for project in sorted({project for project, _ in resources}):
-        match = None
+        matches = None
         # The owned-but-auto-collected race: the Quadlet daemon may remove an
         # owned container between Core's preview and the native verify. Retry the
         # inventory with backoff so a transient removal is caught on a later read.
         for attempt in range(1, 4):
-            match = None
+            matches = []
             for label in ('com.docker.compose.project', 'io.podman.compose.project'):
                 listed = run([engine, 'ps', '-a', '--no-trunc', '--filter', 'label=' + label + '=' + project,
                               '--format', template], native=True)
@@ -139,13 +139,15 @@ def owned_containers(resources):
                     row = (name, project, service)
                     if identity in selected and selected[identity] != row:
                         raise ValueError('ambiguous owned native container identity')
-                    match = (identity, row)
-            if match:
+                    matches.append((identity, row))
+            if matches:
                 break
             if attempt < 3:
                 time.sleep(0.25)
-        if match:
-            identity, row = match
+        for identity, row in matches:
+            # Commit every qualifying owned row of the project, not just the
+            # last match: a project may own more than one container. The
+            # ambiguity guard above still raises if one id is seen twice.
             selected[identity] = row
     # Owned resources absent from the native inventory are accounted only when
     # the daemon reports them exited/dead (legitimately collected by the Quadlet
