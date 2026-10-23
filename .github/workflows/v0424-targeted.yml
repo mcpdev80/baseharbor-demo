@@ -88,7 +88,7 @@ jobs:
             ${{ runner.temp }}/demo-evidence/report.md
             ${{ runner.temp }}/demo-evidence/native-topology-*.json
             ${{ runner.temp }}/demo-evidence/recovery-qualified.json
-            ${{ runner.temp }}/baseharbor-public-image-cache-${{ matrix.runtime }}.log
+            ${{ runner.temp }}/demo-evidence/failure-runtime/cleanup-preparation/scope-result.json
           if-no-files-found: warn
 
 # re-trigger verified Core serveability pre-check [demo-runtime]
