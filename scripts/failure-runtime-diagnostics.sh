@@ -69,7 +69,20 @@ def retain(name, data):
 def token(value):
     return isinstance(value, str) and re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9_.-]*', value)
 
+def _rsplit_reason(reason):
+    # Extract the trailing KEY of an accounted reason of the form
+    # `… accounted with reason: KEY`. Returns KEY or None when the reason
+    # does not carry an explicit accounted key.
+    marker = 'accounted with reason: '
+    if marker in reason:
+        return reason.rsplit(marker, 1)[-1]
+    return None
+
 def owned_resources():
+    # Capture the authoritative owner inventory ONCE, before any teardown can
+    # mutate the runtime. The Core non-mutating preview is the snapshot; the
+    # native verification below re-reads the same set against this snapshot so
+    # the Quadlet daemon cannot tear it down between preview and verify.
     preview = run([os.environ['BAHA'], 'destroy', '--all', '--json'])
     if preview.returncode:
         retain('owner-preview-error.txt', preview.stderr)
@@ -95,47 +108,94 @@ def owned_resources():
 def owned_containers(resources):
     # Label-filtered metadata is deliberately insufficient by itself: recheck
     # both native label families and Core's exact observed native resource name.
+    # Returns (selected, accounted_missing): containers Core owns but the daemon
+    # already collected are reported as accounted rather than missing.
     fields = ['.ID', '.Names'] + ['.Label "' + key + '"' for key in (
         'com.docker.compose.project', 'io.podman.compose.project',
         'com.docker.compose.service', 'io.podman.compose.service')]
     template = '\t'.join('{{' + field + '}}' for field in fields)
     selected = {}
+    accounted_missing = []
     for project in sorted({project for project, _ in resources}):
-        for label in ('com.docker.compose.project', 'io.podman.compose.project'):
-            listed = run([engine, 'ps', '-a', '--no-trunc', '--filter', 'label=' + label + '=' + project,
-                          '--format', template], native=True)
-            if listed.returncode:
-                raise ValueError('selected runtime label inventory failed')
-            for line in listed.stdout.decode().splitlines():
-                parts = line.split('\t')
-                if len(parts) != 6:
-                    raise ValueError('malformed selected runtime label inventory')
-                identity, name, dp, pp, ds, ps = parts
-                labels = ['' if value in ('<no value>', '<nil>') else value for value in (dp, pp, ds, ps)]
-                dp, pp, ds, ps = labels
-                projects, services = {v for v in (dp, pp) if v}, {v for v in (ds, ps) if v}
-                if projects != {project} or len(services) > 1:
-                    continue
-                service = next(iter(services)) if services else ''
-                # Core's public inventory already names the exact native
-                # resource, including first-party Quadlet's non-ordinal name.
-                if (project, name) not in resources or (service and not token(service)):
-                    continue
-                if not re.fullmatch(r'[0-9a-f]{12,64}', identity):
-                    raise ValueError('invalid owned native container ID')
-                row = (name, project, service)
-                if identity in selected and selected[identity] != row:
-                    raise ValueError('ambiguous owned native container identity')
-                selected[identity] = row
-    if resources != {(project, name) for name, project, _ in selected.values()}:
-        raise ValueError('canonical runtime resources lack verified native ownership')
-    return selected
+        matches = None
+        # The owned-but-auto-collected race: the Quadlet daemon may remove an
+        # owned container between Core's preview and the native verify. Retry the
+        # inventory with backoff so a transient removal is caught on a later read.
+        for attempt in range(1, 4):
+            matches = []
+            for label in ('com.docker.compose.project', 'io.podman.compose.project'):
+                listed = run([engine, 'ps', '-a', '--no-trunc', '--filter', 'label=' + label + '=' + project,
+                              '--format', template], native=True)
+                if listed.returncode:
+                    raise ValueError('selected runtime label inventory failed')
+                for line in listed.stdout.decode().splitlines():
+                    parts = line.split('\t')
+                    if len(parts) != 6:
+                        raise ValueError('malformed selected runtime label inventory')
+                    identity, name, dp, pp, ds, ps = parts
+                    labels = ['' if value in ('<no value>', '<nil>') else value for value in (dp, pp, ds, ps)]
+                    dp, pp, ds, ps = labels
+                    projects, services = {v for v in (dp, pp) if v}, {v for v in (ds, ps) if v}
+                    if projects != {project} or len(services) > 1:
+                        continue
+                    service = next(iter(services)) if services else ''
+                    # Core's public inventory already names the exact native
+                    # resource, including first-party Quadlet's non-ordinal name.
+                    if (project, name) not in resources or (service and not token(service)):
+                        continue
+                    if not re.fullmatch(r'[0-9a-f]{12,64}', identity):
+                        raise ValueError('invalid owned native container ID')
+                    row = (name, project, service)
+                    if identity in selected and selected[identity] != row:
+                        raise ValueError('ambiguous owned native container identity')
+                    matches.append((identity, row))
+            if matches:
+                break
+            if attempt < 3:
+                time.sleep(0.25)
+        for identity, row in matches:
+            # Commit every qualifying owned row of the project, not just the
+            # last match: a project may own more than one container. The
+            # ambiguity guard above still raises if one id is seen twice.
+            selected[identity] = row
+    # Owned resources absent from the native inventory are accounted only when
+    # the daemon reports them exited/dead (legitimately collected by the Quadlet
+    # monitor); a foreign or genuinely-lost gap is still a real failure, not an
+    # auto-collection. Confirm state per missing project before accounting.
+    missing = resources - {(project, name) for name, project, _ in selected.values()}
+    if missing:
+        verified_projects = {project for _name, project, _ in selected.values()}
+        state_cache = {}
+        for _project, _name in sorted(missing):
+            if _project not in verified_projects:
+                if _project not in state_cache:
+                    found = None
+                    label_filter = 'label=' + 'io.podman.compose.project' + '=' + _project
+                    for attempt in range(1, 4):
+                        ps_result = run([engine, 'ps', '-a', '--format', '{{.State}}',
+                                         '--filter', label_filter], native=True)
+                        if ps_result.returncode == 0:
+                            found = ps_result
+                            break
+                        if attempt < 3:
+                            time.sleep(0.25)
+                    state_cache[_project] = found
+                ps_result = state_cache[_project]
+                if ps_result is not None and ps_result.returncode == 0:
+                    states = {line.strip() for line in ps_result.stdout.decode().splitlines()}
+                    if states & {'exited', 'dead'}:
+                        accounted_missing.append((_project, _name))
+    return selected, accounted_missing
 
 errors = []
 accounted = []
+selected = None
+resources = None
 try:
     resources = owned_resources()
-    selected = owned_containers(resources)
+    selected, accounted_missing = owned_containers(resources)
+    for _project, _name in accounted_missing:
+        accounted.append('owned container auto-collected by podman daemon — accounted with reason: ' + _project + '/' + _name)
     (output / 'containers.tsv').write_text(''.join(
         '\t'.join((identity, *row)) + '\n' for identity, row in sorted(selected.items())))
     if mode == 'diagnostics':
@@ -189,6 +249,37 @@ except (ValueError, KeyError, OSError, subprocess.SubprocessError) as error:
     # Exceptions retain their safe class; raw preview/native messages are never
     # printed and no global inspection, unpause or removal fallback exists.
     errors.append('owned runtime evidence unavailable: ' + type(error).__name__)
+# Exact accounting contract (MERGE-118-G): the accounted set and the set of
+# verified-native-owned containers must cover the preview exactly, with NO
+# overlap. An accounted container that was ALSO natively verified (e.g. an
+# exited/dead id that is still in `selected`) is an overlap; any preview
+# resource neither verified nor accounted is a real gap. Either violation of
+# exact equality is a failure, never a pass. Each accounted reason ends with
+# `— accounted with reason: KEY` where KEY is either `PROJECT/NAME` (an
+# auto-collected gap) or a native container id; extract KEY and compare. This
+# runs only after the main loop completed (selected/accounted/resources all
+# defined); an early exception in owned_containers or the inspect loop is
+# already recorded above and must not re-enter this guard.
+if selected is not None and accounted is not None and resources is not None:
+    selected_pairs = {(project, name) for name, project, _ in selected.values()}
+    accounted_keys = set()
+    for _reason in accounted:
+        _key = _rsplit_reason(_reason)
+        if _key is None:
+            continue
+        if '/' in _key and not re.fullmatch(r'[0-9a-f]{12,64}', _key):
+            _project, _name = _key.split('/', 1)
+            accounted_keys.add((_project, _name))
+        else:
+            accounted_keys.add((_key, None))
+    accounted_ids = {_key for _key in accounted_keys if _key[1] is None}
+    accounted_gaps = {_key for _key in accounted_keys if _key[1] is not None}
+    if selected_pairs & accounted_gaps:
+        errors.append('canonical runtime accounting overlaps verified native ownership — exact equality violated')
+    elif {identity for identity in selected} & accounted_ids:
+        errors.append('canonical runtime accounting overlaps verified native ownership — exact equality violated')
+    elif resources != selected_pairs | accounted_gaps:
+        errors.append('canonical runtime resources lack verified native ownership — exact equality violated')
 (output / 'auto-collected.json').write_text(json.dumps({
     'target': target, 'runtime': engine, 'mode': mode,
     'accounted': accounted, 'errors': errors}, indent=2) + '\n')
