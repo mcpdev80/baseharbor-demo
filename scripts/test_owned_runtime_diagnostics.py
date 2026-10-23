@@ -188,6 +188,96 @@ os.execv(sys.executable,[sys.executable,*args])
         self.assertEqual('success', receipt['outcome'])
         self.assertEqual([], receipt['errors'])
 
+    def test_accounted_gap_but_other_resource_verified_still_fails(self):
+        # MERGE-118-G: accounting ONE preview resource (reported exited/dead)
+        # cannot rescue a DIFFERENT preview resource that is a genuine ownership
+        # gap. postgres-1 verifies (accounted, exited/dead) but unknown-1 has no
+        # native row and the daemon reports the project running -> the exact
+        # equality union misses unknown-1 -> failure.
+        original_rows = json.loads(json.dumps(self.state['rows']))
+        original_containers = json.loads(json.dumps(self.state['containers']))
+        try:
+            self.state['preview']['resources'].append({
+                'target': self.target, 'project': self.project,
+                'kind': 'container', 'name': self.project + '-unknown-1'})
+            self.state['rows'] = [[OWN, self.project + '-postgres-1', self.project, '', 'postgres', ''],
+                [FOREIGN, 'bh-demo-docker-foreign-1', 'foreign-project', '', 'postgres', ''],
+                [CONFLICT, self.project + '-postgres-1', self.project, 'foreign-project', 'postgres', '']]
+            # postgres-1's project reports exited/dead -> accounted; unknown-1's
+            # project reports running -> genuinely unaccounted gap.
+            for name in ['docker', 'podman']:
+                path = self.bin / name
+                code = path.read_text()
+                code = code.replace("if args[:1]==['ps']:",
+                    "if args[:1]==['ps'] and '--format' in args and args[args.index('--format')+1] == '{{.State}}':\n"
+                    " print('exited')\n sys.exit(0)\nif args[:1]==['ps']:")
+                path.write_text(code)
+            self.calls.unlink(missing_ok=True)
+            result = self.invoke('--unpause-owned')
+            self.assertNotEqual(0, result.returncode)
+            receipt = json.loads((self.artifacts / 'failure-runtime/test/scope-result.json').read_text())
+            self.assertEqual('failure', receipt['outcome'])
+            self.assertTrue(any('ownership' in error or 'equality' in error
+                                for error in receipt['errors']))
+        finally:
+            self.state['rows'] = original_rows
+            self.state['containers'] = original_containers
+            for name in ['docker', 'podman']:
+                path = self.bin / name
+                code = path.read_text()
+                code = code.replace(
+                    "if args[:1]==['ps'] and '--format' in args and args[args.index('--format')+1] == '{{.State}}':\n"
+                    " print('exited')\n sys.exit(0)\nif args[:1]==['ps']:",
+                    "if args[:1]==['ps']:")
+                path.write_text(code)
+
+    def test_unexplained_gap_with_another_accounted_resource_fails(self):
+        # MERGE-118-G: the guard must not pass just because ONE resource was
+        # accounted while another preview resource is a genuine ownership gap.
+        # The OWN postgres container verifies (unpaused); a second preview
+        # resource (unknown-1) has no native row and the daemon reports the
+        # project neither exited nor dead -> genuinely unaccounted. Any other
+        # accounted resource cannot rescue the union.
+        original_rows = json.loads(json.dumps(self.state['rows']))
+        original_preview = json.loads(json.dumps(self.state['preview']['resources']))
+        original_containers = json.loads(json.dumps(self.state['containers']))
+        try:
+            self.state['preview']['resources'].append({
+                'target': self.target, 'project': self.project,
+                'kind': 'container', 'name': self.project + '-unknown-1'})
+            # Drop the UNLISTED native row so unknown-1 has no verified owner.
+            self.state['rows'] = [[OWN, self.project + '-postgres-1', self.project, '', 'postgres', ''],
+                [FOREIGN, 'bh-demo-docker-foreign-1', 'foreign-project', '', 'postgres', ''],
+                [CONFLICT, self.project + '-postgres-1', self.project, 'foreign-project', 'postgres', '']]
+            # Report the project as still running (not exited/dead) so unknown-1
+            # is NOT accounted as auto-collected -> a real, unexplained gap.
+            for name in ['docker', 'podman']:
+                path = self.bin / name
+                code = path.read_text()
+                code = code.replace("if args[:1]==['ps']:",
+                    "if args[:1]==['ps'] and '--format' in args and args[args.index('--format')+1] == '{{.State}}':\n"
+                    " sys.exit(0)\nif args[:1]==['ps']:")
+                path.write_text(code)
+            self.calls.unlink(missing_ok=True)
+            result = self.invoke('--unpause-owned')
+            self.assertNotEqual(0, result.returncode)
+            receipt = json.loads((self.artifacts / 'failure-runtime/test/scope-result.json').read_text())
+            self.assertEqual('failure', receipt['outcome'])
+            self.assertTrue(any('ownership' in error or 'equality' in error
+                                for error in receipt['errors']))
+        finally:
+            self.state['rows'] = original_rows
+            self.state['preview']['resources'] = original_preview
+            self.state['containers'] = original_containers
+            for name in ['docker', 'podman']:
+                path = self.bin / name
+                code = path.read_text()
+                code = code.replace(
+                    "if args[:1]==['ps'] and '--format' in args and args[args.index('--format')+1] == '{{.State}}':\n"
+                    " sys.exit(0)\nif args[:1]==['ps']:",
+                    "if args[:1]==['ps']:")
+                path.write_text(code)
+
     def test_missing_unknown_or_failed_owner_never_uses_global_fallback(self):
         mutations = [lambda: self.state.update(preview_error=True),
                      lambda: self.state.update(preview=[]),

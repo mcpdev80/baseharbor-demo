@@ -69,6 +69,15 @@ def retain(name, data):
 def token(value):
     return isinstance(value, str) and re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9_.-]*', value)
 
+def _rsplit_reason(reason):
+    # Extract the trailing KEY of an accounted reason of the form
+    # `… accounted with reason: KEY`. Returns KEY or None when the reason
+    # does not carry an explicit accounted key.
+    marker = 'accounted with reason: '
+    if marker in reason:
+        return reason.rsplit(marker, 1)[-1]
+    return None
+
 def owned_resources():
     # Capture the authoritative owner inventory ONCE, before any teardown can
     # mutate the runtime. The Core non-mutating preview is the snapshot; the
@@ -176,12 +185,12 @@ def owned_containers(resources):
                     states = {line.strip() for line in ps_result.stdout.decode().splitlines()}
                     if states & {'exited', 'dead'}:
                         accounted_missing.append((_project, _name))
-    if resources != {(project, name) for name, project, _ in selected.values()} and not accounted_missing:
-        raise ValueError('canonical runtime resources lack verified native ownership')
     return selected, accounted_missing
 
 errors = []
 accounted = []
+selected = None
+resources = None
 try:
     resources = owned_resources()
     selected, accounted_missing = owned_containers(resources)
@@ -240,6 +249,37 @@ except (ValueError, KeyError, OSError, subprocess.SubprocessError) as error:
     # Exceptions retain their safe class; raw preview/native messages are never
     # printed and no global inspection, unpause or removal fallback exists.
     errors.append('owned runtime evidence unavailable: ' + type(error).__name__)
+# Exact accounting contract (MERGE-118-G): the accounted set and the set of
+# verified-native-owned containers must cover the preview exactly, with NO
+# overlap. An accounted container that was ALSO natively verified (e.g. an
+# exited/dead id that is still in `selected`) is an overlap; any preview
+# resource neither verified nor accounted is a real gap. Either violation of
+# exact equality is a failure, never a pass. Each accounted reason ends with
+# `— accounted with reason: KEY` where KEY is either `PROJECT/NAME` (an
+# auto-collected gap) or a native container id; extract KEY and compare. This
+# runs only after the main loop completed (selected/accounted/resources all
+# defined); an early exception in owned_containers or the inspect loop is
+# already recorded above and must not re-enter this guard.
+if selected is not None and accounted is not None and resources is not None:
+    selected_pairs = {(project, name) for name, project, _ in selected.values()}
+    accounted_keys = set()
+    for _reason in accounted:
+        _key = _rsplit_reason(_reason)
+        if _key is None:
+            continue
+        if '/' in _key and not re.fullmatch(r'[0-9a-f]{12,64}', _key):
+            _project, _name = _key.split('/', 1)
+            accounted_keys.add((_project, _name))
+        else:
+            accounted_keys.add((_key, None))
+    accounted_ids = {_key for _key in accounted_keys if _key[1] is None}
+    accounted_gaps = {_key for _key in accounted_keys if _key[1] is not None}
+    if selected_pairs & accounted_gaps:
+        errors.append('canonical runtime accounting overlaps verified native ownership — exact equality violated')
+    elif {identity for identity in selected} & accounted_ids:
+        errors.append('canonical runtime accounting overlaps verified native ownership — exact equality violated')
+    elif resources != selected_pairs | accounted_gaps:
+        errors.append('canonical runtime resources lack verified native ownership — exact equality violated')
 (output / 'auto-collected.json').write_text(json.dumps({
     'target': target, 'runtime': engine, 'mode': mode,
     'accounted': accounted, 'errors': errors}, indent=2) + '\n')
