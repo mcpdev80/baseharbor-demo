@@ -32,7 +32,7 @@ if [ -n "$postgres" ]; then
   degraded_rc=$?
   set -e
   test "$degraded_rc" -ne 0
-  (cd "$DEMO_ROOT" && "$BAHA" app apply > "$ARTIFACT_DIR/reconcile-degraded-repair.txt")
+  (cd "$DEMO_ROOT" && run_consented "$BAHA" app apply > "$ARTIFACT_DIR/reconcile-degraded-repair.txt")
   (cd "$DEMO_ROOT" && "$BAHA" app doctor > "$ARTIFACT_DIR/reconcile-shared-postgres-after.txt")
   grep -q 'postgres shared isolation' "$ARTIFACT_DIR/reconcile-shared-postgres-after.txt"
   grep -q '^READY' "$ARTIFACT_DIR/reconcile-shared-postgres-after.txt"
