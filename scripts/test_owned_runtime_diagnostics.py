@@ -26,6 +26,7 @@ if pathlib.Path(sys.argv[0]).name=='baha':
   print('cleanup original failure',file=sys.stderr) if s.get('destroy_error') else None
   sys.exit(s.get('destroy_error',0))
  if args[:1]==['destroy']:
+  time.sleep(s.get('preview_delay', 0))
   if s.get('preview_hang'):
    child=subprocess.Popen([sys.executable,'-c','import time; time.sleep(120)'])
    pathlib.Path(os.environ['FAKE_STATE']+'.child').write_text(str(child.pid))
@@ -312,6 +313,18 @@ os.execv(sys.executable,[sys.executable,*args])
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual([], self.native_actions())
 
+    def test_podman_owner_preview_over_twenty_seconds_preserves_exact_cleanup(self):
+        self.env['BASEHARBOR_TEST_RUNTIME'] = 'podman'
+        self.state['preview_delay'] = 21
+        result = self.invoke('--unpause-owned', timeout=30)
+        self.assertEqual(0, result.returncode, result.stderr)
+        receipt = json.loads((self.artifacts / 'failure-runtime/test/scope-result.json').read_text())
+        self.assertEqual('success', receipt['outcome'])
+        self.assertEqual([], receipt['errors'])
+        self.assertEqual([['unpause', OWN]],
+                         [args for args in self.native_actions() if args[0] == 'unpause'])
+        self.assertTrue(json.loads(self.state_file.read_text())['containers'][FOREIGN]['Paused'])
+
     def test_owner_timeout_kills_native_descendants_and_retains_incomplete_result(self):
         self.state['preview_hang'] = True
         result = self.invoke('--unpause-owned', timeout=27)
@@ -322,6 +335,8 @@ os.execv(sys.executable,[sys.executable,*args])
         self.assertTrue(not status.exists() or status.read_text().split()[2] == 'Z')
         receipt = json.loads((self.artifacts / 'failure-runtime/test/scope-result.json').read_text())
         self.assertEqual('failure', receipt['outcome'])
+        self.assertEqual(['owned runtime evidence unavailable: TimeoutExpired (phase=owner-preview)'],
+                         receipt['errors'])
 
     def test_owned_query_inspection_and_unpause_errors_remain_incomplete(self):
         for error in ('list_error', 'inspect_error', 'unpause_error'):

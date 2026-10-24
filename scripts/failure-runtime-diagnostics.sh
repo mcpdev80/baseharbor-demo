@@ -38,9 +38,14 @@ native_env = dict(os.environ)
 if engine == 'podman':
     native_env.pop('XDG_CONFIG_HOME', None)
     native_env.pop('XDG_DATA_HOME', None)
-deadline = time.monotonic() + 60
+# Rootless Podman inventory can exceed 20s after recovery; keep both the
+# complete operation and each call bounded while allowing its native latency.
+deadline = time.monotonic() + (90 if engine == 'podman' else 60)
+call_limit = 60 if engine == 'podman' else 20
 
-def run(args, *, native=False, limit=20, inputdata=None):
+def run(args, *, native=False, limit=None, inputdata=None):
+    if limit is None:
+        limit = call_limit
     remaining = deadline - time.monotonic()
     if remaining <= 0:
         raise TimeoutError('owned runtime diagnostic budget exhausted')
@@ -191,17 +196,21 @@ errors = []
 accounted = []
 selected = None
 resources = None
+phase = 'owner-preview'
 try:
     resources = owned_resources()
+    phase = 'native-ownership'
     selected, accounted_missing = owned_containers(resources)
     for _project, _name in accounted_missing:
         accounted.append('owned container auto-collected by podman daemon — accounted with reason: ' + _project + '/' + _name)
     (output / 'containers.tsv').write_text(''.join(
         '\t'.join((identity, *row)) + '\n' for identity, row in sorted(selected.items())))
+    phase = 'application-diagnostics'
     if mode == 'diagnostics':
         for command in ('plan', 'status'):
             result = run([os.environ['BAHA'], 'app', command, '--json'])
             retain('application-' + command + '.json', result.stdout + result.stderr)
+    phase = 'owned-container-state'
     for identity in sorted(selected):
         # Podman race condition: Quadlet daemon may auto-collect containers
         # before we inspect them. Retry with backoff to tolerate the
@@ -248,7 +257,7 @@ try:
 except (ValueError, KeyError, OSError, subprocess.SubprocessError) as error:
     # Exceptions retain their safe class; raw preview/native messages are never
     # printed and no global inspection, unpause or removal fallback exists.
-    errors.append('owned runtime evidence unavailable: ' + type(error).__name__)
+    errors.append('owned runtime evidence unavailable: ' + type(error).__name__ + ' (phase=' + phase + ')')
 # Exact accounting contract (MERGE-118-G): the accounted set and the set of
 # verified-native-owned containers must cover the preview exactly, with NO
 # overlap. An accounted container that was ALSO natively verified (e.g. an

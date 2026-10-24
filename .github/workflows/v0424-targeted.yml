@@ -88,5 +88,6 @@ jobs:
             ${{ runner.temp }}/demo-evidence/report.md
             ${{ runner.temp }}/demo-evidence/native-topology-*.json
             ${{ runner.temp }}/demo-evidence/recovery-qualified.json
+            ${{ runner.temp }}/demo-evidence/failure-runtime/cleanup-preparation/scope-result.json
             ${{ runner.temp }}/baseharbor-public-image-cache-${{ matrix.runtime }}.log
           if-no-files-found: warn
