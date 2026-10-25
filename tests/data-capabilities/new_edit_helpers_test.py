@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Identity/permission regressions only; these mocks are not native evidence."""
+"""Fixture identity, permission and SQL workload transition regressions."""
 import importlib.util
 import json
 import os
@@ -174,6 +174,56 @@ if sys.argv[1:] == ["env"]:
                 self.assertEqual(baha_environment["XDG_DATA_HOME"], str(root / "data"))
                 self.assertEqual(os.environ["XDG_CONFIG_HOME"], str(root / "config"))
 
+
+
+class SQLWorkloadTransitionTest(unittest.TestCase):
+    def test_removal_adapts_usage_and_add_restores_exact_strict_source(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            path = project / "main.go"
+            original = b"package main\n// keep application code\n" + fixture.SQL_STARTUP + b"// keep HTTP readiness\n"
+            path.write_bytes(original)
+            path.chmod(0o640)
+            saved, staged = fixture.prepare_sql_removal_workload(project)
+            self.assertEqual(saved, original)
+            self.assertEqual(path.read_bytes(), staged)
+            self.assertIn(b'if os.Getenv("DATABASE_URL") != "" {', staged)
+            self.assertIn(fixture.SQL_STARTUP, staged)
+            self.assertIn(b'keep HTTP readiness', staged)
+            self.assertEqual(path.stat().st_mode & 0o777, 0o640)
+            fixture.restore_sql_workload(project, saved, staged)
+            self.assertEqual(path.read_bytes(), original)
+
+    def test_unknown_or_duplicated_startup_is_not_changed(self):
+        for source in (b"unknown application source", fixture.SQL_STARTUP * 2):
+            with self.subTest(source=source), tempfile.TemporaryDirectory() as directory:
+                project = Path(directory)
+                path = project / "main.go"
+                path.write_bytes(source)
+                with self.assertRaises(RuntimeError):
+                    fixture.prepare_sql_removal_workload(project)
+                self.assertEqual(path.read_bytes(), source)
+
+    def test_restore_preserves_concurrent_application_edit_and_link(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            path = project / "main.go"
+            path.write_bytes(fixture.SQL_STARTUP)
+            original, staged = fixture.prepare_sql_removal_workload(project)
+            concurrent = staged + b"// developer changed source\n"
+            path.write_bytes(concurrent)
+            with self.assertRaises(RuntimeError):
+                fixture.restore_sql_workload(project, original, staged)
+            self.assertEqual(path.read_bytes(), concurrent)
+            external = project / "external.go"
+            external.write_bytes(staged)
+            path.unlink()
+            path.symlink_to(external)
+            for action in (lambda: fixture.prepare_sql_removal_workload(project),
+                           lambda: fixture.restore_sql_workload(project, original, staged)):
+                with self.assertRaises(RuntimeError):
+                    action()
+            self.assertEqual(external.read_bytes(), staged)
 
 if __name__ == "__main__":
     unittest.main()
