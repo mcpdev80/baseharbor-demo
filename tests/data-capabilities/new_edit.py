@@ -24,6 +24,35 @@ RUNTIME = os.environ["BASEHARBOR_TEST_RUNTIME"]
 OWNER_LABEL = "org.baseharbor.demo.new-edit-owner"
 
 
+SQL_STARTUP = b"""	db, err := pgxpool.New(startup, requiredEnv("DATABASE_URL"))
+	if err != nil { log.Fatal(err) }
+	defer db.Close()
+	if err := db.Ping(startup); err != nil { log.Fatalf("database readiness: %v", err) }
+"""
+
+
+def prepare_sql_removal_workload(project):
+    """Adapt the fixture's application before withdrawing its SQL requirement."""
+    path = project / "main.go"
+    if path.is_symlink():
+        raise RuntimeError("SQL fixture refuses a linked application source")
+    original = path.read_bytes()
+    if original.count(SQL_STARTUP) != 1:
+        raise RuntimeError("SQL fixture requires the exact generated SQL startup block")
+    optional = b'\tif os.Getenv("DATABASE_URL") != "" {\n' + SQL_STARTUP + b"\t}\n"
+    staged = original.replace(SQL_STARTUP, optional, 1)
+    path.write_bytes(staged)
+    return original, staged
+
+
+def restore_sql_workload(project, original, staged):
+    """Restore mandatory SQL readiness before re-adding the SQL capability."""
+    path = project / "main.go"
+    if path.is_symlink() or path.read_bytes() != staged:
+        raise RuntimeError("SQL fixture source changed after preparing removal")
+    path.write_bytes(original)
+
+
 def receipt_path():
     fixture = Path(os.environ["BASEHARBOR_DEMO_FIXTURE"])
     if (fixture.is_symlink() or not fixture.is_dir() or fixture.stat().st_uid != os.getuid()
@@ -290,9 +319,13 @@ def main():
         edit_application(project, "cancel")
         edit_application(project, "no")
 
+        # Capability intent and application usage change together, as in a
+        # developer migration. Keep real SQL startup strict for every SQL phase.
+        original_workload, staged_workload = prepare_sql_removal_workload(project)
         removed = edit_application(project, "remove")
         if removed.get("requirements"):
             raise RuntimeError("Edit remove did not persist zero managed needs")
+        restore_sql_workload(project, original_workload, staged_workload)
         added = edit_application(project, "add", environment={"BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE": "application"})
         if selected_sql(added) != dedicated_id:
             raise RuntimeError("Edit re-add failed to reuse the retained actual SQL provider")
