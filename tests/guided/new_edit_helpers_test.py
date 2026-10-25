@@ -7,11 +7,31 @@ import sys
 import tempfile
 import unittest
 
-from new_edit import CurrentConsent, filesystem_snapshot, picker_keys
+from new_edit import CurrentConsent, filesystem_snapshot, picker_keys, provider_choice_response, provider_choice_rule
 import drive
 
 
 class FixtureHelpersTest(unittest.TestCase):
+    def test_explicit_provider_uses_current_actual_named_sql_row(self):
+        instance = "postgresql/application/fixture/dev/default"
+        frame = ("What does your application need?\n"
+                 "database.sql/analytics on Target native-fixture — Automatic\n"
+                 "Reason: Automatic: unresolved or ambiguous; choose an explicit compatible instance\n"
+                 "[ ] " + instance + " (postgresql): supports SQL (scope: application)\n"
+                 "[ ] postgresql/shared/other (postgresql): supports SQL (scope: shared)\n")
+        expected = "provider database.sql/analytics " + instance + "\n"
+        self.assertEqual(provider_choice_response(frame, instance), expected)
+        rule = provider_choice_rule(instance)
+        match = rule.match(frame)
+        self.assertIsNotNone(match)
+        self.assertEqual(rule.value(match, frame), expected)
+        for invalid in (frame.replace(instance, "different-provider"),
+                        frame + "database.sql/second on Target native-fixture — Automatic\n",
+                        frame + "What does your application need?\nNo SQL need selected\n",
+                        frame.replace("database.sql/analytics", "cache.key-value/cache")):
+            with self.subTest(invalid=invalid), self.assertRaises(RuntimeError):
+                provider_choice_response(invalid, instance)
+
     def test_real_pty_prompts_survive_bounded_transcript_rollover(self):
         # A build can print more than the driver's bounded 64KiB transcript
         # before a later consequence prompt. This is a process/transport test,

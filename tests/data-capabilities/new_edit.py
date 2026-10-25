@@ -326,7 +326,7 @@ def main():
         if removed.get("requirements"):
             raise RuntimeError("Edit remove did not persist zero managed needs")
         restore_sql_workload(project, original_workload, staged_workload)
-        added = edit_application(project, "add", environment={"BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE": "application"})
+        added = edit_application(project, "add", instance=dedicated_id, environment={"BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE": "application"})
         if selected_sql(added) != dedicated_id:
             raise RuntimeError("Edit re-add failed to reuse the retained actual SQL provider")
         dedicated_container = retained_sql(dedicated_volumes)

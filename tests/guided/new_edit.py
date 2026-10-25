@@ -221,6 +221,21 @@ def new_application(parent, name, *, sql=False, decision="run", native=True, env
     return project
 
 
+def provider_choice_response(text, instance):
+    """Select only the requested instance offered for the current SQL need."""
+    frame = ANSI_ESCAPE.sub("", text).rsplit("What does your application need?", 1)[-1]
+    references = re.findall(r"(?m)^(database\.sql/[^\s]+) on Target [^\r\n]+", frame)
+    candidate = re.search(r"(?m)^\[[ x]\] " + re.escape(instance) + r" \(postgresql\):[^\r\n]+", frame)
+    if len(references) != 1 or candidate is None:
+        raise RuntimeError("provider selection requires one current SQL need and its offered instance")
+    return "provider " + references[0] + " " + instance + "\n"
+
+
+def provider_choice_rule(instance):
+    return Rule(r"\[[ x]\] " + re.escape(instance) + r" \(postgresql\):[^\r\n]+",
+                callback=lambda match, text: provider_choice_response(text, instance))
+
+
 def edit_application(project, operation, *, instance=None, native=True, environment=None):
     """Drive the actual public Edit needs/preview/consequence prompts."""
     before = state_snapshot(project, native)
@@ -235,16 +250,13 @@ def edit_application(project, operation, *, instance=None, native=True, environm
             Rule(NEEDS_END, callback=cancel),
         ]
     elif operation in ("add", "remove"):
-        rules = [Rule(NEEDS_END, "space\n"), Rule(NEEDS_END, "enter\n"),
-                 Rule(r"Read-only decision preview \(not execution\)", "yes\n")]
+        rules = [Rule(NEEDS_END, "space\n")]
+        if operation == "add" and instance:
+            rules.append(provider_choice_rule(instance))
+        rules.extend([Rule(NEEDS_END, "enter\n"),
+                      Rule(r"Read-only decision preview \(not execution\)", "yes\n")])
     elif operation == "switch" and instance:
-        requirements = [row["requirement"] for row in footprint(project).get("requirements") or []
-                        if row["requirement"]["kind"] == "database.sql"]
-        if len(requirements) != 1:
-            raise RuntimeError("provider switch requires exactly one actual SQL requirement")
-        reference = requirements[0]["kind"] + "/" + requirements[0]["name"]
-        rules = [Rule(r"\[[ x]\] " + re.escape(instance) + r" \(postgresql\):[^\r\n]+",
-                      "provider " + reference + " " + instance + "\n"),
+        rules = [provider_choice_rule(instance),
                  Rule(NEEDS_END, "enter\n"),
                  Rule(r"Read-only decision preview \(not execution\)", "yes\n")]
     else:
