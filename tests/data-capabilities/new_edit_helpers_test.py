@@ -225,5 +225,70 @@ class SQLWorkloadTransitionTest(unittest.TestCase):
                     action()
             self.assertEqual(external.read_bytes(), staged)
 
+class RetainedSQLIdentityRegressionTest(unittest.TestCase):
+    # Demo126: retained SQL comparisons must use only (Name, sorted Labels,
+    # CreatedAt); runtime-derived Namespace/Options drift is not a change.
+    CREATED = "2026-10-22T00:00:00Z"
+    LABELS = {"app": "sql", "env": "fixture"}
+
+    def volume(self, name, *, labels=None, created=CREATED, **extra):
+        result = {"Name": name, "Driver": "local", "CreatedAt": created,
+                  "Labels": dict(self.LABELS if labels is None else labels)}
+        result.update(extra)
+        return result
+
+    def container(self, identifier, names):
+        return {identifier: {"Id": identifier, "State": {"Running": True},
+                "Mounts": [{"Type": "volume", "Name": name, "Destination": "/var/lib/postgresql", "RW": True} for name in names]}}
+
+    def drive(self, expected, observed, containers):
+        def native(*arguments, **kwargs):
+            self.assertEqual(arguments[:2], ("volume", "inspect"))
+            return json.dumps([copy.deepcopy(observed[arguments[2]])]).encode()
+        with patch.object(fixture, "owned_postgres", return_value=containers), patch.object(fixture, "native", side_effect=native):
+            return fixture.retained_sql(expected)
+
+    def test_namespace_and_options_drift_preserves_retained_sql(self):
+        expected = {"bh-pg-data": self.volume("bh-pg-data", Namespace="default", Options={"device": "/old/path"})}
+        observed = {"bh-pg-data": self.volume("bh-pg-data", Namespace="rootless", Options={"device": "/new/path", "type": "bind"})}
+        self.assertEqual(self.drive(expected, observed, self.container("c" * 64, ["bh-pg-data"])), "c" * 64)
+
+    def test_reordered_labels_preserve_retained_sql(self):
+        expected = {"bh-pg-data": self.volume("bh-pg-data", labels={"app": "sql", "env": "fixture"})}
+        observed = {"bh-pg-data": self.volume("bh-pg-data", labels={"env": "fixture", "app": "sql"})}
+        self.assertEqual(fixture._volume_identity(expected["bh-pg-data"]), fixture._volume_identity(observed["bh-pg-data"]))
+        self.assertEqual(self.drive(expected, observed, self.container("c" * 64, ["bh-pg-data"])), "c" * 64)
+
+    def test_each_changed_identity_field_raises(self):
+        for mutation in ("name", "labels", "created"):
+            with self.subTest(mutation=mutation):
+                expected = {"bh-pg-data": self.volume("bh-pg-data")}
+                observed = {"bh-pg-data": self.volume("bh-pg-data")}
+                if mutation == "name":
+                    observed["bh-pg-data"]["Name"] = "bh-pg-data-replacement"
+                elif mutation == "labels":
+                    observed["bh-pg-data"]["Labels"]["app"] = "changed"
+                else:
+                    observed["bh-pg-data"]["CreatedAt"] = "2026-10-23T00:00:00Z"
+                with self.assertRaisesRegex(RuntimeError, "retained SQL volume metadata changed"):
+                    self.drive(expected, observed, self.container("c" * 64, ["bh-pg-data"]))
+
+    def test_distinct_names_with_equal_labels_and_time_are_distinguishable(self):
+        expected = {"vol-a": self.volume("vol-a"), "vol-b": self.volume("vol-b")}
+        self.assertEqual(len({fixture._volume_identity(v) for v in expected.values()}), 2)
+        self.assertEqual(self.drive(expected, copy.deepcopy(expected), self.container("c" * 64, ["vol-a", "vol-b"])), "c" * 64)
+        # A replaced volume collapsing both identities into one must be rejected
+        # even though Labels and CreatedAt alone were always identical.
+        collapsed = {"vol-a": self.volume("vol-a"), "vol-b": self.volume("vol-a")}
+        with self.assertRaisesRegex(RuntimeError, "retained SQL volume metadata changed"):
+            self.drive(expected, collapsed, self.container("c" * 64, ["vol-a", "vol-b"]))
+
+    def test_duplicate_matching_containers_raise_uniqueness_error(self):
+        expected = {"bh-pg-data": self.volume("bh-pg-data")}
+        containers = self.container("c" * 64, ["bh-pg-data"])
+        containers.update(self.container("d" * 64, ["bh-pg-data"]))
+        with self.assertRaisesRegex(RuntimeError, "retained SQL provider has no unique observed native realization"):
+            self.drive(expected, copy.deepcopy(expected), containers)
+
 if __name__ == "__main__":
     unittest.main()
