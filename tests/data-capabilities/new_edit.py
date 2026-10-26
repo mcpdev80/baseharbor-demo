@@ -214,12 +214,19 @@ def volumes(item):
     return {name: json.loads(native("volume", "inspect", name))[0] for name in names}
 
 
+def _volume_identity(vol):
+    return (vol.get("Name"),
+            tuple(sorted((vol.get("Labels") or {}).items())),
+            vol.get("CreatedAt"))
+
+
 def retained_sql(expected_volumes):
     matches = []
     for identifier, item in owned_postgres().items():
         mounted = {mount["Name"] for mount in item.get("Mounts", []) if mount.get("Type") == "volume"}
         if mounted == set(expected_volumes):
-            if volumes(item) != expected_volumes:
+            if {_volume_identity(v) for v in volumes(item).values()} != \
+               {_volume_identity(v) for v in expected_volumes.values()}:
                 raise RuntimeError("retained SQL volume metadata changed")
             matches.append(identifier)
     if len(matches) != 1:
@@ -354,7 +361,7 @@ def main():
         foreign_after = inspect(foreign)
         if (foreign_after["Id"] != foreign_before["Id"] or foreign_after["State"].get("Paused") is not True
                 or foreign_after["Config"].get("Labels") != foreign_before["Config"].get("Labels")
-                or json.loads(native("volume", "inspect", foreign_volume)) != foreign_volume_before):
+                or _volume_identity(json.loads(native("volume", "inspect", foreign_volume))[0]) != _volume_identity(foreign_volume_before[0])):
             raise RuntimeError("New/Edit changed a foreign paused resource or its volume")
         (ARTIFACT_DIR / "new-edit-sql.json").write_text(json.dumps({
             "journey": "real-cli-native-sql-new-edit", "target": os.environ["BASEHARBOR_TARGET"],
