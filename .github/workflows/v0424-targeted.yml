@@ -78,16 +78,3 @@ jobs:
         run: bash scripts/install-baseharbor.sh
       - name: Targeted native application backup and restore
         run: bash scripts/acceptance.sh backup-restore
-      - name: Retain public result summary
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: demo-v024-${{ matrix.runtime }}-${{ github.run_id }}
-          path: |
-            ${{ runner.temp }}/demo-evidence/results.tsv
-            ${{ runner.temp }}/demo-evidence/report.md
-            ${{ runner.temp }}/demo-evidence/native-topology-*.json
-            ${{ runner.temp }}/demo-evidence/recovery-qualified.json
-            ${{ runner.temp }}/demo-evidence/failure-runtime/cleanup-preparation/scope-result.json
-            ${{ runner.temp }}/baseharbor-public-image-cache-${{ matrix.runtime }}.log
-          if-no-files-found: warn
