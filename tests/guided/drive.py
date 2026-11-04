@@ -94,6 +94,22 @@ def capture_confirm_hash(text):
     return match.group(1) if match else None
 
 
+# Documented, canonical strings the Core prints during the guided candidate
+# consent flow. These are the contract the caller and the capture validator
+# both rely on:
+#   - READY_RULE_MARKER marks the mandatory completion of a clean `up`.
+#   - CANDIDATE_ABORT_ERROR marks the only permitted non-zero between-state:
+#     the candidate consent prompt whose confirm-hash still has to be
+#     acknowledged on a follow-up run.
+READY_RULE_MARKER = "READY"
+
+# The Core's documented candidate-consent confirm prompt. A non-zero exit is
+# classified as the permitted candidate-consent between-state ONLY when this
+# exact string (with its 64-hex digest) is present in the transcript; any other
+# error text is a hard abort.
+CANDIDATE_ABORT_ERROR = "Re-run with --confirm-candidate"
+
+
 ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 
 def root_workload_source_response(match, text):
@@ -258,8 +274,6 @@ def run_tty(name, argv, rules, env=None, timeout=900, no_output_timeout=None,
                             sys.stdout.buffer.write(chunk)
                     except OSError:
                         pass
-                    if capture:
-                        return rc, buffer
                     if not capture:
                         if rc not in expected_returncodes:
                             raise RuntimeError(f"{name} failed with exit code {rc}")
@@ -278,7 +292,8 @@ def run_tty(name, argv, rules, env=None, timeout=900, no_output_timeout=None,
                         r.pattern.pattern for r in rules if not r.optional and not r.used
                     ]
                     if missing_capture:
-                        # A required prompt never fired, or any other non-zero exit
+                        # A required prompt never fired (incl. the mandatory
+                        # READY-abschluss-marker), or any other non-zero exit
                         # without a documented candidate-abort: never a PASS.
                         raise RuntimeError(
                             f"{name} completed with exit code {rc} but without "
@@ -287,9 +302,25 @@ def run_tty(name, argv, rules, env=None, timeout=900, no_output_timeout=None,
                             "between-state"
                         )
                     if rc != 0:
+                        # A non-zero exit is ONLY a permitted between-state when it
+                        # is the documented candidate-consent abort: the Core must
+                        # print the exact expected confirm-prompt string so the
+                        # caller can classify this as an abort rather than an
+                        # unexpected failure. Any other error text (even together
+                        # with a hash) is treated as a hard abort here.
+                        if CANDIDATE_ABORT_ERROR not in buffer:
+                            raise RuntimeError(
+                                f"{name} completed with non-zero exit code {rc} "
+                                "and without the documented candidate-consent "
+                                "confirm prompt; aborting (not a between-state)"
+                            )
+                        return rc, buffer
+                    # Clean completion requires the mandatory READY marker.
+                    if READY_RULE_MARKER not in buffer:
                         raise RuntimeError(
-                            f"{name} completed with non-zero exit code {rc} "
-                            "(no clean completion, no documented candidate abort)"
+                            f"{name} completed with exit code {rc} but without "
+                            f"the mandatory READY-abschluss-marker in the "
+                            "transcript; never a PASS"
                         )
                     return rc, buffer
     finally:
@@ -355,6 +386,12 @@ up_rules = [
     Rule(r"APP_SECRET value:\s*$", "acceptance-secret-value\n", optional=True),
     Rule(r"APP_SECRET value again:\s*$", "acceptance-secret-value\n", optional=True),
     Rule(r"Install the BaseHarbor CA into the host trust store\? \[y/N\]:\s*$", "n\n", optional=True),
+    # Mandatory READY-abschluss-marker: the guided `up` MUST reach the Core's
+    # documented READY completion line. This is the ONLY permitted clean
+    # completion; a non-zero exit with the documented candidate-consent
+    # confirm-hash is the only permitted between-state. See review-128b /
+    # consent-harness-3: all-optional is the error state.
+    Rule(r"READY\s*$", "", repeat=False, optional=False),
 ]
 
 if __name__ == "__main__":
@@ -379,15 +416,28 @@ if __name__ == "__main__":
     if first_rc not in (0,):
         # First guided up failed closed (or any other non-zero exit). The only
         # permitted non-zero between-state here is the documented candidate
-        # consent abort: a confirm-hash was printed and still has to be
-        # acknowledged on a follow-up run. Without a hash this is an unexpected
-        # failure, never a success.
-        if confirm_hash is None:
+        # consent abort: a confirm-hash was printed AND the Core printed its
+        # documented candidate-consent confirm prompt. Without BOTH this is an
+        # unexpected failure, never a success — so a hash with any other error
+        # text aborts and never triggers a second up.
+        if confirm_hash is None or CANDIDATE_ABORT_ERROR not in first_buffer:
             raise RuntimeError(
-                f"guided up failed with exit code {first_rc} and no candidate "
-                "confirm-hash was printed; refusing to treat a non-zero exit as "
-                "success (candidate-consent abort requires the confirm-hash)"
+                f"guided up failed with exit code {first_rc} and is not the "
+                "documented candidate-consent abort (missing confirm-hash and/or "
+                "documented confirm prompt); refusing to treat a non-zero exit as "
+                "success (candidate-consent abort requires the confirm-hash "
+                "together with the documented confirm prompt)"
             )
+    if confirm_hash is not None and first_rc == 0 and CANDIDATE_ABORT_ERROR not in first_buffer:
+        # rc=0 but not the documented clean completion: refuse to fabricate a
+        # second up from a stray hash. The mandatory READY marker (enforced by
+        # run_tty) already covers the clean path; this guards a hash printed
+        # alongside an unexpected non-abort transcript.
+        raise RuntimeError(
+            f"guided up printed a candidate confirm-hash (rc=0) without the "
+            "documented candidate-consent abort prompt; aborting instead of "
+            "fabricating consent"
+        )
     if confirm_hash is not None:
         if not binary_supports_confirm_candidate([BAHA, "up"]):
             raise RuntimeError(
