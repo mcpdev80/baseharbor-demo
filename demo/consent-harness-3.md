@@ -11,10 +11,11 @@ Fehlertext + Hash + alle Interaktionen). Bei anderem Fehlertext nach Hash
 Abbruch, kein zweiter `up`.
 
 ## Head / Basis
-- Fix-Kandidat (dieser Branch): `8c1f0d2a5b7e3f9c4a6d8e0b2f4a6c8e0d2b4a6c`
+- Fix-Kandidat (dieser Branch): `b02570a0d12b1f1b7b96148ec353f783ed527fdc`
 - Ziel-Head der Runde (b73be42): `b73be42ba9944d21ffe8869382c37100c3e40384`
 - Basis main: `cd9176e0129f01270ca85fd6b29acf99404f6dcd`
-- `git ls-remote origin w85-demo-guided-consent` => `8c1f0d2a5b7e3f9c4a6d8e0b2f4a6c8e0d2b4a6c`
+- `git ls-remote origin w85-demo-guided-consent` => `b02570a0d12b1f1b7b96148ec353f783ed527fdc`
+- PR #128: OPEN, READY (`isDraft=false`), `mergeStateStatus=CLEAN`
 
 ## Änderungen (PR #128 Diff)
 - `tests/guided/drive.py`
@@ -49,9 +50,12 @@ abgesichert.
 
 ## Ergebnisse lokaler Lauf
 - `python3 -m py_compile tests/guided/drive.py`: rc=0
-- `python3 -m unittest discover -s tests -p "test_*.py"` (Guided-Regression): rc=0
+- `python3 -m py_compile tests/guided/test_consent_capture.py`: rc=0
+- `python3 -m unittest discover -s tests/guided -p "test_*.py"`: 7/7 OK (rc=0)
+- `python3 -m unittest discover -s tests -p "test_*.py"` (CI-Layout): OK (rc=0)
 - `bash -n scripts/acceptance.sh`: rc=0
 - `git diff --check`: rc=0
+- Push `b02570a` auf `w85-demo-guided-consent`; `ls-remote` bestätigt; PR #128 READY
 - 7/7 Regressionen grün.
 
 ## repo-rule compliance (baseharbor-demo/AGENTS.md)
@@ -63,4 +67,4 @@ abgesichert.
 - Kein Force-Push, keine Branch-Protection-Umgehung.
 
 ## Status
-END_DONE w91-demo-r3: validator=erreichbar regressions=7/7 lsremote=8c1f0d2 | PR #128 READY, fail-closed candidate-consent im Diff.
+END_DONE w91-demo-r3: validator=erreichbar regressions=7/7 lsremote=b02570a | PR #128 READY, fail-closed candidate-consent im Diff.
