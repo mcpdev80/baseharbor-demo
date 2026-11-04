@@ -2,6 +2,27 @@
 set -euo pipefail
 source "$DEMO_ROOT/tests/lib.sh"
 
+# Fail-closed guided candidate-consent suite (review-128d R2 wiring).
+# These regressions drive the PRODUCTION decision path against fake cores and
+# exercise the New/Edit PTY helpers — neither needs a BaseHarbor runtime. They
+# are discovered explicitly here (the repository workflow's unittest command
+# only discovers tests/test_fixture_consent.py) and recorded into the shared
+# results registry so the guided gate's transcript carries them. A bounded,
+# writable ARTIFACT_DIR is required for the harness (drive.run_tty logs there).
+export ARTIFACT_DIR="${ARTIFACT_DIR:-$DEMO_ROOT/artifacts}"
+mkdir -p "$ARTIFACT_DIR"
+export PYTHONDONTWRITEBYTECODE=1
+section "Guided fail-closed candidate-consent + New/Edit regressions"
+(
+  cd "$DEMO_ROOT"
+  python3 -m unittest discover -s tests/guided -p "test_*.py" -v \
+    >"$ARTIFACT_DIR/guided-consent-discovery.txt" 2>&1
+  rc=$?
+  cat "$ARTIFACT_DIR/guided-consent-discovery.txt"
+  [ "$rc" -eq 0 ]
+)
+pass "Guided Fail-Closed Consent + New/Edit" "production-path consent regressions + PTY helper regressions discovered and green"
+
 section "Guided pristine-repository happy path"
 
 # Config-matrix may have left target-wide providers running. Destroy them while

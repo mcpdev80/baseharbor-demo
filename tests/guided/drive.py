@@ -8,6 +8,7 @@ import subprocess
 import sys
 import struct
 import termios
+import tempfile
 import time
 from pathlib import Path
 
@@ -31,6 +32,120 @@ class Rule:
         if self.callback:
             return self.callback(match, text)
         return self.response
+
+def binary_supports_confirm_candidate(argv):
+    """Feature detection: does the Core 'up' binary expose --confirm-candidate?
+
+    Backward-compat guard: pinned Core that predates the candidate-consent
+    surface has no such flag and fails with 'unknown option --confirm-candidate';
+    a re-run with the flag would crash there, so we must never supply it for
+    such a binary. We probe behaviorally rather than by --help, because the
+    flag is parsed manually and is intentionally absent from the usage listing.
+
+    Fail-closed by design (review-128a finding 2): support is only *affirmed*
+    on a positive, unambiguous signal — the literal `unknown option
+    --confirm-candidate` rejection string being ABSENT, i.e. the binary parsed
+    the flag and proceeded past it. Every other probe outcome (missing/broken
+    binary, timeout, an early/unknown error message, a non-zero exit) is treated
+    as an inconclusive probe: report failure and never re-run `up` with the flag.
+    A timeout is NOT evidence of support — a missing or hanging binary times out
+    equally. We therefore classify by exit code 0 plus an empty, unambiguous
+    output rather than by string presence with an unconditional timeout fallback.
+    """
+    probe_dir = None
+    try:
+        probe_dir = tempfile.mkdtemp(prefix="confirm-candidate-probe-")
+        proc = subprocess.run(
+            [*argv, "--no-input", "--confirm-candidate", "0" * 64],
+            cwd=probe_dir,
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+        output = (proc.stdout + proc.stderr).replace("\r", "")
+    except (OSError, subprocess.TimeoutExpired):
+        # Missing/broken binary, permission error, or a hang. None of these is a
+        # positive support signal: fail closed, do not re-run with the flag.
+        return False
+    # Positive, unambiguous signal: clean exit and a prompt that parsed the flag
+    # and produced no rejection or any other early error message.
+    if proc.returncode != 0:
+        return False
+    if "unknown option --confirm-candidate" in output:
+        # Exact, documented unsupported response.
+        return False
+    if output.strip() == "":
+        return True
+    # Any other early/unrecognized message is an inconclusive probe.
+    return False
+
+
+def capture_confirm_hash(text):
+    """Extract the candidate confirm-hash (64-hex) from the up transcript.
+
+    Core prints 'Re-run with --confirm-candidate <digest> to acknowledge this
+    exact submission.' The digest is the canonical content-hash of the exact
+    submission being bound; supplying it on a re-run binds that submission.
+    """
+    match = re.search(
+        r"Re-run with --confirm-candidate\s+([0-9a-f]{64})",
+        text.replace("\r", ""),
+    )
+    return match.group(1) if match else None
+
+
+# Foreign error/failure signatures the documented candidate-consent abort must
+# NEVER co-exist with. A non-zero exit that carries a valid hash and the
+# documented confirm prompt but ALSO any of these is an unexpected failure, not
+# a documented abort — the production path fails closed (review-128d). The Core
+# prints these only on a real failure; the documented abort transcript carries
+# none of them.
+FOREIGN_ERROR_SIGNATURES = (
+    "panic",
+    "Traceback",
+    "Error:",
+    "error",
+    "exception",
+    "failed",
+    "Fatal",
+    "fatal",
+    "unhandled",
+    "refused",
+    "denied",
+)
+
+
+def find_foreign_error_signature(text):
+    """Return the first foreign error/failure signature present in ``text``, or None.
+
+    Case-sensitive: the Core's documented candidate-consent abort prompt is the
+    literal ``Re-run with --confirm-candidate <digest>`` and never contains any
+    of these words. A non-zero exit whose transcript carries any signature is an
+    unexpected failure, so the production path treats it as a hard abort and
+    never launches a second ``up``.
+    """
+    normalized = text.replace("\r", "")
+    for signature in FOREIGN_ERROR_SIGNATURES:
+        if signature in normalized:
+            return signature
+    return None
+
+
+# Documented, canonical strings the Core prints during the guided candidate
+# consent flow. These are the contract the caller and the capture validator
+# both rely on:
+#   - READY_RULE_MARKER marks the mandatory completion of a clean `up`.
+#   - CANDIDATE_ABORT_ERROR marks the only permitted non-zero between-state:
+#     the candidate consent prompt whose confirm-hash still has to be
+#     acknowledged on a follow-up run.
+READY_RULE_MARKER = "READY"
+
+# The Core's documented candidate-consent confirm prompt. A non-zero exit is
+# classified as the permitted candidate-consent between-state ONLY when this
+# exact string (with its 64-hex digest) is present in the transcript; any other
+# error text is a hard abort.
+CANDIDATE_ABORT_ERROR = "Re-run with --confirm-candidate"
+
 
 ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 
@@ -88,7 +203,13 @@ def capability_selection_response(match, text):
     return keys
 
 def run_tty(name, argv, rules, env=None, timeout=900, no_output_timeout=None,
-            cwd=None, expected_returncodes=(0,)):
+            cwd=None, expected_returncodes=(0,), capture=False):
+    """Run a single PTY-driven process.
+
+    By default a non-zero exit raises (the happy path asserts clean completion).
+    capture=True returns the full transcript instead of raising on non-zero so
+    the caller can drive a follow-up run (feature-detected candidate consent).
+    """
     ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
     log_path = ARTIFACT_DIR / f"{name}.txt"
     merged_env = os.environ.copy()
@@ -190,12 +311,72 @@ def run_tty(name, argv, rules, env=None, timeout=900, no_output_timeout=None,
                             sys.stdout.buffer.write(chunk)
                     except OSError:
                         pass
-                    if rc not in expected_returncodes:
-                        raise RuntimeError(f"{name} failed with exit code {rc}")
-                    missing = [r.pattern.pattern for r in rules if not r.optional and not r.used]
-                    if missing:
-                        raise RuntimeError(f"{name} completed without expected prompts: {missing}")
-                    return rc
+                    if not capture:
+                        if rc not in expected_returncodes:
+                            raise RuntimeError(f"{name} failed with exit code {rc}")
+                        missing = [r.pattern.pattern for r in rules if not r.optional and not r.used]
+                        if missing:
+                            raise RuntimeError(f"{name} completed without expected prompts: {missing}")
+                        return rc
+                    # Capture path. A non-zero exit is a between-state ONLY when it
+                    # is the documented candidate-consent abort: the Core prints the
+                    # exact confirm prompt and exits non-zero WITHOUT reaching the
+                    # mandatory READY-abschluss-marker (the abort is a non-completion,
+                    # so READY is NOT expected for a non-zero exit). The mandatory
+                    # READY marker is therefore enforced ONLY for the clean rc=0 path
+                    # below, never for the abort between-state.
+                    if rc != 0:
+                        # The only required coverage for a non-zero abort is that no
+                        # OTHER non-optional prompt was left unanswered; READY is a
+                        # clean-completion marker and is never present on the abort,
+                        # so the mandatory READY rule is excluded from the abort
+                        # between-state coverage check. (Match the non-optional READY
+                        # rule by its compiled pattern prefix, not by the bare marker
+                        # string, since the stored pattern is ``READY\s*$``.)
+                        ready_rule = next(
+                            (r for r in rules if not r.optional and r.pattern.pattern.startswith("READY")),
+                            None,
+                        )
+                        missing_capture = [
+                            r.pattern.pattern
+                            for r in rules
+                            if not r.optional and not r.used
+                            and r is not ready_rule
+                        ]
+                        if missing_capture:
+                            raise RuntimeError(
+                                f"{name} completed with exit code {rc} but without "
+                                f"expected prompts (missing: {missing_capture}); "
+                                "candidate-consent abort is the only permitted non-zero "
+                                "between-state"
+                            )
+                        if CANDIDATE_ABORT_ERROR not in buffer:
+                            # A non-zero exit is a permitted between-state ONLY when it
+                            # is the documented candidate-consent abort. Any other
+                            # error text (even together with a hash) is a hard abort.
+                            raise RuntimeError(
+                                f"{name} completed with non-zero exit code {rc} "
+                                "and without the documented candidate-consent "
+                                "confirm prompt; aborting (not a between-state)"
+                            )
+                        return rc, buffer
+                    # Clean completion (rc=0) requires the mandatory READY marker and
+                    # full non-optional coverage.
+                    missing_capture = [
+                        r.pattern.pattern for r in rules if not r.optional and not r.used
+                    ]
+                    if missing_capture:
+                        raise RuntimeError(
+                            f"{name} completed with exit code {rc} but without "
+                            f"expected prompts (missing: {missing_capture}); never a PASS"
+                        )
+                    if READY_RULE_MARKER not in buffer:
+                        raise RuntimeError(
+                            f"{name} completed with exit code {rc} but without "
+                            f"the mandatory READY-abschluss-marker in the "
+                            "transcript; never a PASS"
+                        )
+                    return rc, buffer
     finally:
         if proc.poll() is None:
             proc.kill()
@@ -259,17 +440,147 @@ up_rules = [
     Rule(r"APP_SECRET value:\s*$", "acceptance-secret-value\n", optional=True),
     Rule(r"APP_SECRET value again:\s*$", "acceptance-secret-value\n", optional=True),
     Rule(r"Install the BaseHarbor CA into the host trust store\? \[y/N\]:\s*$", "n\n", optional=True),
+    # Mandatory READY-abschluss-marker: the guided `up` MUST reach the Core's
+    # documented READY completion line. This is the ONLY permitted clean
+    # completion; a non-zero exit with the documented candidate-consent
+    # confirm-hash is the only permitted between-state. See review-128b /
+    # consent-harness-3: all-optional is the error state.
+    Rule(r"READY\s*$", "", repeat=False, optional=False),
 ]
+
+def run_guided_consent_flow(argv, rules):
+    """Drive the real production guided candidate-consent flow.
+
+    This is the single production decision path: the first ``up`` run in capture
+    mode yields (first_rc, first_buffer); the caller then classifies the exit
+    via the documented candidate-consent abort (exact confirm prompt string +
+    captured confirm-hash), feature-detects ``--confirm-candidate`` support and,
+    on a documented abort, re-runs ``up --confirm-candidate <digest>`` so the
+    second run reaches READY. Every non-zero exit other than the documented abort
+    aborts the whole flow (fail-closed) — never a second run.
+
+    The test imports this module and calls THIS function with fake cores so the
+    four counter-probes and both success paths are measured against the production
+    path itself, not against a test-local copy of ``up_rules``. ``argv`` is the
+    process argument vector (e.g. ``[BAHA, "--verbose", "up"]``); ``rules`` is the
+    production set ``drive.up_rules`` (imported, not copied).
+
+    Returns a dict with the terminal outcome keys used by the test:
+      - ``outcome``: one of ``"ready"`` (clean rc=0 with READY),
+        ``"second_up"`` (documented abort then a supported second run reached
+        READY) or ``"abort"`` (fail-closed refusal, no second run);
+      - ``first_rc``, ``confirm_hash`` (or None), ``second_rc`` (or None),
+        ``second_argv`` (the second-run argv, or None),
+      - ``foreign_error_second_up``: bool — always False here; the assertion that
+        a foreign error never reaches a second run is enforced by this path.
+    Raises RuntimeError on a fail-closed abort.
+    """
+    argv = list(argv)
+    first_rc, first_buffer = run_tty(
+        "guided-up",
+        [*argv[:1], "--verbose", "up"],
+        rules,
+        timeout=600,
+        no_output_timeout=120,
+        capture=True,
+    )
+    confirm_hash = capture_confirm_hash(first_buffer)
+    if first_rc not in (0,):
+        # First guided up failed closed (or any other non-zero exit). The only
+        # permitted non-zero between-state here is the documented candidate
+        # consent abort: a confirm-hash was printed AND the Core printed its
+        # documented candidate-consent confirm prompt. This is a genuine abort
+        # ONLY when the ENTIRE non-zero transcript is the documented between
+        # state: the confirm prompt AND its 64-hex digest are present AND NO
+        # foreign error/failure signature appears anywhere in the transcript.
+        #
+        # Fail-closed (review-128d REZEPT #1): a non-zero exit that carries a
+        # valid hash and the documented prompt but ALSO carries any foreign
+        # error/failure text (a panic, a traceback, an "Error:" message, ...) is
+        # NOT a documented abort — it is an unexpected failure. A stray hash +
+        # consent hint co-occurring with a foreign signature is never a
+        # between-state, so this aborts the whole flow and NEVER triggers a
+        # second `up`. The hash-pass alone is not a release.
+        foreign_signature = find_foreign_error_signature(first_buffer)
+        documented = (
+            confirm_hash is not None and CANDIDATE_ABORT_ERROR in first_buffer
+            and foreign_signature is None
+        )
+        if not documented:
+            return {
+                "outcome": "abort",
+                "first_rc": first_rc,
+                "confirm_hash": None,
+                "second_rc": None,
+                "second_argv": None,
+                "foreign_error_second_up": False,
+            }
+    if confirm_hash is not None and first_rc == 0 and CANDIDATE_ABORT_ERROR not in first_buffer:
+        # rc=0 but not the documented clean completion: refuse to fabricate a
+        # second up from a stray hash. The mandatory READY marker (enforced by
+        # run_tty) already covers the clean path; this guards a hash printed
+        # alongside an unexpected non-abort transcript.
+        return {
+            "outcome": "abort",
+            "first_rc": first_rc,
+            "confirm_hash": confirm_hash,
+            "second_rc": None,
+            "second_argv": None,
+            "foreign_error_second_up": False,
+        }
+    if confirm_hash is not None:
+        if not binary_supports_confirm_candidate(argv):
+            # Feature detection failed: refuse to fabricate consent. In a real
+            # deployment this path reports the documented abort without a second
+            # run; the abort transcript is still returned to the caller.
+            return {
+                "outcome": "abort",
+                "first_rc": first_rc,
+                "confirm_hash": confirm_hash,
+                "second_rc": None,
+                "second_argv": None,
+                "foreign_error_second_up": False,
+            }
+        # Documented candidate-consent abort with a supported binary: the digest
+        # is computed from the unchanged repository source, so it stays stable
+        # across runs. The second up re-answers the staged provider-plan
+        # confirmations (handled by ``rules``) and then binds the candidate
+        # submission; a supported binary reaches READY here.
+        second_argv = [*argv[:1], "--verbose", "up", "--confirm-candidate", confirm_hash]
+        second_rc = run_tty(
+            "guided-up-consented",
+            second_argv,
+            rules,
+            timeout=600,
+            no_output_timeout=120,
+        )
+        return {
+            "outcome": "second_up",
+            "first_rc": first_rc,
+            "confirm_hash": confirm_hash,
+            "second_rc": second_rc,
+            "second_argv": second_argv,
+            "foreign_error_second_up": False,
+        }
+    # rc=0 with a clean completion (no hash, mandatory READY enforced by run_tty).
+    return {
+        "outcome": "ready",
+        "first_rc": first_rc,
+        "confirm_hash": None,
+        "second_rc": None,
+        "second_argv": None,
+        "foreign_error_second_up": False,
+    }
+
 
 if __name__ == "__main__":
     print("[phase] guided init: interactive capability selection", flush=True)
     run_tty("guided-init", [BAHA, "init"], init_rules, no_output_timeout=120)
-    print("[phase] guided up: provision providers, bindings and workload", flush=True)
-    run_tty(
-        "guided-up",
-        [BAHA, "--verbose", "up"],
-        up_rules,
-        timeout=600,
-        no_output_timeout=120,
-    )
+
+    result = run_guided_consent_flow([BAHA], up_rules)
+    if result["outcome"] == "abort":
+        raise RuntimeError(
+            f"guided up abort (first_rc={result['first_rc']}); consent not completed "
+            "and no second up was run"
+        )
     print("[phase] guided up: READY reached; returning to acceptance gate", flush=True)
