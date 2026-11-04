@@ -1,0 +1,34 @@
+name: Demo · PR guided consent regressions
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  guided-consent:
+    name: Guided consent · production-path regressions
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check pinned Core revision is explicit
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Eq '^[0-9a-f]{40}$' baseharbor-core.ref
+      - name: Run local fixture and real guided decision-path regressions
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s tests -p test_fixture_consent.py -v
+          python3 -m unittest discover -s tests/guided -p 'test_*.py' -v
+          python3 -m py_compile tests/guided/drive.py
+          bash -n tests/guided/run.sh scripts/acceptance.sh tests/lib.sh
