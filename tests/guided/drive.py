@@ -42,11 +42,15 @@ def binary_supports_confirm_candidate(argv):
     such a binary. We probe behaviorally rather than by --help, because the
     flag is parsed manually and is intentionally absent from the usage listing.
 
-    The distinguishing signal is the literal rejection string, which legacy
-    emits almost instantly. r27+ accepts the flag and proceeds past it into the
-    memory preflight, so it never prints that string; we therefore classify by
-    string presence with a short bound rather than by exit code, so a slow but
-    healthy preflight on the supported binary still reads as "supports".
+    Fail-closed by design (review-128a finding 2): support is only *affirmed*
+    on a positive, unambiguous signal — the literal `unknown option
+    --confirm-candidate` rejection string being ABSENT, i.e. the binary parsed
+    the flag and proceeded past it. Every other probe outcome (missing/broken
+    binary, timeout, an early/unknown error message, a non-zero exit) is treated
+    as an inconclusive probe: report failure and never re-run `up` with the flag.
+    A timeout is NOT evidence of support — a missing or hanging binary times out
+    equally. We therefore classify by exit code 0 plus an empty, unambiguous
+    output rather than by string presence with an unconditional timeout fallback.
     """
     probe_dir = None
     try:
@@ -60,11 +64,20 @@ def binary_supports_confirm_candidate(argv):
         )
         output = (proc.stdout + proc.stderr).replace("\r", "")
     except (OSError, subprocess.TimeoutExpired):
-        # A timeout means the flag was accepted and the binary proceeded into a
-        # slow preflight (supported); only the literal unknown-option string is
-        # authoritative for the unsupported case.
+        # Missing/broken binary, permission error, or a hang. None of these is a
+        # positive support signal: fail closed, do not re-run with the flag.
+        return False
+    # Positive, unambiguous signal: clean exit and a prompt that parsed the flag
+    # and produced no rejection or any other early error message.
+    if proc.returncode != 0:
+        return False
+    if "unknown option --confirm-candidate" in output:
+        # Exact, documented unsupported response.
+        return False
+    if output.strip() == "":
         return True
-    return "unknown option --confirm-candidate" not in output
+    # Any other early/unrecognized message is an inconclusive probe.
+    return False
 
 
 def capture_confirm_hash(text):
@@ -247,12 +260,38 @@ def run_tty(name, argv, rules, env=None, timeout=900, no_output_timeout=None,
                         pass
                     if capture:
                         return rc, buffer
-                    if rc not in expected_returncodes:
-                        raise RuntimeError(f"{name} failed with exit code {rc}")
-                    missing = [r.pattern.pattern for r in rules if not r.optional and not r.used]
-                    if missing:
-                        raise RuntimeError(f"{name} completed without expected prompts: {missing}")
-                    return rc
+                    if not capture:
+                        if rc not in expected_returncodes:
+                            raise RuntimeError(f"{name} failed with exit code {rc}")
+                        missing = [r.pattern.pattern for r in rules if not r.optional and not r.used]
+                        if missing:
+                            raise RuntimeError(f"{name} completed without expected prompts: {missing}")
+                        return rc
+                    # Capture path: still evaluate the exit code and non-optional
+                    # rule coverage before the caller can treat this as success.
+                    # The only permitted between-state is the documented
+                    # candidate-consent abort: every non-optional interaction was
+                    # driven (no missing required prompt) yet no clean returncode
+                    # was produced because the candidate digest still has to be
+                    # acknowledged on a follow-up run.
+                    missing_capture = [
+                        r.pattern.pattern for r in rules if not r.optional and not r.used
+                    ]
+                    if missing_capture:
+                        # A required prompt never fired, or any other non-zero exit
+                        # without a documented candidate-abort: never a PASS.
+                        raise RuntimeError(
+                            f"{name} completed with exit code {rc} but without "
+                            f"expected prompts (missing: {missing_capture}); "
+                            "candidate-consent abort is the only permitted non-zero "
+                            "between-state"
+                        )
+                    if rc != 0:
+                        raise RuntimeError(
+                            f"{name} completed with non-zero exit code {rc} "
+                            "(no clean completion, no documented candidate abort)"
+                        )
+                    return rc, buffer
     finally:
         if proc.poll() is None:
             proc.kill()
@@ -337,6 +376,18 @@ if __name__ == "__main__":
         capture=True,
     )
     confirm_hash = capture_confirm_hash(first_buffer)
+    if first_rc not in (0,):
+        # First guided up failed closed (or any other non-zero exit). The only
+        # permitted non-zero between-state here is the documented candidate
+        # consent abort: a confirm-hash was printed and still has to be
+        # acknowledged on a follow-up run. Without a hash this is an unexpected
+        # failure, never a success.
+        if confirm_hash is None:
+            raise RuntimeError(
+                f"guided up failed with exit code {first_rc} and no candidate "
+                "confirm-hash was printed; refusing to treat a non-zero exit as "
+                "success (candidate-consent abort requires the confirm-hash)"
+            )
     if confirm_hash is not None:
         if not binary_supports_confirm_candidate([BAHA, "up"]):
             raise RuntimeError(
