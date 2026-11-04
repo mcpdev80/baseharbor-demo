@@ -11,11 +11,12 @@ Fehlertext + Hash + alle Interaktionen). Bei anderem Fehlertext nach Hash
 Abbruch, kein zweiter `up`.
 
 ## Head / Basis
-- Fix-Kandidat (dieser Branch): `b02570a0d12b1f1b7b96148ec353f783ed527fdc`
+- Fix-Kandidat (dieser Branch): `138a793ab67ccc0f4cb2d5e8df5976d33453fd60`
 - Ziel-Head der Runde (b73be42): `b73be42ba9944d21ffe8869382c37100c3e40384`
 - Basis main: `cd9176e0129f01270ca85fd6b29acf99404f6dcd`
-- `git ls-remote origin w85-demo-guided-consent` => `b02570a0d12b1f1b7b96148ec353f783ed527fdc`
+- `git ls-remote origin w85-demo-guided-consent` => `138a793ab67ccc0f4cb2d5e8df5976d33453fd60`
 - PR #128: OPEN, READY (`isDraft=false`), `mergeStateStatus=CLEAN`
+- Net-Diff vs `origin/main` (git diff --stat): nur 5 Dateien — `v0424-targeted.yml`, `baseharbor-core.ref`, `demo/consent-harness-3.md`, `tests/guided/drive.py`, `tests/guided/test_consent_capture.py`. Die kritisierte `tests/guided/scripts/evidence_b1_b2.py` erscheint WEDER als neu noch als gelöscht (netto sauber).
 
 ## Änderungen (PR #128 Diff)
 - `tests/guided/drive.py`
