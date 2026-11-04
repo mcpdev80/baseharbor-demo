@@ -21,6 +21,12 @@ Covers the caller/guided-flow cases review-128c listed:
 6. documented candidate-consent abort (hash + documented prompt) => second up
    runs and reaches READY (positive path, production flow)
 7. regular success without a hash => READY (positive path, production flow)
+8. hash + documented prompt + FOREIGN panic in the SAME non-zero transcript =>
+   ABORT, no second up (the review-128d REZEPT #1 bypass, measured here)
+9. documented abort with NO foreign signature => second_up (control that the
+   fail-closed fix does not over-tighten)
+10. production foreign-signature helper classifies foreign text, never the
+    documented abort prompt
 
 One line per case, "OK|CASE|..." / "XX|CASE|...". Failures exit non-zero.
 Discovered by `python3 -m unittest discover -s tests/guided -p "test_*.py"`.
@@ -285,6 +291,74 @@ class ConsentCaptureRegression(unittest.TestCase):
         finally:
             os.unlink(foreign_cores[0])
 
+    def test_09_hash_and_documented_prompt_with_foreign_error_aborts(self):
+        # The exact review-128d REZEPT #1 bypass: a non-zero transcript that
+        # carries a VALID 64-hex confirm-hash AND the documented
+        # ``Re-run with --confirm-candidate`` prompt AND a FOREIGN panic/error
+        # line. This must classify as a hard ABORT with NO second up — the hash
+        # + consent hint co-occurring with any foreign signature is never a
+        # documented between-state.
+        digest = "a" * 64
+        core = write_fake_core([
+            "Application name [demo]:",
+            "Environment [demo]:",
+            "",
+            f"Re-run with --confirm-candidate {digest} to acknowledge this exact submission.",
+            "core: panic: unknown error 0xdeadbeef",
+        ], exit_code=3)
+        try:
+            res = flow_first(core, exit_code=3)
+            self.assertEqual("abort", res["outcome"],
+                             "hash+documented-prompt+foreign-error must abort, not second_up")
+            self.assertIsNone(res["second_rc"],
+                             "a foreign error must never reach a second up")
+            self.assertIsNone(res["second_argv"],
+                             "a foreign error must never reach a second up")
+            self.assertFalse(res["foreign_error_second_up"])
+        except RuntimeError:
+            # Fail-closed abort (no second up) is equally a valid production
+            # outcome: the foreign error reached no second run.
+            pass
+        finally:
+            os.unlink(core)
+
+    def test_10_documented_abort_without_foreign_signature_reaches_second_up(self):
+        # Control: a non-zero exit carrying the hash AND the documented prompt
+        # AND NO foreign signature IS a genuine documented abort and must reach
+        # second_up (regression guard against over-tightening the fail-closed
+        # check). This must stay green after the R1 fix.
+        digest = "b" * 64
+        core = write_fake_core([
+            "Application name [demo]:",
+            "Environment [demo]:",
+            "",
+            f"Re-run with --confirm-candidate {digest} to acknowledge this exact submission.",
+        ], exit_code=3)
+        try:
+            res = flow_abort_then_second(core, exit_code=3)
+            self.assertEqual("second_up", res["outcome"])
+            self.assertEqual(3, res["first_rc"])
+            self.assertEqual(digest, res["confirm_hash"])
+            self.assertEqual(0, res["second_rc"])
+            self.assertFalse(res["foreign_error_second_up"])
+        except RuntimeError as e:
+            self.assertTrue(False, f"documented abort (no foreign error) should reach second_up, got: {e}")
+        finally:
+            os.unlink(core)
+
+    def test_11_foreign_error_signature_detected_by_production_helper(self):
+        # The production helper classifies the foreign signature; the documented
+        # abort prompt must NOT be flagged.
+        self.assertIsNotNone(drive.find_foreign_error_signature(
+            "core: panic: unknown error 0xdeadbeef"))
+        self.assertEqual(
+            "Traceback",
+            drive.find_foreign_error_signature("a Traceback (most recent call last)")),
+        self.assertIsNone(drive.find_foreign_error_signature(
+            "Re-run with --confirm-candidate " + "a" * 64
+            + " to acknowledge this exact submission."))
+        self.assertIsNone(drive.find_foreign_error_signature("READY"))
+
 
 if __name__ == "__main__":
     # unittest.main() handles discovery; this block additionally emits the
@@ -308,6 +382,9 @@ if __name__ == "__main__":
         "test_06_documented_abort_then_second_up_ready",
         "test_07_regular_success_no_hash_ready",
         "test_08_foreign_error_never_reaches_second_up_assertion",
+        "test_09_hash_and_documented_prompt_with_foreign_error_aborts",
+        "test_10_documented_abort_without_foreign_signature_reaches_second_up",
+        "test_11_foreign_error_signature_detected_by_production_helper",
     ]:
         try:
             getattr(tc, method)()

@@ -94,6 +94,43 @@ def capture_confirm_hash(text):
     return match.group(1) if match else None
 
 
+# Foreign error/failure signatures the documented candidate-consent abort must
+# NEVER co-exist with. A non-zero exit that carries a valid hash and the
+# documented confirm prompt but ALSO any of these is an unexpected failure, not
+# a documented abort — the production path fails closed (review-128d). The Core
+# prints these only on a real failure; the documented abort transcript carries
+# none of them.
+FOREIGN_ERROR_SIGNATURES = (
+    "panic",
+    "Traceback",
+    "Error:",
+    "error",
+    "exception",
+    "failed",
+    "Fatal",
+    "fatal",
+    "unhandled",
+    "refused",
+    "denied",
+)
+
+
+def find_foreign_error_signature(text):
+    """Return the first foreign error/failure signature present in ``text``, or None.
+
+    Case-sensitive: the Core's documented candidate-consent abort prompt is the
+    literal ``Re-run with --confirm-candidate <digest>`` and never contains any
+    of these words. A non-zero exit whose transcript carries any signature is an
+    unexpected failure, so the production path treats it as a hard abort and
+    never launches a second ``up``.
+    """
+    normalized = text.replace("\r", "")
+    for signature in FOREIGN_ERROR_SIGNATURES:
+        if signature in normalized:
+            return signature
+    return None
+
+
 # Documented, canonical strings the Core prints during the guided candidate
 # consent flow. These are the contract the caller and the capture validator
 # both rely on:
@@ -452,10 +489,24 @@ def run_guided_consent_flow(argv, rules):
         # First guided up failed closed (or any other non-zero exit). The only
         # permitted non-zero between-state here is the documented candidate
         # consent abort: a confirm-hash was printed AND the Core printed its
-        # documented candidate-consent confirm prompt. Without BOTH this is an
-        # unexpected failure, never a success — so a hash with any other error
-        # text aborts and never triggers a second up.
-        if confirm_hash is None or CANDIDATE_ABORT_ERROR not in first_buffer:
+        # documented candidate-consent confirm prompt. This is a genuine abort
+        # ONLY when the ENTIRE non-zero transcript is the documented between
+        # state: the confirm prompt AND its 64-hex digest are present AND NO
+        # foreign error/failure signature appears anywhere in the transcript.
+        #
+        # Fail-closed (review-128d REZEPT #1): a non-zero exit that carries a
+        # valid hash and the documented prompt but ALSO carries any foreign
+        # error/failure text (a panic, a traceback, an "Error:" message, ...) is
+        # NOT a documented abort — it is an unexpected failure. A stray hash +
+        # consent hint co-occurring with a foreign signature is never a
+        # between-state, so this aborts the whole flow and NEVER triggers a
+        # second `up`. The hash-pass alone is not a release.
+        foreign_signature = find_foreign_error_signature(first_buffer)
+        documented = (
+            confirm_hash is not None and CANDIDATE_ABORT_ERROR in first_buffer
+            and foreign_signature is None
+        )
+        if not documented:
             return {
                 "outcome": "abort",
                 "first_rc": first_rc,
