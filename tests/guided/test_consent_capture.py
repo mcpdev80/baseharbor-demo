@@ -51,7 +51,7 @@ def write_fake_core(lines, exit_code):
     content when read. A lone "READY" line marks clean completion.
     """
     fd, path = tempfile.mkstemp(prefix="fake-core-")
-    counter = os.path.join(tempfile.gettempdir(), f"fake-core-counter-{os.getpid()}-{id(lines)}")
+    counter = path + ".counter"  # mkstemp path is unique across tests and processes
     lines_repr = ", ".join(repr(line) for line in lines)
     with os.fdopen(fd, "w") as fh:
         fh.write("#!/usr/bin/env python3\nimport sys, time, os\n")
@@ -85,6 +85,15 @@ def write_fake_core(lines, exit_code):
         fh.write("sys.exit(" + str(exit_code) + ")\n")
     os.chmod(path, 0o755)
     return path
+
+
+def cleanup_fake_core(path):
+    """Dispose of both the per-fixture executable and its isolated counter."""
+    for candidate in (path, path + ".counter"):
+        try:
+            os.unlink(candidate)
+        except FileNotFoundError:
+            pass
 
 
 def run_capture(name, core_path, rules, exit_code, timeout=30):
@@ -156,7 +165,7 @@ class ConsentCaptureRegression(unittest.TestCase):
             except RuntimeError:
                 pass
             finally:
-                os.unlink(core)
+                cleanup_fake_core(core)
 
     def test_02_required_prompt_missing_aborts(self):
         # Only the Environment prompt answered; the mandatory READY marker never
@@ -168,7 +177,7 @@ class ConsentCaptureRegression(unittest.TestCase):
         except RuntimeError:
             pass
         finally:
-            os.unlink(core)
+            cleanup_fake_core(core)
 
     def test_03_nonzero_without_hash_aborts(self):
         # rc != 0 without a confirm-hash AND without the documented confirm prompt:
@@ -186,7 +195,7 @@ class ConsentCaptureRegression(unittest.TestCase):
         except RuntimeError:
             pass
         finally:
-            os.unlink(core)
+            cleanup_fake_core(core)
 
     def test_04_nonzero_with_foreign_error_aborts(self):
         # rc != 0 with a FOREIGN error text (no documented confirm prompt):
@@ -205,7 +214,7 @@ class ConsentCaptureRegression(unittest.TestCase):
         except RuntimeError:
             pass
         finally:
-            os.unlink(core)
+            cleanup_fake_core(core)
 
     def test_05_nonzero_with_incomplete_interactions_aborts(self):
         # Only the Environment prompt answered; Application name (required as
@@ -218,7 +227,7 @@ class ConsentCaptureRegression(unittest.TestCase):
         except RuntimeError:
             pass
         finally:
-            os.unlink(core)
+            cleanup_fake_core(core)
 
     def test_06_documented_abort_then_second_up_ready(self):
         # Documented candidate-consent abort (hash + documented prompt) -> second
@@ -243,7 +252,7 @@ class ConsentCaptureRegression(unittest.TestCase):
         except RuntimeError as e:
             self.assertTrue(False, f"documented abort should reach second_up, got: {e}")
         finally:
-            os.unlink(core)
+            cleanup_fake_core(core)
 
     def test_07_regular_success_no_hash_ready(self):
         # Regular success (rc=0, no hash, READY) => clean ready path.
@@ -263,7 +272,7 @@ class ConsentCaptureRegression(unittest.TestCase):
         except RuntimeError as e:
             self.assertTrue(False, f"regular success should reach ready, got: {e}")
         finally:
-            os.unlink(core)
+            cleanup_fake_core(core)
 
     def test_08_foreign_error_never_reaches_second_up_assertion(self):
         # Assertion in the PRODUCTION path: a foreign error (no documented
@@ -320,7 +329,7 @@ class ConsentCaptureRegression(unittest.TestCase):
             # outcome: the foreign error reached no second run.
             pass
         finally:
-            os.unlink(core)
+            cleanup_fake_core(core)
 
     def test_10_documented_abort_without_foreign_signature_reaches_second_up(self):
         # Control: a non-zero exit carrying the hash AND the documented prompt
@@ -344,7 +353,7 @@ class ConsentCaptureRegression(unittest.TestCase):
         except RuntimeError as e:
             self.assertTrue(False, f"documented abort (no foreign error) should reach second_up, got: {e}")
         finally:
-            os.unlink(core)
+            cleanup_fake_core(core)
 
     def test_11_foreign_error_signature_detected_by_production_helper(self):
         # The production helper classifies the foreign signature; the documented
