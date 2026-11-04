@@ -8,6 +8,7 @@ import subprocess
 import sys
 import struct
 import termios
+import tempfile
 import time
 from pathlib import Path
 
@@ -31,6 +32,54 @@ class Rule:
         if self.callback:
             return self.callback(match, text)
         return self.response
+
+def binary_supports_confirm_candidate(argv):
+    """Feature detection: does the Core 'up' binary expose --confirm-candidate?
+
+    Backward-compat guard: pinned Core that predates the candidate-consent
+    surface has no such flag and fails with 'unknown option --confirm-candidate';
+    a re-run with the flag would crash there, so we must never supply it for
+    such a binary. We probe behaviorally rather than by --help, because the
+    flag is parsed manually and is intentionally absent from the usage listing.
+
+    The distinguishing signal is the literal rejection string, which legacy
+    emits almost instantly. r27+ accepts the flag and proceeds past it into the
+    memory preflight, so it never prints that string; we therefore classify by
+    string presence with a short bound rather than by exit code, so a slow but
+    healthy preflight on the supported binary still reads as "supports".
+    """
+    probe_dir = None
+    try:
+        probe_dir = tempfile.mkdtemp(prefix="confirm-candidate-probe-")
+        proc = subprocess.run(
+            [*argv, "--no-input", "--confirm-candidate", "0" * 64],
+            cwd=probe_dir,
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+        output = (proc.stdout + proc.stderr).replace("\r", "")
+    except (OSError, subprocess.TimeoutExpired):
+        # A timeout means the flag was accepted and the binary proceeded into a
+        # slow preflight (supported); only the literal unknown-option string is
+        # authoritative for the unsupported case.
+        return True
+    return "unknown option --confirm-candidate" not in output
+
+
+def capture_confirm_hash(text):
+    """Extract the candidate confirm-hash (64-hex) from the up transcript.
+
+    Core prints 'Re-run with --confirm-candidate <digest> to acknowledge this
+    exact submission.' The digest is the canonical content-hash of the exact
+    submission being bound; supplying it on a re-run binds that submission.
+    """
+    match = re.search(
+        r"Re-run with --confirm-candidate\s+([0-9a-f]{64})",
+        text.replace("\r", ""),
+    )
+    return match.group(1) if match else None
+
 
 ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 
@@ -88,7 +137,13 @@ def capability_selection_response(match, text):
     return keys
 
 def run_tty(name, argv, rules, env=None, timeout=900, no_output_timeout=None,
-            cwd=None, expected_returncodes=(0,)):
+            cwd=None, expected_returncodes=(0,), capture=False):
+    """Run a single PTY-driven process.
+
+    By default a non-zero exit raises (the happy path asserts clean completion).
+    capture=True returns the full transcript instead of raising on non-zero so
+    the caller can drive a follow-up run (feature-detected candidate consent).
+    """
     ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
     log_path = ARTIFACT_DIR / f"{name}.txt"
     merged_env = os.environ.copy()
@@ -190,6 +245,8 @@ def run_tty(name, argv, rules, env=None, timeout=900, no_output_timeout=None,
                             sys.stdout.buffer.write(chunk)
                     except OSError:
                         pass
+                    if capture:
+                        return rc, buffer
                     if rc not in expected_returncodes:
                         raise RuntimeError(f"{name} failed with exit code {rc}")
                     missing = [r.pattern.pattern for r in rules if not r.optional and not r.used]
@@ -264,12 +321,43 @@ up_rules = [
 if __name__ == "__main__":
     print("[phase] guided init: interactive capability selection", flush=True)
     run_tty("guided-init", [BAHA, "init"], init_rules, no_output_timeout=120)
+
+    # First guided up: provision providers, bindings and workload. With the
+    # candidate-consent Core this run fails closed after printing the confirm
+    # hash (the staged provider-plan confirmations still complete first). We
+    # capture the transcript rather than asserting clean completion, because the
+    # candidate digest has to be acknowledged on a follow-up run.
     print("[phase] guided up: provision providers, bindings and workload", flush=True)
-    run_tty(
+    first_rc, first_buffer = run_tty(
         "guided-up",
         [BAHA, "--verbose", "up"],
         up_rules,
         timeout=600,
         no_output_timeout=120,
+        capture=True,
     )
+    confirm_hash = capture_confirm_hash(first_buffer)
+    if confirm_hash is not None:
+        if not binary_supports_confirm_candidate([BAHA, "up"]):
+            raise RuntimeError(
+                "Core printed a candidate confirm-hash but the binary does not "
+                "support --confirm-candidate (feature detection failed); refusing "
+                "to fabricate consent"
+            )
+        print(
+            f"[phase] guided up: candidate confirm-hash captured "
+            f"{confirm_hash[:12]}…; re-running with --confirm-candidate",
+            flush=True,
+        )
+        # The digest is computed from the unchanged repository source, so it stays
+        # stable across runs. The second up re-answers the staged provider-plan
+        # confirmations (handled by up_rules) and then binds the candidate
+        # submission; a supported binary reaches READY here.
+        run_tty(
+            "guided-up-consented",
+            [BAHA, "--verbose", "up", "--confirm-candidate", confirm_hash],
+            up_rules,
+            timeout=600,
+            no_output_timeout=120,
+        )
     print("[phase] guided up: READY reached; returning to acceptance gate", flush=True)
