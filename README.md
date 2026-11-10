@@ -7,25 +7,11 @@
 
 This repository starts as an ordinary application repository: no committed `baseharbor.yaml`, no prepared BaseHarbor state and no provider-specific application contract.
 
-## BaseHarbor v0.4.26 candidate compatibility
+## BaseHarbor 0.4.27 integration
 
-This branch prepares the demo for the v0.4.26 candidate; it is not a published
-release or a completed native acceptance claim. `baseharbor-core.ref` pins the
-exact Core source. The [candidate release notes](https://github.com/mcpdev80/baseharbor/blob/develop/docs/releases/v0.4.26.md) describe the intended interface; native evidence must match the final immutable source matrix.
+The Demo shows how an ordinary application repository is adopted and run with BaseHarbor. Application needs remain provider-neutral while runtime and infrastructure choices belong to the selected Target. BaseHarbor generates application identities and retains normal source-native tooling; no dedicated BaseHarbor SDK is required.
 
-This demo explicitly requests managed SQL and other capabilities; it therefore
-resolves providers from those selected capabilities and their genuine dependencies.
-An independently enabled management Core includes SQL, Secrets and Identity;
-requesting application SQL does not itself enable that management installation. Other supported local
-applications without managed capability requirements can run without Core or
-login; SQL is no longer implicit. BaseHarbor generates application IDs during
-explicit initialization; neither authored YAML nor MCP clients supply an ID. The existing ordinary application and service
-binding paths remain the compatibility test, not a new application SDK.
-
-Use `baha app sql` and `baha app cache`. Remote Targets require enrolled Node
-Connector access; Console uses the protected Core API. Native acceptance must
-prove Docker/rootless Podman lifecycle, backup/recovery and foreign ownership
-preservation with this immutable source before readiness is declared.
+For the complete user-facing changes, see the [BaseHarbor 0.4.27 release notes](https://github.com/mcpdev80/baseharbor/blob/develop/docs/releases/v0.4.27.md). The demo's exact Core integration source is recorded separately in `baseharbor-core.ref`.
 
 ## Try it
 
