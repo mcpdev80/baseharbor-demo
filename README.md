@@ -5,7 +5,7 @@
 <h1 align="center">BaseHarbor Demo</h1>
 <p align="center"><strong>A normal application repository adopted through BaseHarbor's source-neutral workload model.</strong></p>
 
-This repository starts as an ordinary application repository: no committed `baseharbor.yaml`, no prepared BaseHarbor state and no provider-specific application contract.
+This repository starts as an ordinary application repository: no committed `baseharbor.yaml`, no prepared BaseHarbor state and no provider-specific application contract. Its Compose `x-baseharbor` extension declares that the demo's management-login display uses the Target's OpenBao-managed development credentials; `baha app init` carries those sources into the generated app contract automatically.
 
 ## BaseHarbor 0.4.27 integration
 
@@ -57,7 +57,7 @@ baha config prompt
 - `init` turns the detected application intent into `baseharbor.yaml`.
 - `up` converges the managed services, secrets, runtime bindings and application workload.
 
-On the first run BaseHarbor can ask for required setup such as the OpenBao recovery location and application-owned secrets. After that, the application should be ready.
+On the first run BaseHarbor can ask for required setup such as the OpenBao recovery location and application-owned secrets. The demo management username/password are read from the selected Target's OpenBao-backed development login and synchronized automatically; they are not prompted as separate app secrets.
 
 ## Check the application
 
