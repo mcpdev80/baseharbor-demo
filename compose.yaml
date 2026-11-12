@@ -59,3 +59,12 @@ services:
 
 volumes:
   demo-app-state:
+
+# Compose ignores x-* extension fields. baha app init turns these declarations
+# into required app secrets sourced from this Target's OpenBao-managed login.
+x-baseharbor:
+  secrets:
+    - name: DEMO_MANAGEMENT_USERNAME
+      source: target-development-username
+    - name: DEMO_MANAGEMENT_PASSWORD
+      source: target-development-password
