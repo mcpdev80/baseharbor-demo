@@ -341,6 +341,7 @@ class ConsentCaptureRegression(unittest.TestCase):
             "Application name [demo]:",
             "Environment [demo]:",
             "",
+            "Error: record deployment before mutation: candidate submission requires an explicit operator/automation consent (--confirm-candidate); refusing to record deployment state: candidate submission requires an explicit operator/automation consent (--confirm-candidate); refusing to record deployment state",
             f"Re-run with --confirm-candidate {digest} to acknowledge this exact submission.",
         ], exit_code=3)
         try:
@@ -366,7 +367,28 @@ class ConsentCaptureRegression(unittest.TestCase):
         self.assertIsNone(drive.find_foreign_error_signature(
             "Re-run with --confirm-candidate " + "a" * 64
             + " to acknowledge this exact submission."))
+        self.assertIsNone(drive.find_foreign_error_signature(
+            "Error: record deployment before mutation: candidate submission requires an explicit operator/automation consent (--confirm-candidate); refusing to record deployment state: candidate submission requires an explicit operator/automation consent (--confirm-candidate); refusing to record deployment state"))
+        self.assertEqual("Error:", drive.find_foreign_error_signature(
+            "Error: unrelated deployment failure"))
         self.assertIsNone(drive.find_foreign_error_signature("READY"))
+
+    def test_13_unrelated_error_with_candidate_hash_still_aborts(self):
+        digest = "c" * 64
+        core = write_fake_core([
+            "Application name [demo]:",
+            "Environment [demo]:",
+            "Error: unrelated deployment failure",
+            f"Re-run with --confirm-candidate {digest} to acknowledge this exact submission.",
+        ], exit_code=3)
+        try:
+            result = flow_first(core, exit_code=3)
+            self.assertEqual("abort", result["outcome"])
+            self.assertIsNone(result["second_argv"])
+            self.assertIsNone(result["second_rc"])
+            self.assertFalse(result["foreign_error_second_up"])
+        finally:
+            cleanup_fake_core(core)
 
     def test_12_provider_impact_plan_prompt_is_confirmed(self):
         prompt = "Apply these changes? [y/N]"
@@ -415,6 +437,7 @@ if __name__ == "__main__":
         "test_10_documented_abort_without_foreign_signature_reaches_second_up",
         "test_11_foreign_error_signature_detected_by_production_helper",
         "test_12_provider_impact_plan_prompt_is_confirmed",
+        "test_13_unrelated_error_with_candidate_hash_still_aborts",
     ]:
         try:
             getattr(tc, method)()
