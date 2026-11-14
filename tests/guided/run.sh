@@ -42,6 +42,25 @@ rm -rf "$XDG_DATA_HOME/baseharbor-recovery"
 clean_generated_state
 "$BAHA" target create "$BASEHARBOR_TARGET"   --provider "$BASEHARBOR_TEST_RUNTIME"   --access "local-$BASEHARBOR_TEST_RUNTIME"   --reference local   --scope default   --default >/dev/null
 
+# Full installation destroy removed the prior installation owner as intended.
+# Recreate the Core installation on the fresh Target before guided app `up`;
+# otherwise the app lifecycle correctly refuses to load deployment state from
+# a Target that has no authoritative installation owner.
+guided_core_root="$ARTIFACT_DIR/guided-control-plane"
+mkdir -p "$guided_core_root"
+(
+  cd "$guided_core_root"
+  if ! run_consented "$BAHA" up --yes >"$ARTIFACT_DIR/guided-core-up.txt" 2>&1; then
+    cat "$ARTIFACT_DIR/guided-core-up.txt" >&2
+    exit 1
+  fi
+  "$BAHA" doctor >"$ARTIFACT_DIR/guided-core-doctor.txt"
+  if ! grep -q '^READY' "$ARTIFACT_DIR/guided-core-doctor.txt"; then
+    cat "$ARTIFACT_DIR/guided-core-doctor.txt" >&2
+    exit 1
+  fi
+)
+
 test ! -e "$DEMO_ROOT/baseharbor.yaml"
 test ! -e "$DEMO_ROOT/baseharbor.repository.yaml"
 test ! -e "$DEMO_ROOT/.baseharbor"
