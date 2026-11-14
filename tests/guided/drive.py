@@ -87,9 +87,10 @@ def capture_confirm_hash(text):
     exact submission.' The digest is the canonical content-hash of the exact
     submission being bound; supplying it on a re-run binds that submission.
     """
+    normalized = ANSI_ESCAPE.sub("", text).replace("\r", "")
     match = re.search(
         r"Re-run with --confirm-candidate\s+([0-9a-f]{64})",
-        text.replace("\r", ""),
+        normalized,
     )
     return match.group(1) if match else None
 
@@ -134,7 +135,11 @@ def find_foreign_error_signature(text):
     unexpected failure, so the production path treats it as a hard abort and
     never launches a second ``up``.
     """
-    normalized = text.replace("\r", "")
+    # The same PTY used for the guided journey can add color control codes in
+    # the middle of a wrapped diagnostic. Strip them before matching the exact
+    # documented refusal; otherwise its own ``Error:`` is misclassified as a
+    # foreign failure and the consent-bound retry is never reached.
+    normalized = ANSI_ESCAPE.sub("", text).replace("\r", "")
     # This exact refusal is the documented first half of candidate consent.
     # Remove only the complete known diagnostic; any other error remains fatal.
     normalized = EXPECTED_CANDIDATE_CONSENT_REFUSAL.sub("", normalized)
