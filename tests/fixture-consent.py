@@ -30,6 +30,23 @@ def current_consent(value):
     return {"plan_id": plan["plan_id"], "first": True, "second": count == 2, "delete_data": plan["destructive"]}
 
 
+def candidate_confirmation(value):
+    """Return only the exact source digest from the documented candidate refusal."""
+    error = value.get("error", {})
+    prefix = "candidate submission requires an explicit operator/automation consent (--confirm-candidate)"
+    message = error.get("message", "")
+    if (value.get("contract_version") != "v1" or error.get("code") != "validation_failed"
+            or not isinstance(message, str) or not message.startswith(prefix)):
+        raise ValueError("not a candidate-source consent refusal")
+    match = re.fullmatch(
+        r"Re-run with --confirm-candidate ([0-9a-f]{64}) to acknowledge this exact submission\.",
+        error.get("next", ""),
+    )
+    if not match:
+        raise ValueError("candidate refusal does not carry one exact source digest")
+    return match.group(1)
+
+
 def installation_remainder(previous, result):
     value = json.loads(result.stderr)
     current_consent(value)
@@ -84,6 +101,15 @@ def main():
     env = dict(os.environ)
     env.pop("BASEHARBOR_PROVIDER_CHANGE_CONSENT", None)
     result = subprocess.run(args, env=env, capture_output=True, timeout=900)
+    if result.returncode:
+        try:
+            digest = candidate_confirmation(json.loads(result.stderr))
+        except (ValueError, TypeError, AttributeError):
+            digest = ""
+        if digest and not any(arg == "--confirm-candidate" or arg.startswith("--confirm-candidate=") for arg in args):
+            print("isolated-demo-fixture: acknowledge the exact current application source candidate", file=sys.stderr)
+            args.extend(("--confirm-candidate", digest))
+            result = subprocess.run(args, env=env, capture_output=True, timeout=900)
     if result.returncode:
         try:
             value = json.loads(result.stderr)
