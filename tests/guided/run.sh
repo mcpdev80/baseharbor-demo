@@ -46,7 +46,7 @@ clean_generated_state
 # Recreate the Core installation on the fresh Target before guided app `up`;
 # otherwise the app lifecycle correctly refuses to load deployment state from
 # a Target that has no authoritative installation owner.
-guided_core_root="$ARTIFACT_DIR/guided-control-plane"
+guided_core_root="$DEMO_ROOT/tests/.guided-control-plane"
 mkdir -p "$guided_core_root"
 (
   cd "$guided_core_root"
@@ -59,6 +59,8 @@ mkdir -p "$guided_core_root"
     cat "$ARTIFACT_DIR/guided-core-doctor.txt" >&2
     exit 1
   fi
+  cd "$DEMO_ROOT"
+  rmdir "$guided_core_root"
 )
 
 test ! -e "$DEMO_ROOT/baseharbor.yaml"
