@@ -115,6 +115,62 @@ class ConsentTests(unittest.TestCase):
         self.assertEqual(second[-2:], ["--confirm-candidate", digest])
         self.assertEqual(second.count("--json"), 1)
 
+    def test_fixture_acknowledges_recomputed_candidate_after_provider_plan(self):
+        initial_digest, recomputed_digest = "f" * 64, "9" * 64
+        first_candidate = subprocess.CompletedProcess([], 1, b"", json.dumps(self.candidate_refusal(initial_digest)).encode())
+        provider_plan = subprocess.CompletedProcess([], 1, b"", json.dumps(self.refusal()).encode())
+        refreshed_candidate = subprocess.CompletedProcess([], 1, b"", json.dumps(self.candidate_refusal(recomputed_digest)).encode())
+        success = subprocess.CompletedProcess([], 0, b"deployed\n", b"")
+        seen = []
+        replies = iter((first_candidate, provider_plan, refreshed_candidate, success))
+
+        def run(args, **kwargs):
+            seen.append((list(args), kwargs["env"].get("BASEHARBOR_PROVIDER_CHANGE_CONSENT")))
+            return next(replies)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            demo = root / "demo"
+            fixture_root = root / "fixture"
+            binary = root / "bin" / "baha"
+            for path in (demo, fixture_root / "data", fixture_root / "config", binary.parent):
+                path.mkdir(parents=True, exist_ok=True)
+            binary.write_text("fixture binary")
+            original_cwd = Path.cwd()
+            os.chdir(demo)
+            try:
+                with mock.patch.dict(os.environ, {
+                    "BASEHARBOR_DEMO_FIXTURE": str(fixture_root),
+                    "DEMO_ROOT": str(demo),
+                    "XDG_DATA_HOME": str(fixture_root / "data"),
+                    "XDG_CONFIG_HOME": str(fixture_root / "config"),
+                    "BAHA": str(binary),
+                }), mock.patch.object(sys, "argv", [str(root / "tests" / "fixture-consent.py"), str(binary), "up", "--yes"]), \
+                     mock.patch.object(subprocess, "run", side_effect=run), \
+                     contextlib.redirect_stdout(io.TextIOWrapper(io.BytesIO())), \
+                     contextlib.redirect_stderr(io.TextIOWrapper(io.BytesIO())):
+                    self.assertEqual(fixture.main(), 0)
+            finally:
+                os.chdir(original_cwd)
+
+        self.assertEqual(len(seen), 4)
+        self.assertEqual(seen[1][0][-2:], ["--confirm-candidate", initial_digest])
+        self.assertIsNone(seen[1][1])
+        self.assertIsNotNone(seen[2][1])
+        self.assertEqual(seen[2][0][-2:], ["--confirm-candidate", initial_digest])
+        self.assertEqual(seen[3][0][-2:], ["--confirm-candidate", recomputed_digest])
+        self.assertEqual(seen[3][0].count("--confirm-candidate"), 1)
+        self.assertIsNotNone(seen[3][1])
+
+    def test_set_candidate_confirmation_replaces_stale_digest(self):
+        args = ["baha", "up", "--confirm-candidate", "a" * 64, "--json"]
+        self.assertEqual(
+            fixture.set_candidate_confirmation(args, "b" * 64),
+            ["baha", "up", "--json", "--confirm-candidate", "b" * 64],
+        )
+        with self.assertRaises(ValueError):
+            fixture.set_candidate_confirmation(["baha", "up", "--confirm-candidate"], "b" * 64)
+
     def test_explicit_installation_remainder_cannot_expand_or_retry_failed_mutation(self):
         first, second = "11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222"
         child = lambda value: {"scope": {"owner": {"subject": value}}}
