@@ -75,12 +75,16 @@ def write_fake_core(lines, exit_code, delay=0.6, final_delay=None):
         fh.write("if _n >= 1:\n")
         fh.write("    for _line in [" + lines_repr + "]:\n")
         fh.write("        sys.stdout.write(_line); sys.stdout.flush()\n")
+        fh.write("        if _line.startswith('Apply these changes?'):\n")
+        fh.write("            if sys.stdin.readline().strip().lower() != 'y': sys.exit(4)\n")
         fh.write(f"        time.sleep({delay!r})\n")
         fh.write('    sys.stdout.write("READY\\n"); sys.stdout.flush()\n')
         fh.write("    sys.exit(0)\n")
         fh.write("open(r'" + counter + "', 'w').write(str(_n + 1))\n")
         for index, line in enumerate(lines):
             fh.write("sys.stdout.write(" + repr(line) + "); sys.stdout.flush()\n")
+            if line.startswith("Apply these changes?"):
+                fh.write("if sys.stdin.readline().strip().lower() != 'y': sys.exit(4)\n")
             current_delay = delay if final_delay is None or index < len(lines) - 1 else final_delay
             fh.write(f"time.sleep({current_delay!r})\n")
         fh.write("sys.exit(" + str(exit_code) + ")\n")
@@ -239,6 +243,7 @@ class ConsentCaptureRegression(unittest.TestCase):
         core = write_fake_core([
             "Application name [demo]:",
             "Environment [demo]:",
+            "Apply these changes? [y/N]",
             "",
             f"Re-run with --confirm-candidate {digest} to acknowledge this exact submission.",
         ], exit_code=3)
@@ -249,6 +254,11 @@ class ConsentCaptureRegression(unittest.TestCase):
             self.assertEqual(digest, res["confirm_hash"])
             self.assertEqual(0, res["second_rc"])
             self.assertIn("--confirm-candidate", " ".join(res["second_argv"]))
+            apply_rule = next(
+                rule for rule in drive.up_rules
+                if rule.pattern.pattern == r"Apply these changes\? \[y/N\]:?\s*$"
+            )
+            self.assertEqual(1, apply_rule.used, "second up must answer its own provider-plan prompt")
             self.assertFalse(res["foreign_error_second_up"])
         except RuntimeError as e:
             self.assertTrue(False, f"documented abort should reach second_up, got: {e}")
