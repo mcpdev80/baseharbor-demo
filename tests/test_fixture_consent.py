@@ -55,6 +55,10 @@ class ConsentTests(unittest.TestCase):
     def test_candidate_consent_accepts_only_documented_exact_digest(self):
         digest = "c" * 64
         self.assertEqual(fixture.candidate_confirmation(self.candidate_refusal(digest)), digest)
+        wrapped = self.candidate_refusal(digest)
+        direct = wrapped["error"]["message"]
+        wrapped["error"]["message"] = "record deployment before mutation: " + direct + ": " + direct
+        self.assertEqual(fixture.candidate_confirmation(wrapped), digest)
         for change in (
             {"contract_version": "v2"},
             {"error": {"code": "execution_failed"}},
@@ -64,6 +68,12 @@ class ConsentTests(unittest.TestCase):
             value.update(change)
             with self.assertRaises(ValueError):
                 fixture.candidate_confirmation(value)
+
+    def test_candidate_consent_rejects_unrecognized_wrapped_message(self):
+        value = self.candidate_refusal("e" * 64)
+        value["error"]["message"] = "unexpected preflight: " + value["error"]["message"]
+        with self.assertRaises(ValueError):
+            fixture.candidate_confirmation(value)
 
     def test_fixture_retries_only_with_reported_candidate_digest(self):
         digest = "d" * 64
