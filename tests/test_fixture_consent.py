@@ -1,9 +1,15 @@
-import importlib.util
+import contextlib
 import copy
+import importlib.util
+import io
 import json
+import os
 import subprocess
+import sys
+import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 spec = importlib.util.spec_from_file_location("fixture_consent", Path(__file__).with_name("fixture-consent.py"))
 fixture = importlib.util.module_from_spec(spec)
@@ -35,6 +41,69 @@ class ConsentTests(unittest.TestCase):
             value["error"]["details"]["scope"].update(change)
             with self.assertRaises(ValueError):
                 fixture.current_consent(value)
+
+    def candidate_refusal(self, digest):
+        return {
+            "contract_version": "v1",
+            "error": {
+                "code": "validation_failed",
+                "message": "candidate submission requires an explicit operator/automation consent (--confirm-candidate); refusing to record deployment state",
+                "next": f"Re-run with --confirm-candidate {digest} to acknowledge this exact submission.",
+            },
+        }
+
+    def test_candidate_consent_accepts_only_documented_exact_digest(self):
+        digest = "c" * 64
+        self.assertEqual(fixture.candidate_confirmation(self.candidate_refusal(digest)), digest)
+        for change in (
+            {"contract_version": "v2"},
+            {"error": {"code": "execution_failed"}},
+            {"error": {"next": "Re-run --confirm-candidate " + digest}},
+        ):
+            value = self.candidate_refusal(digest)
+            value.update(change)
+            with self.assertRaises(ValueError):
+                fixture.candidate_confirmation(value)
+
+    def test_fixture_retries_only_with_reported_candidate_digest(self):
+        digest = "d" * 64
+        refusal = subprocess.CompletedProcess([], 1, b"", json.dumps(self.candidate_refusal(digest)).encode())
+        success = subprocess.CompletedProcess([], 0, b"accepted\n", b"")
+        seen_args = []
+        replies = iter((refusal, success))
+
+        def run(args, **_kwargs):
+            seen_args.append(list(args))
+            return next(replies)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            demo = root / "demo"
+            fixture_root = root / "fixture"
+            binary = root / "bin" / "baha"
+            for path in (demo, fixture_root / "data", fixture_root / "config", binary.parent):
+                path.mkdir(parents=True, exist_ok=True)
+            binary.write_text("fixture binary")
+            original_cwd = Path.cwd()
+            os.chdir(demo)
+            try:
+                with mock.patch.dict(os.environ, {
+                    "BASEHARBOR_DEMO_FIXTURE": str(fixture_root),
+                    "DEMO_ROOT": str(demo),
+                    "XDG_DATA_HOME": str(fixture_root / "data"),
+                    "XDG_CONFIG_HOME": str(fixture_root / "config"),
+                    "BAHA": str(binary),
+                }), mock.patch.object(sys, "argv", [str(root / "tests" / "fixture-consent.py"), str(binary), "up", "--yes"]), \
+                     mock.patch.object(subprocess, "run", side_effect=run), \
+                     contextlib.redirect_stdout(io.TextIOWrapper(io.BytesIO())), \
+                     contextlib.redirect_stderr(io.TextIOWrapper(io.BytesIO())):
+                    self.assertEqual(fixture.main(), 0)
+            finally:
+                os.chdir(original_cwd)
+        first, second = seen_args
+        self.assertNotIn("--confirm-candidate", first)
+        self.assertEqual(second[-2:], ["--confirm-candidate", digest])
+        self.assertEqual(second.count("--json"), 1)
 
     def test_explicit_installation_remainder_cannot_expand_or_retry_failed_mutation(self):
         first, second = "11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222"
