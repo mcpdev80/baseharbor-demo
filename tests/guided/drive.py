@@ -115,13 +115,13 @@ FOREIGN_ERROR_SIGNATURES = (
 )
 
 EXPECTED_CANDIDATE_CONSENT_REFUSAL = re.compile(
-    re.escape(
-        "Error: record deployment before mutation: "
-        "candidate submission requires an explicit operator/automation consent "
-        "(--confirm-candidate); refusing to record deployment state: "
-        "candidate submission requires an explicit operator/automation consent "
-        "(--confirm-candidate); refusing to record deployment state"
-    )
+    r"Error:\s+record\s+deployment\s+before\s+mutation:\s+"
+    r"candidate\s+submission\s+requires\s+an\s+explicit\s+"
+    r"operator/automation\s+consent\s+\(--confirm-candidate\);\s+"
+    r"refusing\s+to\s+record\s+deployment\s+state:\s+"
+    r"candidate\s+submission\s+requires\s+an\s+explicit\s+"
+    r"operator/automation\s+consent\s+\(--confirm-candidate\);\s+"
+    r"refusing\s+to\s+record\s+deployment\s+state"
 )
 
 

@@ -341,7 +341,7 @@ class ConsentCaptureRegression(unittest.TestCase):
             "Application name [demo]:",
             "Environment [demo]:",
             "",
-            "Error: record deployment before mutation: candidate submission requires an explicit operator/automation consent (--confirm-candidate); refusing to record deployment state: candidate submission requires an explicit operator/automation consent (--confirm-candidate); refusing to record deployment state",
+            "Error: record deployment before mutation: candidate submission requires an explicit operator/automation\n consent (--confirm-candidate); refusing to record deployment state: candidate submission requires an explicit operator/automation consent (--confirm-candidate); refusing to record deployment state",
             f"Re-run with --confirm-candidate {digest} to acknowledge this exact submission.",
         ], exit_code=3)
         try:
@@ -368,7 +368,7 @@ class ConsentCaptureRegression(unittest.TestCase):
             "Re-run with --confirm-candidate " + "a" * 64
             + " to acknowledge this exact submission."))
         self.assertIsNone(drive.find_foreign_error_signature(
-            "Error: record deployment before mutation: candidate submission requires an explicit operator/automation consent (--confirm-candidate); refusing to record deployment state: candidate submission requires an explicit operator/automation consent (--confirm-candidate); refusing to record deployment state"))
+            "Error: record deployment before mutation: candidate submission requires an explicit operator/automation\n consent (--confirm-candidate); refusing to record deployment state: candidate submission requires an explicit operator/automation consent (--confirm-candidate); refusing to record deployment state"))
         self.assertEqual("Error:", drive.find_foreign_error_signature(
             "Error: unrelated deployment failure"))
         self.assertIsNone(drive.find_foreign_error_signature("READY"))
