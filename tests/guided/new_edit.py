@@ -144,6 +144,11 @@ class CurrentConsent:
         self.stage = 0
         self.total = None
 
+    def reset(self):
+        self.plan = None
+        self.stage = 0
+        self.total = None
+
     def respond(self, match, text):
         stage, total, plan = int(match[1]), int(match[2]), match[3]
         if self.plan is None:
@@ -196,7 +201,16 @@ def new_application(parent, name, *, sql=False, decision="run", native=True, env
                           callback=confirm))
         rules.append(returned_picker)
     consent = CurrentConsent()
-    rules.extend([consent.rule(),
+
+    def confirm_candidate(match, text):
+        # New retries the apply after this exact candidate is explicitly bound.
+        # Provider impact consent is independently re-evaluated on that retry.
+        consent.reset()
+        return "y\n"
+
+    rules.extend([
+        Rule(r"Bind this exact candidate and continue with its lifecycle\? \[y/N\]\s*$", callback=confirm_candidate),
+        consent.rule(),
         Rule(r"Is this installation running on a machine where you write code\?.*?Choice \[1\]:\s*$", "1\n", optional=True),
         Rule(r"PostgreSQL host port \[\d+\]:\s*$", "\n", optional=True)])
     run_tty("new-edit-" + name, [BAHA, "app", "new"], rules, cwd=ROOT,
