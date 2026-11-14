@@ -525,6 +525,11 @@ def run_guided_consent_flow(argv, rules):
     Raises RuntimeError on a fail-closed abort.
     """
     argv = list(argv)
+    # Rule objects are stateful within one PTY session. This flow performs two
+    # separate `up` processes when candidate consent is required, so each
+    # process must be allowed to answer its own prompts independently.
+    for rule in rules:
+        rule.used = 0
     first_rc, first_buffer = run_tty(
         "guided-up",
         [*argv[:1], "--verbose", "up"],
@@ -601,6 +606,8 @@ def run_guided_consent_flow(argv, rules):
         # across runs. The second up re-answers the staged provider-plan
         # confirmations (handled by ``rules``) and then binds the candidate
         # submission; a supported binary reaches READY here.
+        for rule in rules:
+            rule.used = 0
         second_argv = [*argv[:1], "--verbose", "up", "--confirm-candidate", confirm_hash]
         second_rc = run_tty(
             "guided-up-consented",
