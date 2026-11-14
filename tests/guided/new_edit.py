@@ -17,7 +17,7 @@ import subprocess
 from drive import ANSI_ESCAPE, ARTIFACT_DIR, BAHA, ROOT, Rule, run_tty
 
 NEEDS_END = r"No SQL, identity service, secrets service or management stack is mandatory\."
-PICKER_END = r"P: optional provider preference · Esc/Ctrl\+C: cancel"
+PICKER_END = r"[Pp]: (?:optional )?provider preference(?: · b/←: previous row)? · Esc/Ctrl\+C: cancel"
 
 
 def native_environment(runtime):

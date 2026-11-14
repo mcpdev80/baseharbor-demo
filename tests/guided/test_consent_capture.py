@@ -40,6 +40,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
 import drive  # noqa: E402
+import new_edit  # noqa: E402
 
 
 def write_fake_core(lines, exit_code, delay=0.6, final_delay=None):
@@ -480,6 +481,12 @@ class ConsentCaptureRegression(unittest.TestCase):
             self.assertEqual("Error:", result["foreign_error_signature"])
         finally:
             cleanup_fake_core(core)
+
+    def test_16_app_new_picker_footer_matches_current_lowercase_prompt(self):
+        self.assertRegex("p: provider preference · b/←: previous row · Esc/Ctrl+C: cancel",
+                         new_edit.PICKER_END)
+        self.assertRegex("P: optional provider preference · Esc/Ctrl+C: cancel",
+                         new_edit.PICKER_END)
 
     def test_12_provider_impact_plan_prompt_is_confirmed(self):
         prompt = "Apply these changes? [y/N]"
