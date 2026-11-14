@@ -35,8 +35,14 @@ def candidate_confirmation(value):
     error = value.get("error", {})
     prefix = "candidate submission requires an explicit operator/automation consent (--confirm-candidate)"
     message = error.get("message", "")
+    direct_message = prefix + "; refusing to record deployment state"
+    # `baha up` reports the same fail-closed candidate refusal through two
+    # nested pre-mutation boundaries. Accept that exact wrapper as well as the
+    # direct `app apply` form; do not accept arbitrary messages that merely
+    # contain the candidate-consent phrase.
+    wrapped_message = "record deployment before mutation: " + direct_message + ": " + direct_message
     if (value.get("contract_version") != "v1" or error.get("code") != "validation_failed"
-            or not isinstance(message, str) or not message.startswith(prefix)):
+            or message not in {direct_message, wrapped_message}):
         raise ValueError("not a candidate-source consent refusal")
     match = re.fullmatch(
         r"Re-run with --confirm-candidate ([0-9a-f]{64}) to acknowledge this exact submission\.",
