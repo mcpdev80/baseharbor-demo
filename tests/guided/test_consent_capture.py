@@ -462,6 +462,10 @@ class ConsentCaptureRegression(unittest.TestCase):
             finally:
                 drive.sys.stdout = previous_stdout
             self.assertEqual("abort", result["outcome"])
+            self.assertTrue(result["consent_hash_captured"])
+            self.assertTrue(result["consent_prompt_captured"])
+            self.assertEqual(64, result["consent_hash_length"])
+            self.assertGreater(result["transcript_chars"], 70 * 1024)
             self.assertIsNone(result["second_argv"])
             self.assertIsNone(result["second_rc"])
             self.assertEqual("Error:", result["foreign_error_signature"])
