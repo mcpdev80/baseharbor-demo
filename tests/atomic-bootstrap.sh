@@ -13,4 +13,6 @@ clean_generated_state
 rm -rf "$XDG_CONFIG_HOME/baseharbor" "$XDG_DATA_HOME/baseharbor" "$XDG_DATA_HOME/baseharbor-recovery"
 "$BAHA" target create "$BASEHARBOR_TARGET"   --provider "$BASEHARBOR_TEST_RUNTIME"   --access "local-$BASEHARBOR_TEST_RUNTIME"   --reference local   --scope default   --default >/dev/null
 
+bash "$DEMO_ROOT/tests/core-bootstrap.sh"
+
 BASEHARBOR_GUIDED_CAPABILITIES="$capabilities" BASEHARBOR_GUIDED_MANAGEMENT_UI="$management_ui" python3 "$DEMO_ROOT/tests/guided/drive.py"
