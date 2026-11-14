@@ -17,6 +17,25 @@ cleanup_matrix() {
 }
 trap cleanup_matrix EXIT
 
+# Runtime matrix applications need an installation owner for their Target,
+# including cases with no managed providers of their own. Bootstrap the shared
+# control plane outside each app repository so `baha up` does not read the Demo
+# Compose source as an application. The static contract suite remains
+# mutation-free and is qualified separately.
+if [ -z "${DEMO_SUITE:-}" ]; then
+  bootstrap_root="$matrix_root/control-plane"
+  mkdir -p "$bootstrap_root"
+  (
+    cd "$bootstrap_root"
+    run_consented "$BAHA" up --yes >"$ARTIFACT_DIR/config-matrix-core-up.txt" 2>&1 || {
+      cat "$ARTIFACT_DIR/config-matrix-core-up.txt" >&2
+      exit 1
+    }
+    "$BAHA" doctor >"$ARTIFACT_DIR/config-matrix-core-doctor.txt"
+    grep -q '^READY' "$ARTIFACT_DIR/config-matrix-core-doctor.txt"
+  )
+fi
+
 run_runtime_case() {
   local case_id="$1"
   local port="$2"
