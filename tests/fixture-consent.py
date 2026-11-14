@@ -53,6 +53,26 @@ def candidate_confirmation(value):
     return match.group(1)
 
 
+def set_candidate_confirmation(args, digest):
+    """Replace a stale exact-source acknowledgement with the current one."""
+    updated = []
+    skip_value = False
+    for arg in args:
+        if skip_value:
+            skip_value = False
+            continue
+        if arg == "--confirm-candidate":
+            skip_value = True
+            continue
+        if arg.startswith("--confirm-candidate="):
+            continue
+        updated.append(arg)
+    if skip_value:
+        raise ValueError("candidate confirmation flag has no digest")
+    updated.extend(("--confirm-candidate", digest))
+    return updated
+
+
 def installation_remainder(previous, result):
     value = json.loads(result.stderr)
     current_consent(value)
@@ -107,36 +127,41 @@ def main():
     env = dict(os.environ)
     env.pop("BASEHARBOR_PROVIDER_CHANGE_CONSENT", None)
     result = subprocess.run(args, env=env, capture_output=True, timeout=900)
-    if result.returncode:
-        try:
-            digest = candidate_confirmation(json.loads(result.stderr))
-        except (ValueError, TypeError, AttributeError):
-            digest = ""
-        if digest and not any(arg == "--confirm-candidate" or arg.startswith("--confirm-candidate=") for arg in args):
-            print("isolated-demo-fixture: acknowledge the exact current application source candidate", file=sys.stderr)
-            args.extend(("--confirm-candidate", digest))
-            result = subprocess.run(args, env=env, capture_output=True, timeout=900)
-    if result.returncode:
+    previous_plan = None
+    consent = None
+    for _ in range(64):
+        if not result.returncode:
+            break
         try:
             value = json.loads(result.stderr)
-            consent = current_consent(value)
         except (ValueError, TypeError, AttributeError):
-            sys.stdout.buffer.write(result.stdout)
-            sys.stderr.buffer.write(result.stderr)
-            return result.returncode
-        plan = value["error"]["details"]
-        for _ in range(64):
-            print("isolated-demo-fixture: explicit current-plan stages and separate owned-data consent", file=sys.stderr)
-            env["BASEHARBOR_PROVIDER_CHANGE_CONSENT"] = json.dumps(consent)
-            result = subprocess.run(args, env=env, capture_output=True, timeout=900)
-            if not result.returncode:
-                break
+            break
+
+        try:
+            digest = candidate_confirmation(value)
+        except (ValueError, TypeError, AttributeError):
+            digest = ""
+        if digest:
+            args = set_candidate_confirmation(args, digest)
+            print("isolated-demo-fixture: acknowledge the exact current application source candidate", file=sys.stderr)
+        else:
             try:
-                plan = installation_remainder(plan, result)
-                consent = current_consent(json.loads(result.stderr))
-            except (ValueError, TypeError, AttributeError, KeyError):
+                next_consent = current_consent(value)
+            except (ValueError, TypeError, AttributeError):
                 break
-            print("isolated-demo-fixture: confirm explicit current installation remainder after verified progress", file=sys.stderr)
+            if previous_plan is None:
+                previous_plan = value["error"]["details"]
+                print("isolated-demo-fixture: explicit current-plan stages and separate owned-data consent", file=sys.stderr)
+            else:
+                try:
+                    previous_plan = installation_remainder(previous_plan, result)
+                except (ValueError, TypeError, AttributeError, KeyError):
+                    break
+                print("isolated-demo-fixture: confirm explicit current installation remainder after verified progress", file=sys.stderr)
+            consent = next_consent
+            env["BASEHARBOR_PROVIDER_CHANGE_CONSENT"] = json.dumps(consent)
+
+        result = subprocess.run(args, env=env, capture_output=True, timeout=900)
     sys.stdout.buffer.write(result.stdout)
     sys.stderr.buffer.write(result.stderr)
     return result.returncode
