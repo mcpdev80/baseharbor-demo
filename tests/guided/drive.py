@@ -114,6 +114,16 @@ FOREIGN_ERROR_SIGNATURES = (
     "denied",
 )
 
+EXPECTED_CANDIDATE_CONSENT_REFUSAL = re.compile(
+    re.escape(
+        "Error: record deployment before mutation: "
+        "candidate submission requires an explicit operator/automation consent "
+        "(--confirm-candidate); refusing to record deployment state: "
+        "candidate submission requires an explicit operator/automation consent "
+        "(--confirm-candidate); refusing to record deployment state"
+    )
+)
+
 
 def find_foreign_error_signature(text):
     """Return the first foreign error/failure signature present in ``text``, or None.
@@ -125,6 +135,9 @@ def find_foreign_error_signature(text):
     never launches a second ``up``.
     """
     normalized = text.replace("\r", "")
+    # This exact refusal is the documented first half of candidate consent.
+    # Remove only the complete known diagnostic; any other error remains fatal.
+    normalized = EXPECTED_CANDIDATE_CONSENT_REFUSAL.sub("", normalized)
     for signature in FOREIGN_ERROR_SIGNATURES:
         if signature in normalized:
             return signature
