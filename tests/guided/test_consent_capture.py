@@ -488,6 +488,20 @@ class ConsentCaptureRegression(unittest.TestCase):
         self.assertRegex("P: optional provider preference · Esc/Ctrl+C: cancel",
                          new_edit.PICKER_END)
 
+    def test_17_app_new_confirms_normal_apply_prompt(self):
+        prompt = "Apply these changes? [y/N]"
+        rule = new_edit.apply_changes_rule("run")
+        match = rule.match(prompt)
+        self.assertIsNotNone(match)
+        self.assertEqual(rule.value(match, prompt), "y\n")
+        self.assertTrue(rule.repeat)
+        self.assertFalse(rule.optional)
+
+        no_rule = new_edit.apply_changes_rule("no")
+        self.assertTrue(no_rule.optional)
+        self.assertIsNone(no_rule.match("Confirm the displayed provider changes (1/1, plan "
+                                        + "a" * 64 + ")? [y/N]: "))
+
     def test_12_provider_impact_plan_prompt_is_confirmed(self):
         prompt = "Apply these changes? [y/N]"
         core = write_fake_core([
