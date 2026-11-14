@@ -209,7 +209,7 @@ def new_application(parent, name, *, sql=False, decision="run", native=True, env
         return "y\n"
 
     rules.extend([
-        Rule(r"Bind this exact candidate and continue with its lifecycle\? \[y/N\]\s*$", callback=confirm_candidate),
+        Rule(r"Bind this exact candidate and continue with its lifecycle\? \[y/N\]\s*$", callback=confirm_candidate, optional=decision != "run"),
         consent.rule(),
         Rule(r"Is this installation running on a machine where you write code\?.*?Choice \[1\]:\s*$", "1\n", optional=True),
         Rule(r"PostgreSQL host port \[\d+\]:\s*$", "\n", optional=True)])
