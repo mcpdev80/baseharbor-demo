@@ -41,7 +41,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
 import drive  # noqa: E402
 
 
-def write_fake_core(lines, exit_code):
+def write_fake_core(lines, exit_code, delay=0.6, final_delay=None):
     """Create a fake Core whose printed lines are the interactive prompts.
 
     drive.run_tty matches a rule against ``buffer[cursor:]`` with the pattern
@@ -75,13 +75,14 @@ def write_fake_core(lines, exit_code):
         fh.write("if _n >= 1:\n")
         fh.write("    for _line in [" + lines_repr + "]:\n")
         fh.write("        sys.stdout.write(_line); sys.stdout.flush()\n")
-        fh.write("        time.sleep(0.6)\n")
+        fh.write(f"        time.sleep({delay!r})\n")
         fh.write('    sys.stdout.write("READY\\n"); sys.stdout.flush()\n')
         fh.write("    sys.exit(0)\n")
         fh.write("open(r'" + counter + "', 'w').write(str(_n + 1))\n")
-        for line in lines:
+        for index, line in enumerate(lines):
             fh.write("sys.stdout.write(" + repr(line) + "); sys.stdout.flush()\n")
-            fh.write("time.sleep(0.6)\n")
+            current_delay = delay if final_delay is None or index < len(lines) - 1 else final_delay
+            fh.write(f"time.sleep({current_delay!r})\n")
         fh.write("sys.exit(" + str(exit_code) + ")\n")
     os.chmod(path, 0o755)
     return path
@@ -404,6 +405,26 @@ class ConsentCaptureRegression(unittest.TestCase):
             self.assertIsNone(result["second_argv"])
             self.assertIsNone(result["second_rc"])
             self.assertFalse(result["foreign_error_second_up"])
+        finally:
+            cleanup_fake_core(core)
+
+    def test_14_immediate_exit_bytes_are_in_the_capture_transcript(self):
+        digest = "e" * 64
+        core = write_fake_core([
+            "Application name [demo]:",
+            "Environment [demo]:",
+            "",
+            "Error: record deployment before mutation: candidate submission requires an explicit "
+            "operator/automation consent (--confirm-candidate); refusing to record deployment state: "
+            "candidate submission requires an explicit operator/automation consent "
+            "(--confirm-candidate); refusing to record deployment state",
+            f"Re-run with --confirm-candidate {digest} to acknowledge this exact submission.",
+        ], exit_code=3, delay=0.1, final_delay=0)
+        try:
+            result = flow_abort_then_second(core, exit_code=3)
+            self.assertEqual("second_up", result["outcome"])
+            self.assertEqual(digest, result["confirm_hash"])
+            self.assertEqual(0, result["second_rc"])
         finally:
             cleanup_fake_core(core)
 
