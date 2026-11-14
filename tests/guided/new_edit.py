@@ -196,7 +196,9 @@ def new_application(parent, name, *, sql=False, decision="run", native=True, env
                           callback=confirm))
         rules.append(returned_picker)
     consent = CurrentConsent()
-    rules.extend([consent.rule(),
+    rules.extend([
+        Rule(r"Bind this exact candidate and continue with its lifecycle\? \[y/N\]\s*$", "y\n"),
+        consent.rule(),
         Rule(r"Is this installation running on a machine where you write code\?.*?Choice \[1\]:\s*$", "1\n", optional=True),
         Rule(r"PostgreSQL host port \[\d+\]:\s*$", "\n", optional=True)])
     run_tty("new-edit-" + name, [BAHA, "app", "new"], rules, cwd=ROOT,
