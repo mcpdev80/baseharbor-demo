@@ -171,6 +171,13 @@ def contains_candidate_abort_prompt(text):
 
 ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 
+# The interactive rule matcher keeps a short sliding window so repeatedly
+# searching a long terminal session stays cheap. Candidate-consent decisions,
+# however, must inspect the complete output: a confirm hash may arrive after a
+# large provider plan, and foreign failures earlier in that plan must not be
+# hidden by trimming the matcher window.
+MAX_CAPTURE_BYTES = 4 * 1024 * 1024
+
 def root_workload_source_response(match, text):
     clean = ANSI_ESCAPE.sub("", text)
     candidates = re.findall(
@@ -257,6 +264,7 @@ def run_tty(name, argv, rules, env=None, timeout=900, no_output_timeout=None,
     last_output = started
     last_heartbeat = started
     buffer = ""
+    capture_buffer = ""
     cursor = 0
     try:
         with log_path.open("wb") as log:
@@ -278,6 +286,10 @@ def run_tty(name, argv, rules, env=None, timeout=900, no_output_timeout=None,
                         sys.stdout.buffer.write(chunk)
                         sys.stdout.buffer.flush()
                         buffer += chunk.decode("utf-8", errors="replace").replace("\r", "")
+                        if capture:
+                            capture_buffer += chunk.decode("utf-8", errors="replace").replace("\r", "")
+                            if len(capture_buffer.encode("utf-8")) > MAX_CAPTURE_BYTES:
+                                raise RuntimeError(f"{name} capture exceeded {MAX_CAPTURE_BYTES} bytes")
                         if len(buffer) > 65536:
                             removed = len(buffer) - 65536
                             buffer = buffer[removed:]
@@ -335,6 +347,10 @@ def run_tty(name, argv, rules, env=None, timeout=900, no_output_timeout=None,
                             # Its final PTY bytes still need to be part of the
                             # captured transcript used by READY/consent checks.
                             buffer += chunk.decode("utf-8", errors="replace").replace("\r", "")
+                            if capture:
+                                capture_buffer += chunk.decode("utf-8", errors="replace").replace("\r", "")
+                                if len(capture_buffer.encode("utf-8")) > MAX_CAPTURE_BYTES:
+                                    raise RuntimeError(f"{name} capture exceeded {MAX_CAPTURE_BYTES} bytes")
                             if len(buffer) > 65536:
                                 removed = len(buffer) - 65536
                                 buffer = buffer[removed:]
@@ -380,7 +396,7 @@ def run_tty(name, argv, rules, env=None, timeout=900, no_output_timeout=None,
                                 "candidate-consent abort is the only permitted non-zero "
                                 "between-state"
                             )
-                        if not contains_candidate_abort_prompt(buffer):
+                        if not contains_candidate_abort_prompt(capture_buffer):
                             # A non-zero exit is a permitted between-state ONLY when it
                             # is the documented candidate-consent abort. Any other
                             # error text (even together with a hash) is a hard abort.
@@ -389,7 +405,7 @@ def run_tty(name, argv, rules, env=None, timeout=900, no_output_timeout=None,
                                 "and without the documented candidate-consent "
                                 "confirm prompt; aborting (not a between-state)"
                             )
-                        return rc, buffer
+                        return rc, capture_buffer
                     # Clean completion (rc=0) requires the mandatory READY marker and
                     # full non-optional coverage.
                     missing_capture = [
@@ -400,13 +416,13 @@ def run_tty(name, argv, rules, env=None, timeout=900, no_output_timeout=None,
                             f"{name} completed with exit code {rc} but without "
                             f"expected prompts (missing: {missing_capture}); never a PASS"
                         )
-                    if READY_RULE_MARKER not in ANSI_ESCAPE.sub("", buffer):
+                    if READY_RULE_MARKER not in ANSI_ESCAPE.sub("", capture_buffer):
                         raise RuntimeError(
                             f"{name} completed with exit code {rc} but without "
                             f"the mandatory READY-abschluss-marker in the "
                             "transcript; never a PASS"
                         )
-                    return rc, buffer
+                    return rc, capture_buffer
     finally:
         if proc.poll() is None:
             proc.kill()

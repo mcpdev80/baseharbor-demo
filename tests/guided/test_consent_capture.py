@@ -32,6 +32,7 @@ One line per case, "OK|CASE|..." / "XX|CASE|...". Failures exit non-zero.
 Discovered by `python3 -m unittest discover -s tests/guided -p "test_*.py"`.
 """
 import os
+import io
 import sys
 import tempfile
 import time
@@ -425,6 +426,45 @@ class ConsentCaptureRegression(unittest.TestCase):
             self.assertEqual("second_up", result["outcome"])
             self.assertEqual(digest, result["confirm_hash"])
             self.assertEqual(0, result["second_rc"])
+        finally:
+            cleanup_fake_core(core)
+
+    def test_15_long_capture_keeps_early_foreign_failure_for_consent_classification(self):
+        # Provider plans can produce much more than the rule matcher's 64 KiB
+        # sliding window. A failure at the start of the transcript must remain
+        # visible to fail-closed classification even when the documented hash
+        # and prompt arrive at the end.
+        digest = "f" * 64
+        core = write_fake_core([
+            "Application name [demo]:",
+            "Environment [demo]:",
+            "Error: unrelated provider failure",
+            " " * (70 * 1024),
+            f"Re-run with --confirm-candidate {digest} to acknowledge this exact submission.",
+        ], exit_code=3, delay=0.05, final_delay=0)
+        try:
+            # Do not flood test logs with the synthetic long provider output.
+            class QuietStdout:
+                buffer = io.BytesIO()
+
+                @staticmethod
+                def write(_value):
+                    return None
+
+                @staticmethod
+                def flush():
+                    return None
+
+            previous_stdout = drive.sys.stdout
+            drive.sys.stdout = QuietStdout()
+            try:
+                result = flow_first(core, exit_code=3)
+            finally:
+                drive.sys.stdout = previous_stdout
+            self.assertEqual("abort", result["outcome"])
+            self.assertIsNone(result["second_argv"])
+            self.assertIsNone(result["second_rc"])
+            self.assertEqual("Error:", result["foreign_error_signature"])
         finally:
             cleanup_fake_core(core)
 
