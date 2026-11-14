@@ -163,6 +163,12 @@ class CurrentConsent:
                     callback=self.respond, repeat=True, optional=True)
 
 
+def apply_changes_rule(decision):
+    """Confirm only the normal provider-plan apply prompt on the run path."""
+    return Rule(r"Apply these changes\? \[y/N\]:?\s*$", "y\n", repeat=True,
+                optional=decision != "run")
+
+
 def new_application(parent, name, *, sql=False, decision="run", native=True, environment=None):
     project = parent / name
     if project.exists():
@@ -211,6 +217,7 @@ def new_application(parent, name, *, sql=False, decision="run", native=True, env
     rules.extend([
         Rule(r"Bind this exact candidate and continue with its lifecycle\? \[y/N\]\s*$", callback=confirm_candidate, optional=decision != "run"),
         consent.rule(),
+        apply_changes_rule(decision),
         Rule(r"Is this installation running on a machine where you write code\?.*?Choice \[1\]:\s*$", "1\n", optional=True),
         Rule(r"PostgreSQL host port \[\d+\]:\s*$", "\n", optional=True)])
     run_tty("new-edit-" + name, [BAHA, "app", "new"], rules, cwd=ROOT,
