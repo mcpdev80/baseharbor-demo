@@ -331,6 +331,14 @@ def run_tty(name, argv, rules, env=None, timeout=900, no_output_timeout=None,
                                 break
                             log.write(chunk)
                             sys.stdout.buffer.write(chunk)
+                            # The child can exit between select() and poll().
+                            # Its final PTY bytes still need to be part of the
+                            # captured transcript used by READY/consent checks.
+                            buffer += chunk.decode("utf-8", errors="replace").replace("\r", "")
+                            if len(buffer) > 65536:
+                                removed = len(buffer) - 65536
+                                buffer = buffer[removed:]
+                                cursor = max(0, cursor - removed)
                     except OSError:
                         pass
                     if not capture:
@@ -372,7 +380,7 @@ def run_tty(name, argv, rules, env=None, timeout=900, no_output_timeout=None,
                                 "candidate-consent abort is the only permitted non-zero "
                                 "between-state"
                             )
-                        if CANDIDATE_ABORT_ERROR not in buffer:
+                        if not contains_candidate_abort_prompt(buffer):
                             # A non-zero exit is a permitted between-state ONLY when it
                             # is the documented candidate-consent abort. Any other
                             # error text (even together with a hash) is a hard abort.
@@ -392,7 +400,7 @@ def run_tty(name, argv, rules, env=None, timeout=900, no_output_timeout=None,
                             f"{name} completed with exit code {rc} but without "
                             f"expected prompts (missing: {missing_capture}); never a PASS"
                         )
-                    if READY_RULE_MARKER not in buffer:
+                    if READY_RULE_MARKER not in ANSI_ESCAPE.sub("", buffer):
                         raise RuntimeError(
                             f"{name} completed with exit code {rc} but without "
                             f"the mandatory READY-abschluss-marker in the "
