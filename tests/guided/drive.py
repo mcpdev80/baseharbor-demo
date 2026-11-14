@@ -417,7 +417,10 @@ init_rules = [
     Rule(r"Additional application secret names .*?:\s*$", "\n", optional=True),
     Rule(r"Metrics workload service \[[^\]]+\]:\s*$", "demo-app\n", optional=True),
     Rule(r"Metrics container port.*?:\s*$", "8080\n", optional=True),
-    Rule(r"OTLP signals .*?\[[^\]]+\]:\s*$", "\n", optional=True),
+    # Current guided init uses the same keyboard-driven multi-select surface
+    # as the capability picker; the default traces selection is already
+    # checked, so Enter accepts it without changing the requested profile.
+    Rule(r"Select OTLP signals.*?3\. Logs \(OTLP log records\)", "\n", optional=True),
     Rule(r"Workload services allowed to use detected Runtime API operations .*?:\s*$", "demo-app\n", optional=True),
     Rule(r"Development domain \[[^\]]+\]:\s*$", "\n", optional=True),
     Rule(r"Username \[developer\]:\s*$", "\n", optional=True),
