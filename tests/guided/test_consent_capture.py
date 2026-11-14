@@ -369,6 +369,9 @@ class ConsentCaptureRegression(unittest.TestCase):
             + " to acknowledge this exact submission."))
         self.assertIsNone(drive.find_foreign_error_signature(
             "Error: record deployment before mutation: candidate submission requires an explicit operator/automation\n consent (--confirm-candidate); refusing to record deployment state: candidate submission requires an explicit operator/automation consent (--confirm-candidate); refusing to record deployment state"))
+        self.assertIsNone(drive.find_foreign_error_signature(
+            "\x1b[31mError:\x1b[0m record deployment before mutation: candidate submission requires an explicit operator/automation\n"
+            " consent (--confirm-candidate); refusing to record deployment state: candidate submission requires an explicit operator/automation consent (--confirm-candidate); refusing to record deployment state"))
         self.assertEqual("Error:", drive.find_foreign_error_signature(
             "Error: unrelated deployment failure"))
         self.assertIsNone(drive.find_foreign_error_signature("READY"))
