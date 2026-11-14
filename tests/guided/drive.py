@@ -47,16 +47,17 @@ def binary_supports_confirm_candidate(argv):
     --confirm-candidate` rejection string being ABSENT, i.e. the binary parsed
     the flag and proceeded past it. Every other probe outcome (missing/broken
     binary, timeout, an early/unknown error message, a non-zero exit) is treated
-    as an inconclusive probe: report failure and never re-run `up` with the flag.
-    A timeout is NOT evidence of support — a missing or hanging binary times out
-    equally. We therefore classify by exit code 0 plus an empty, unambiguous
-    output rather than by string presence with an unconditional timeout fallback.
+    as an inconclusive probe and never re-run `up` with the flag. The probe
+    deliberately omits the digest and invokes the actual `up` subcommand, so a
+    supported parser returns its specific "requires DIGEST" usage error before
+    any application lifecycle or provider mutation can run. A timeout is NOT
+    evidence of support — a missing or hanging binary times out equally.
     """
     probe_dir = None
     try:
         probe_dir = tempfile.mkdtemp(prefix="confirm-candidate-probe-")
         proc = subprocess.run(
-            [*argv, "--no-input", "--confirm-candidate", "0" * 64],
+            [*argv, "up", "--confirm-candidate"],
             cwd=probe_dir,
             capture_output=True,
             text=True,
@@ -67,17 +68,13 @@ def binary_supports_confirm_candidate(argv):
         # Missing/broken binary, permission error, or a hang. None of these is a
         # positive support signal: fail closed, do not re-run with the flag.
         return False
-    # Positive, unambiguous signal: clean exit and a prompt that parsed the flag
-    # and produced no rejection or any other early error message.
-    if proc.returncode != 0:
-        return False
-    if "unknown option --confirm-candidate" in output:
-        # Exact, documented unsupported response.
-        return False
-    if output.strip() == "":
-        return True
-    # Any other early/unrecognized message is an inconclusive probe.
-    return False
+    # Positive, unambiguous signal: the parser recognized the option and
+    # rejected the missing value before entering any lifecycle operation.
+    return (
+        proc.returncode != 0
+        and "--confirm-candidate requires DIGEST" in output
+        and "unknown option --confirm-candidate" not in output
+    )
 
 
 def capture_confirm_hash(text):
