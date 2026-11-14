@@ -87,9 +87,9 @@ def capture_confirm_hash(text):
     exact submission.' The digest is the canonical content-hash of the exact
     submission being bound; supplying it on a re-run binds that submission.
     """
-    normalized = ANSI_ESCAPE.sub("", text).replace("\r", "")
+    normalized = re.sub(r"\s+", "", ANSI_ESCAPE.sub("", text))
     match = re.search(
-        r"Re-run with --confirm-candidate\s+([0-9a-f]{64})",
+        r"Re-runwith--confirm-candidate([0-9a-f]{64})",
         normalized,
     )
     return match.group(1) if match else None
@@ -115,14 +115,11 @@ FOREIGN_ERROR_SIGNATURES = (
     "denied",
 )
 
-EXPECTED_CANDIDATE_CONSENT_REFUSAL = re.compile(
-    r"Error:\s+record\s+deployment\s+before\s+mutation:\s+"
-    r"candidate\s+submission\s+requires\s+an\s+explicit\s+"
-    r"operator/automation\s+consent\s+\(--confirm-candidate\);\s+"
-    r"refusing\s+to\s+record\s+deployment\s+state:\s+"
-    r"candidate\s+submission\s+requires\s+an\s+explicit\s+"
-    r"operator/automation\s+consent\s+\(--confirm-candidate\);\s+"
-    r"refusing\s+to\s+record\s+deployment\s+state"
+EXPECTED_CANDIDATE_CONSENT_REFUSAL = (
+    "Error: record deployment before mutation: candidate submission requires an explicit "
+    "operator/automation consent (--confirm-candidate); refusing to record deployment state: "
+    "candidate submission requires an explicit operator/automation consent "
+    "(--confirm-candidate); refusing to record deployment state"
 )
 
 
@@ -135,16 +132,17 @@ def find_foreign_error_signature(text):
     unexpected failure, so the production path treats it as a hard abort and
     never launches a second ``up``.
     """
-    # The same PTY used for the guided journey can add color control codes in
-    # the middle of a wrapped diagnostic. Strip them before matching the exact
-    # documented refusal; otherwise its own ``Error:`` is misclassified as a
-    # foreign failure and the consent-bound retry is never reached.
-    normalized = ANSI_ESCAPE.sub("", text).replace("\r", "")
+    # The same PTY used for the guided journey can add color control codes and
+    # hard-wrap output in the middle of a word. Compact whitespace only for the
+    # exact documented refusal; this strips its own ``Error:`` while preserving
+    # every different error signature as a hard failure.
+    normalized = re.sub(r"\s+", "", ANSI_ESCAPE.sub("", text))
     # This exact refusal is the documented first half of candidate consent.
     # Remove only the complete known diagnostic; any other error remains fatal.
-    normalized = EXPECTED_CANDIDATE_CONSENT_REFUSAL.sub("", normalized)
+    expected = re.sub(r"\s+", "", EXPECTED_CANDIDATE_CONSENT_REFUSAL)
+    normalized = normalized.replace(expected, "")
     for signature in FOREIGN_ERROR_SIGNATURES:
-        if signature in normalized:
+        if re.sub(r"\s+", "", signature) in normalized:
             return signature
     return None
 
@@ -163,6 +161,12 @@ READY_RULE_MARKER = "READY"
 # exact string (with its 64-hex digest) is present in the transcript; any other
 # error text is a hard abort.
 CANDIDATE_ABORT_ERROR = "Re-run with --confirm-candidate"
+
+
+def contains_candidate_abort_prompt(text):
+    normalized = re.sub(r"\s+", "", ANSI_ESCAPE.sub("", text))
+    expected = re.sub(r"\s+", "", CANDIDATE_ABORT_ERROR)
+    return expected in normalized
 
 
 ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
@@ -527,7 +531,7 @@ def run_guided_consent_flow(argv, rules):
         # second `up`. The hash-pass alone is not a release.
         foreign_signature = find_foreign_error_signature(first_buffer)
         documented = (
-            confirm_hash is not None and CANDIDATE_ABORT_ERROR in first_buffer
+            confirm_hash is not None and contains_candidate_abort_prompt(first_buffer)
             and foreign_signature is None
         )
         if not documented:
@@ -539,7 +543,7 @@ def run_guided_consent_flow(argv, rules):
                 "second_argv": None,
                 "foreign_error_second_up": False,
             }
-    if confirm_hash is not None and first_rc == 0 and CANDIDATE_ABORT_ERROR not in first_buffer:
+    if confirm_hash is not None and first_rc == 0 and not contains_candidate_abort_prompt(first_buffer):
         # rc=0 but not the documented clean completion: refuse to fabricate a
         # second up from a stray hash. The mandatory READY marker (enforced by
         # run_tty) already covers the clean path; this guards a hash printed
