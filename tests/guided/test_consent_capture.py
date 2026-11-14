@@ -56,15 +56,14 @@ def write_fake_core(lines, exit_code, delay=0.6, final_delay=None):
     lines_repr = ", ".join(repr(line) for line in lines)
     with os.fdopen(fd, "w") as fh:
         fh.write("#!/usr/bin/env python3\nimport sys, time, os\n")
-        # The production feature probe runs the core as
-        # ``[core, "--no-input", "--confirm-candidate", "0"*64]`` and treats an
-        # rc=0 with empty, unambiguous output as a POSITIVE support signal. Simulate
-        # a supported Core here: ignore the interactive prompts for the probe
-        # invocation (marked by ``--no-input``) and exit 0 with no output. This lets
-        # the documented abort reach the real second-run branch in
-        # drive.run_guided_consent_flow. (The real second up is ``--verbose`` ... and
-        # does NOT carry ``--no-input``; it prints prompts + READY like normal.)
-        fh.write('if "--no-input" in sys.argv:\n    sys.exit(0)\n')
+        # The production feature probe invokes ``up --confirm-candidate`` with
+        # no digest. A supported Core rejects this parse-only call with its
+        # specific missing-DIGEST message, before any mutation. Simulate that
+        # positive parser signal; the real second up has a digest and follows
+        # the interactive prompts + READY path below.
+        fh.write('if "--confirm-candidate" in sys.argv and sys.argv[-1] == "--confirm-candidate":\n')
+        fh.write('    sys.stderr.write("Error: --confirm-candidate requires DIGEST\\n")\n')
+        fh.write('    sys.exit(2)\n')
         # The production flow runs the SAME core argv twice (first `up`, then
         # `up --confirm-candidate`). A real Core reaches READY on the second run
         # after the digest is supplied, so the fake core is stateful: the first
