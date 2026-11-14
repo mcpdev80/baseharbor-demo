@@ -565,6 +565,9 @@ def run_guided_consent_flow(argv, rules):
                 "confirm_hash": None,
                 "consent_hash_captured": confirm_hash is not None,
                 "consent_prompt_captured": contains_candidate_abort_prompt(first_buffer),
+                "consent_hash_length": len(confirm_hash or ""),
+                "transcript_chars": len(first_buffer),
+                "confirm_literal_present": "Re-run with --confirm-candidate" in first_buffer,
                 "foreign_error_signature": foreign_signature,
                 "second_rc": None,
                 "second_argv": None,
@@ -637,7 +640,10 @@ if __name__ == "__main__":
         reason = (
             f"hash={result.get('consent_hash_captured', False)}, "
             f"prompt={result.get('consent_prompt_captured', False)}, "
-            f"foreign={result.get('foreign_error_signature')!r}"
+            f"foreign={result.get('foreign_error_signature')!r}, "
+            f"hash_chars={result.get('consent_hash_length', 0)}, "
+            f"transcript_chars={result.get('transcript_chars', 0)}, "
+            f"confirm_literal={result.get('confirm_literal_present', False)}"
         )
         raise RuntimeError(
             f"guided up abort (first_rc={result['first_rc']}); consent not completed "
