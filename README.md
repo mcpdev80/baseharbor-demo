@@ -7,11 +7,11 @@
 
 This repository starts as an ordinary application repository: no committed `baseharbor.yaml`, no prepared BaseHarbor state and no provider-specific application contract. Its Compose `x-baseharbor` extension declares that the demo's management-login display uses the Target's OpenBao-managed development credentials; `baha app init` carries those sources into the generated app contract automatically.
 
-## BaseHarbor v0.4.26 candidate compatibility
+## BaseHarbor v0.4.27 candidate compatibility
 
-This branch prepares the demo for the v0.4.26 candidate; it is not a published
+This branch prepares the demo for the v0.4.27 candidate; it is not a published
 release or a completed native acceptance claim. `baseharbor-core.ref` pins the
-exact Core source. The [candidate release notes](https://github.com/mcpdev80/baseharbor/blob/develop/docs/releases/v0.4.26.md) describe the intended interface; native evidence must match the final immutable source matrix.
+exact Core source. The [candidate release notes](https://github.com/mcpdev80/baseharbor/blob/develop/docs/releases/v0.4.27.md) describe the intended interface; native evidence must match the final immutable source matrix.
 
 This demo explicitly requests managed SQL and other capabilities; it therefore
 resolves providers from those selected capabilities and their genuine dependencies.
@@ -22,8 +22,9 @@ login; SQL is no longer implicit. BaseHarbor generates application IDs during
 explicit initialization; neither authored YAML nor MCP clients supply an ID. The existing ordinary application and service
 binding paths remain the compatibility test, not a new application SDK.
 
-Use `baha app sql` and `baha app cache`. Remote Targets require enrolled Node
-Connector access; Console uses the protected Core API. Native acceptance must
+Use `baha app sql` and `baha app cache`. Remote runtime-node Targets use an
+enrolled Node Connector; developer workstations connect directly to Core-hosted
+Docker and Podman Targets. Console uses the protected Core API. Native acceptance must
 prove Docker/rootless Podman lifecycle, backup/recovery and foreign ownership
 preservation with this immutable source before readiness is declared.
 
@@ -360,6 +361,6 @@ https://localhost:8080
 
 The certificate is intentionally local/self-signed in standalone mode. Under BaseHarbor, certificate issuance, projection and trust are managed by BaseHarbor instead.
 
-The candidate Core source is pinned in `baseharbor-core.ref`. The installer uses that immutable source by default; explicit `BASEHARBOR_SOURCE_REF` or `BASEHARBOR_VERSION` selections take precedence. Historical v0.4.25 compatibility and runtime acceptance are recorded in [Core PR #881](https://github.com/mcpdev80/baseharbor/pull/881). The v0.4.26 candidate needs its own qualification against the final immutable source matrix.
+The candidate Core source is pinned in `baseharbor-core.ref`. The installer uses that immutable source by default; explicit `BASEHARBOR_SOURCE_REF` or `BASEHARBOR_VERSION` selections take precedence. Historical v0.4.25 compatibility and runtime acceptance are recorded in [Core PR #881](https://github.com/mcpdev80/baseharbor/pull/881). The v0.4.27 candidate needs its own qualification against the final immutable source matrix.
 
 Shared cache bindings supply `REDIS_KEY_PREFIX` / `VALKEY_KEY_PREFIX`; the demo prefixes its keys so separate applications can safely consume one Core-owned Valkey provider. Native qualification rejects additional Shared SQL deployments, including a separate Keycloak database server. AppScoped remains an explicit independent deployment.
