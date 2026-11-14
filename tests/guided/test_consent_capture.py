@@ -49,7 +49,7 @@ def write_fake_core(lines, exit_code, delay=0.6, final_delay=None):
     anchored at the end (regex ``\\s*$``) and types the scripted answer itself,
     so the transcript contains ONLY the Core's prompts. Each entry is therefore
     a bare prompt line, emitted with an idle gap so it is the sole trailing
-    content when read. A lone "READY" line marks clean completion.
+    content when read. The exact Core completion marker marks a clean result.
     """
     fd, path = tempfile.mkstemp(prefix="fake-core-")
     counter = path + ".counter"  # mkstemp path is unique across tests and processes
@@ -78,7 +78,7 @@ def write_fake_core(lines, exit_code, delay=0.6, final_delay=None):
         fh.write("        if _line.startswith('Apply these changes?'):\n")
         fh.write("            if sys.stdin.readline().strip().lower() != 'y': sys.exit(4)\n")
         fh.write(f"        time.sleep({delay!r})\n")
-        fh.write('    sys.stdout.write("READY\\n"); sys.stdout.flush()\n')
+        fh.write('    sys.stdout.write("READY application and requested infrastructure verified\\n"); sys.stdout.flush()\n')
         fh.write("    sys.exit(0)\n")
         fh.write("open(r'" + counter + "', 'w').write(str(_n + 1))\n")
         for index, line in enumerate(lines):
@@ -271,7 +271,7 @@ class ConsentCaptureRegression(unittest.TestCase):
             "Application name [demo]:",
             "Environment [demo]:",
             "",
-            "READY",
+            "READY application and requested infrastructure verified",
         ], exit_code=0)
         try:
             res = flow_ready(core, exit_code=0)
@@ -487,7 +487,7 @@ class ConsentCaptureRegression(unittest.TestCase):
             "Application name [demo]:",
             "Environment [demo]:",
             prompt,
-            "READY",
+            "READY application and requested infrastructure verified",
         ], exit_code=0)
         apply_rule = next(
             rule for rule in drive.up_rules

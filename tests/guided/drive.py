@@ -151,7 +151,7 @@ def find_foreign_error_signature(text):
 #   - CANDIDATE_ABORT_ERROR marks the only permitted non-zero between-state:
 #     the candidate consent prompt whose confirm-hash still has to be
 #     acknowledged on a follow-up run.
-READY_RULE_MARKER = "READY"
+READY_RULE_MARKER = "READY application and requested infrastructure verified"
 
 # The Core's documented candidate-consent confirm prompt. A non-zero exit is
 # classified as the permitted candidate-consent between-state ONLY when this
@@ -494,7 +494,7 @@ up_rules = [
     # completion; a non-zero exit with the documented candidate-consent
     # confirm-hash is the only permitted between-state. See review-128b /
     # consent-harness-3: all-optional is the error state.
-    Rule(r"READY\s*$", "", repeat=False, optional=False),
+    Rule(r"READY\s+application and requested infrastructure verified\s*$", "", repeat=False, optional=False),
 ]
 
 def run_guided_consent_flow(argv, rules):
