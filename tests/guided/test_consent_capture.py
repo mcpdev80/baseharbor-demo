@@ -368,6 +368,26 @@ class ConsentCaptureRegression(unittest.TestCase):
             + " to acknowledge this exact submission."))
         self.assertIsNone(drive.find_foreign_error_signature("READY"))
 
+    def test_12_provider_impact_plan_prompt_is_confirmed(self):
+        prompt = "Apply these changes? [y/N]:"
+        core = write_fake_core([
+            "Application name [demo]:",
+            "Environment [demo]:",
+            prompt,
+            "READY",
+        ], exit_code=0)
+        apply_rule = next(
+            rule for rule in drive.up_rules
+            if rule.pattern.pattern == r"Apply these changes\? \[y/N\]:\s*$"
+        )
+        try:
+            run_capture("c12", core, drive.up_rules, exit_code=0)
+            self.assertEqual(1, apply_rule.used)
+            self.assertEqual("y\n", apply_rule.value(None, ""))
+        finally:
+            apply_rule.used = 0
+            cleanup_fake_core(core)
+
 
 if __name__ == "__main__":
     # unittest.main() handles discovery; this block additionally emits the
@@ -394,6 +414,7 @@ if __name__ == "__main__":
         "test_09_hash_and_documented_prompt_with_foreign_error_aborts",
         "test_10_documented_abort_without_foreign_signature_reaches_second_up",
         "test_11_foreign_error_signature_detected_by_production_helper",
+        "test_12_provider_impact_plan_prompt_is_confirmed",
     ]:
         try:
             getattr(tc, method)()
