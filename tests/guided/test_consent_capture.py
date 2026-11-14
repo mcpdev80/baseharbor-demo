@@ -369,7 +369,7 @@ class ConsentCaptureRegression(unittest.TestCase):
         self.assertIsNone(drive.find_foreign_error_signature("READY"))
 
     def test_12_provider_impact_plan_prompt_is_confirmed(self):
-        prompt = "Apply these changes? [y/N]:"
+        prompt = "Apply these changes? [y/N]"
         core = write_fake_core([
             "Application name [demo]:",
             "Environment [demo]:",
@@ -378,7 +378,7 @@ class ConsentCaptureRegression(unittest.TestCase):
         ], exit_code=0)
         apply_rule = next(
             rule for rule in drive.up_rules
-            if rule.pattern.pattern == r"Apply these changes\? \[y/N\]:\s*$"
+            if rule.pattern.pattern == r"Apply these changes\? \[y/N\]:?\s*$"
         )
         try:
             run_capture("c12", core, drive.up_rules, exit_code=0)

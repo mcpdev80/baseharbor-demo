@@ -444,7 +444,7 @@ up_rules = [
     Rule(r"APP_SECRET value again:\s*$", "acceptance-secret-value\n", optional=True),
     # The fresh-reference journey presents one combined provider impact plan
     # before it can continue into the exact candidate-consent flow.
-    Rule(r"Apply these changes\? \[y/N\]:\s*$", "y\n", optional=True),
+    Rule(r"Apply these changes\? \[y/N\]:?\s*$", "y\n", optional=True),
     Rule(r"Install the BaseHarbor CA into the host trust store\? \[y/N\]:\s*$", "n\n", optional=True),
     # Mandatory READY-abschluss-marker: the guided `up` MUST reach the Core's
     # documented READY completion line. This is the ONLY permitted clean
