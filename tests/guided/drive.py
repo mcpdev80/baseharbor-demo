@@ -539,6 +539,9 @@ def run_guided_consent_flow(argv, rules):
                 "outcome": "abort",
                 "first_rc": first_rc,
                 "confirm_hash": None,
+                "consent_hash_captured": confirm_hash is not None,
+                "consent_prompt_captured": contains_candidate_abort_prompt(first_buffer),
+                "foreign_error_signature": foreign_signature,
                 "second_rc": None,
                 "second_argv": None,
                 "foreign_error_second_up": False,
@@ -607,8 +610,13 @@ if __name__ == "__main__":
 
     result = run_guided_consent_flow([BAHA], up_rules)
     if result["outcome"] == "abort":
+        reason = (
+            f"hash={result.get('consent_hash_captured', False)}, "
+            f"prompt={result.get('consent_prompt_captured', False)}, "
+            f"foreign={result.get('foreign_error_signature')!r}"
+        )
         raise RuntimeError(
             f"guided up abort (first_rc={result['first_rc']}); consent not completed "
-            "and no second up was run"
+            f"and no second up was run ({reason})"
         )
     print("[phase] guided up: READY reached; returning to acceptance gate", flush=True)
