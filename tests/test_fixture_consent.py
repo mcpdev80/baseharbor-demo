@@ -98,6 +98,24 @@ class ConsentTests(unittest.TestCase):
         self.assertLess(doctor, evidence)
         self.assertLess(evidence, later)
 
+    def test_retained_restore_preserves_deployment_owner_before_restore(self):
+        runner = (Path(__file__).parent / "backup-restore" / "run.sh").read_text()
+        branch_start = runner.index('if [ "${BASEHARBOR_DEMO_RECOVERY_MODE:-retained}" = fresh-owner ]; then')
+        restore = runner.index('run_consented "$BAHA" app restore', branch_start)
+        recovery_setup = runner[branch_start:restore]
+
+        # Only fresh-owner recovery may destroy the deployment owner. In
+        # retained mode, app restore's own scoped reset replaces runtime/data
+        # while preserving the canonical deployment identity.
+        destroy_commands = [
+            line.strip()
+            for line in recovery_setup.splitlines()
+            if 'run_consented "$BAHA" app destroy' in line
+        ]
+        self.assertEqual(destroy_commands, ['run_consented "$BAHA" app destroy --yes --full-reset'])
+        self.assertNotIn("\n  else\n", recovery_setup)
+        self.assertIn("Restore performs its own scoped reset", runner[restore - 200:restore])
+
     def test_fixture_cwd_allows_only_registered_core_bootstrap_project(self):
         with tempfile.TemporaryDirectory() as temporary:
             runner_temp = Path(temporary)

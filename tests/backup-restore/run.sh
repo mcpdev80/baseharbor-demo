@@ -168,10 +168,10 @@ manifest.unlink()
 owner.rmdir()
 print('Fresh-owner fixture: native full reset completed; only exact original canonical fixture owner removed')
 PY
-  else
-    run_consented "$BAHA" app destroy --yes
   fi
 
+  # In retained-owner mode, keep the registered deployment identity in place.
+  # Restore performs its own scoped reset under the separate restore consent.
   run_consented "$BAHA" app restore "$ARTIFACT_DIR/demo.bhbackup" \
     --password-file "$ARTIFACT_DIR/backup.pass" \
     > "$ARTIFACT_DIR/restore.txt"
