@@ -72,12 +72,12 @@ class FixtureHelpersTest(unittest.TestCase):
         self.assertIsNone(rule.value(match, checked))  # stale frame: do not toggle twice
         match = rule.match(unchecked)
         self.assertIsNotNone(match)
-        self.assertEqual(rule.value(match, unchecked), "\r")
+        self.assertEqual(rule.value(match, unchecked), "enter\n")
         self.assertFalse(rule.repeat)
 
         already_unchecked = edit_picker_rule(False)
         match = already_unchecked.match(unchecked)
-        self.assertEqual(already_unchecked.value(match, unchecked), "\r")
+        self.assertEqual(already_unchecked.value(match, unchecked), "enter\n")
 
     def test_edit_picker_fails_closed_when_sql_row_is_missing(self):
         text = ("What does your application need?\n" + "\n".join([

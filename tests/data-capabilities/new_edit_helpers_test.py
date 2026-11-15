@@ -215,7 +215,7 @@ No SQL, identity service, secrets service or management stack is mandatory.
         self.assertIsNone(rule.callback(None, prompt))
 
         unchecked = prompt.replace("> [x] SQL database", "> [ ] SQL database")
-        self.assertEqual(rule.callback(None, unchecked), "\r")
+        self.assertEqual(rule.callback(None, unchecked), "enter\n")
 
 
 

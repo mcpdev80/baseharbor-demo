@@ -166,7 +166,9 @@ def edit_picker_rule(sql):
             # next rendered frame before deciding whether Enter is safe.
             return keys + [" \n", "down\n", "up\n"]
         rule.repeat = False
-        return "\r"
+        # driveAppEditWizard reads newline-delimited commands from its stdin
+        # reader; a bare carriage return leaves it waiting forever.
+        return "enter\n"
 
     rule = Rule(NEEDS_END, callback=respond, repeat=True)
     return rule
