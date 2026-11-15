@@ -157,8 +157,11 @@ class ConsentTests(unittest.TestCase):
         self.assertEqual(fixture.candidate_confirmation(self.candidate_refusal(digest)), digest)
         wrapped = self.candidate_refusal(digest)
         direct = wrapped["error"]["message"]
-        wrapped["error"]["message"] = "record deployment before mutation: " + direct + ": " + direct
+        wrapped["error"]["message"] = "record deployment before mutation: " + direct
         self.assertEqual(fixture.candidate_confirmation(wrapped), digest)
+        nested = self.candidate_refusal(digest)
+        nested["error"]["message"] = "record deployment before mutation: " + direct + ": " + direct
+        self.assertEqual(fixture.candidate_confirmation(nested), digest)
         for change in (
             {"contract_version": "v2"},
             {"error": {"code": "execution_failed"}},
@@ -177,7 +180,9 @@ class ConsentTests(unittest.TestCase):
 
     def test_fixture_retries_only_with_reported_candidate_digest(self):
         digest = "d" * 64
-        refusal = subprocess.CompletedProcess([], 1, b"", json.dumps(self.candidate_refusal(digest)).encode())
+        value = self.candidate_refusal(digest)
+        value["error"]["message"] = "record deployment before mutation: " + value["error"]["message"]
+        refusal = subprocess.CompletedProcess([], 1, b"", json.dumps(value).encode())
         success = subprocess.CompletedProcess([], 0, b"accepted\n", b"")
         seen_args = []
         replies = iter((refusal, success))
