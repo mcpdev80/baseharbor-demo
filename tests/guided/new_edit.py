@@ -14,7 +14,8 @@ import re
 import stat
 import subprocess
 
-from drive import ANSI_ESCAPE, ARTIFACT_DIR, BAHA, ROOT, Rule, capture_confirm_hash, run_tty
+from drive import (ANSI_ESCAPE, ARTIFACT_DIR, BAHA, ROOT, Rule,
+                   capture_confirm_hash, capture_provider_impact_candidate_hash, run_tty)
 
 NEEDS_END = r"No SQL, identity service, secrets service or management stack is mandatory\."
 PICKER_END = r"[Pp]: (?:optional )?provider preference(?: · b/←: previous row)? · Esc/Ctrl\+C: cancel"
@@ -290,6 +291,8 @@ def apply_created_application(project, *, environment=None, name=None):
     first = subprocess.run(argv, cwd=project, env=env, capture_output=True, text=True, timeout=120)
     transcript = first.stdout + first.stderr
     digest = capture_confirm_hash(transcript)
+    if digest is None:
+        digest = capture_provider_impact_candidate_hash(transcript)
     if first.returncode == 0 or digest is None:
         raise RuntimeError("app apply did not produce the exact candidate-consent challenge: " + transcript[-2000:])
 
