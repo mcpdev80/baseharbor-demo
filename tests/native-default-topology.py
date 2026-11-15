@@ -58,6 +58,10 @@ def collect_native_topology():
             for image in (str(config.get("Image") or ""), str(item.get("ImageName") or ""))
             if image
         }
+        # Keep only the last path component for failure diagnostics. Registry
+        # hosts and namespaces may be private; this is enough to explain the
+        # image-name classifier input without exposing those values.
+        image_repository = sorted(image_repositories)[0] if image_repositories else "unknown"
         running = bool((item.get("State") or {}).get("Running"))
         auxiliary = bool(re.search(r"(?:-admin|-init|-access|-ui)(?:-[1-9][0-9]*)?$|sentinel|etcd", service))
         provider = ""
@@ -73,7 +77,7 @@ def collect_native_topology():
             if running:
                 groups[key] = groups.get(key, 0) + 1
         volumes = sorted(m["Name"] for m in item.get("Mounts", []) if m.get("Type") == "volume" and m.get("Name"))
-        rows.append({"project": project, "service": service, "role": provider or "auxiliary", "running": running, "volumes": volumes})
+        rows.append({"project": project, "service": service, "role": provider or "auxiliary", "running": running, "image_repository": image_repository, "volumes": volumes})
     return groups, rows
 
 
@@ -119,7 +123,12 @@ if args.compare_keycloak_baseline:
             "new running Keycloak project/service: " + ", ".join(introduced)
         )
 if not required <= observed:
-    raise SystemExit("required native default providers absent: " + ",".join(sorted(required - observed)))
+    missing = ",".join(sorted(required - observed))
+    inventory = "; ".join(
+        f"{row['project']}/{row['service']} role={row['role']} running={str(row['running']).lower()} image={row['image_repository']}"
+        for row in rows
+    )
+    raise SystemExit(f"required native default providers absent: {missing}; selected containers: {inventory or 'none'}")
 violations = [f"{project}/{provider}/{root}: {count} members" for (project, provider, root), count in groups.items() if count != 1]
 if violations:
     raise SystemExit("unexpected implicit default HA: " + "; ".join(violations))

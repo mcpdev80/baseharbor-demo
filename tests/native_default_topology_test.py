@@ -110,6 +110,27 @@ class NativeTopologyQualificationTests(unittest.TestCase):
                 self.invoke(containers, path)
             self.assertFalse(path.exists())
 
+    def test_missing_provider_failure_reports_sanitized_selected_inventory(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / "qualified.json"
+            containers = [c for c in self.fixture()
+                          if c["Config"]["Labels"]["com.docker.compose.service"] != "valkey"]
+            candidate = self.container(
+                "shared-valkey-core-shared-default",
+                "registry.private.example/secret-namespace/cache-custom:private-tag",
+            )
+            containers.append(candidate)
+            with self.assertRaisesRegex(SystemExit, "required native default providers absent: valkey") as raised:
+                self.invoke(containers, path)
+            message = str(raised.exception)
+            self.assertIn("bh-test-core-shared/shared-valkey-core-shared-default", message)
+            self.assertIn("role=auxiliary running=true image=cache-custom", message)
+            self.assertNotIn("registry.private.example", message)
+            self.assertNotIn("secret-namespace", message)
+            self.assertNotIn("private-tag", message)
+            self.assertNotIn("PRIVATE_VALUE", message)
+            self.assertFalse(path.exists())
+
     def test_numbered_provider_admin_helpers_do_not_count_as_data_members(self):
         with tempfile.TemporaryDirectory() as root:
             path = Path(root) / "qualified.json"
