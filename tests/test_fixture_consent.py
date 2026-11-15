@@ -73,6 +73,9 @@ class ConsentTests(unittest.TestCase):
 
     def test_backup_restore_checks_topology_immediately_and_after_recovery(self):
         runner = (Path(__file__).parent / "backup-restore" / "run.sh").read_text()
+        self.assertIn("set -Eeuo pipefail", runner)
+        self.assertIn('trap \'backup_unexpected_err "$LINENO" "$?" "$BASH_COMMAND"\' ERR', runner)
+        self.assertIn("backup-restore gate unexpected ERR: line=%s exit=%s", runner)
         restore = runner.index('run_consented "$BAHA" app restore')
         immediate = runner.index('--output "$ARTIFACT_DIR/native-topology-immediate-restore.json"')
         doctor = runner.index('"$BAHA" app doctor > "$ARTIFACT_DIR/restore-doctor.txt"')

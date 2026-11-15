@@ -1,5 +1,20 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
+
+backup_unexpected_err() {
+  local source_line="$1"
+  local exit_code="$2"
+  local failed_command="$3"
+  if [[ "$failed_command" == "("* ]]; then
+    return "$exit_code"
+  fi
+  printf 'backup-restore gate unexpected ERR: line=%s exit=%s\n' \
+    "$source_line" "$exit_code" >&2
+  return "$exit_code"
+}
+
+trap 'backup_unexpected_err "$LINENO" "$?" "$BASH_COMMAND"' ERR
+
 source "$DEMO_ROOT/tests/lib.sh"
 
 section "Backup and restore"
