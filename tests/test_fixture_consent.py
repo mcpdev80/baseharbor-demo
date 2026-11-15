@@ -17,6 +17,40 @@ spec.loader.exec_module(fixture)
 
 
 class ConsentTests(unittest.TestCase):
+    def test_fixture_cwd_allows_only_registered_core_bootstrap_project(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            runner_temp = Path(temporary)
+            demo = runner_temp / "demo"
+            project = runner_temp / "baseharbor-core-bootstrap.123"
+            unrelated = runner_temp / "unrelated-project"
+            demo.mkdir()
+            project.mkdir()
+            unrelated.mkdir()
+            with mock.patch.dict(os.environ, {
+                "RUNNER_TEMP": str(runner_temp),
+                "BASEHARBOR_DEMO_ALLOWED_PROJECT_ROOT": str(project),
+            }):
+                fixture.validate_fixture_cwd(project, demo)
+                fixture.validate_fixture_cwd(demo, demo)
+                with self.assertRaises(ValueError):
+                    fixture.validate_fixture_cwd(unrelated, demo)
+
+    def test_fixture_cwd_rejects_unregistered_or_misplaced_project(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            demo = root / "demo"
+            runner_temp = root / "runner"
+            project = runner_temp / "not-core-bootstrap.123"
+            demo.mkdir()
+            runner_temp.mkdir()
+            project.mkdir()
+            with mock.patch.dict(os.environ, {
+                "RUNNER_TEMP": str(runner_temp),
+                "BASEHARBOR_DEMO_ALLOWED_PROJECT_ROOT": str(project),
+            }):
+                with self.assertRaises(ValueError):
+                    fixture.validate_fixture_cwd(project, demo)
+
     def refusal(self):
         return {"contract_version": "v1", "error": {"code": "approval_required", "cause": "impact-confirmation-required", "details": {"scope": {"version": "baseharbor.provider-impact-scope/v1", "plan_id": "a" * 64, "confirmations_required": 2, "complete": False, "destructive": True}}}}
 

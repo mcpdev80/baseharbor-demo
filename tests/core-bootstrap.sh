@@ -6,7 +6,8 @@ core_root="$(mktemp -d "${RUNNER_TEMP:-/tmp}/baseharbor-core-bootstrap.XXXXXX")"
 trap 'rm -rf "$core_root"' EXIT
 (
   cd "$core_root"
-  run_consented "$BAHA" up --yes >"$ARTIFACT_DIR/core-bootstrap-up.txt" 2>&1 || {
+  BASEHARBOR_DEMO_ALLOWED_PROJECT_ROOT="$core_root" \
+    run_consented "$BAHA" up --yes >"$ARTIFACT_DIR/core-bootstrap-up.txt" 2>&1 || {
     cat "$ARTIFACT_DIR/core-bootstrap-up.txt" >&2
     exit 1
   }
