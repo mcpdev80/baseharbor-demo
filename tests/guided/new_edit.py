@@ -304,7 +304,7 @@ def zero_needs_no_rules(cancel):
         attempts += 1
         if attempts > 2:
             raise RuntimeError("zero-needs Edit did not advance to its preview after a bounded retry")
-        return "\r"
+        return "enter\n"
 
     advance = Rule(NEEDS_END, callback=advance_to_preview, repeat=True)
 

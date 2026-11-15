@@ -182,9 +182,9 @@ class ZeroNeedsPreviewRuleTest(unittest.TestCase):
         advance, decline, cancel = rules
         needs = "No SQL, identity service, secrets service or management stack is mandatory."
 
-        self.assertEqual(advance.callback(None, needs), "\r")
+        self.assertEqual(advance.callback(None, needs), "enter\n")
         self.assertTrue(advance.repeat)
-        self.assertEqual(advance.callback(None, needs), "\r")
+        self.assertEqual(advance.callback(None, needs), "enter\n")
         with self.assertRaisesRegex(RuntimeError, "bounded retry"):
             advance.callback(None, needs)
 
