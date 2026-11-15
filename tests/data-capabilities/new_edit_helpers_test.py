@@ -194,6 +194,35 @@ class ZeroNeedsPreviewRuleTest(unittest.TestCase):
         self.assertEqual(len(cancelled), 1)
 
 
+class NewCreateOnlyPromptRegressionTest(unittest.TestCase):
+    def test_create_only_requires_file_creation_but_not_lifecycle_prompts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            observed = {}
+
+            def run_tty(name, argv, rules, **kwargs):
+                observed["name"] = name
+                observed["rules"] = rules
+                mode_rule = next(rule for rule in rules if "After creation" in rule.pattern.pattern)
+                self.assertEqual(mode_rule.response, "create-only\n")
+                creation_rule = next(rule for rule in rules if "Create project files" in rule.pattern.pattern)
+                self.assertIsNotNone(creation_rule.match(
+                    "Create project files only (does not start containers or deploy providers)? [Y/n]"))
+                self.assertIsNone(next((rule for rule in rules
+                    if "Bind this exact candidate" in rule.pattern.pattern), None))
+                self.assertIsNone(next((rule for rule in rules
+                    if "Apply these changes" in rule.pattern.pattern), None))
+                (parent / "new-only").mkdir()
+
+            with patch.object(guided, "state_snapshot", return_value={}), \
+                 patch.object(guided, "run_tty", side_effect=run_tty), \
+                 patch.object(guided, "footprint", return_value={"requirements": [], "complete": True}):
+                project = guided.new_application(parent, "new-only", mode="create-only", native=False)
+
+            self.assertEqual(observed["name"], "new-edit-new-only")
+            self.assertEqual(project, parent / "new-only")
+
+
 class EditNeedsPickerRuleTest(unittest.TestCase):
     def test_sql_removal_sends_complete_space_and_redraw_navigation_before_enter(self):
         rule = guided.edit_picker_rule(False)

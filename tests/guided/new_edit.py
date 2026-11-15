@@ -254,12 +254,13 @@ def new_application(parent, name, *, sql=False, decision="run", native=True, env
         consent.reset()
         return "y\n"
 
-    rules.extend([
-        Rule(r"Bind this exact candidate and continue with its lifecycle\? \[y/N\]\s*$", callback=confirm_candidate, optional=decision != "run"),
-        consent.rule(),
-        apply_changes_rule(decision, require_provider_changes=sql),
-        Rule(r"Is this installation running on a machine where you write code\?.*?Choice \[1\]:\s*$", "1\n", optional=True),
-        Rule(r"PostgreSQL host port \[\d+\]:\s*$", "\n", optional=True)])
+    if mode == "run":
+        rules.extend([
+            Rule(r"Bind this exact candidate and continue with its lifecycle\? \[y/N\]\s*$", callback=confirm_candidate, optional=decision != "run"),
+            consent.rule(),
+            apply_changes_rule(decision, require_provider_changes=sql),
+            Rule(r"Is this installation running on a machine where you write code\?.*?Choice \[1\]:\s*$", "1\n", optional=True),
+            Rule(r"PostgreSQL host port \[\d+\]:\s*$", "\n", optional=True)])
     run_tty("new-edit-" + name, [BAHA, "app", "new"], rules, cwd=ROOT,
             env={"BASEHARBOR_LOGS_ENABLED": "false", **(environment or {})},
             timeout=600, no_output_timeout=90)
