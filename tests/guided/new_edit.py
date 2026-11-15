@@ -367,6 +367,17 @@ def edit_application(project, operation, *, instance=None, native=True, environm
                  Rule(r"Read-only decision preview \(not execution\)", "yes\n")]
     else:
         raise ValueError("unknown Edit fixture operation")
+    if operation in ("add", "remove", "switch"):
+        def reject_unexpected_preview_failure(match, text):
+            raise RuntimeError(
+                "Edit read-only preview was unexpectedly rejected; see the captured "
+                "transcript for its safe authority stage"
+            )
+        rules.append(Rule(
+            r"could not build read-only decision preview: application proposal "
+            r"(?:read|choices|plan): application machine: denied",
+            callback=reject_unexpected_preview_failure,
+        ))
     rules.append(consent.rule())
     run_tty("new-edit-" + project.name + "-" + operation, [BAHA, "app", "edit"], rules,
             cwd=project, env={"BASEHARBOR_LOGS_ENABLED": "false", **(environment or {})},

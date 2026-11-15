@@ -264,6 +264,23 @@ No SQL, identity service, secrets service or management stack is mandatory.
         unchecked = prompt.replace("> [x] SQL database", "> [ ] SQL database")
         self.assertEqual(rule.callback(None, unchecked), "enter\n")
 
+    def test_sql_removal_preview_rejection_aborts_without_waiting_for_idle_timeout(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            observed = {}
+
+            def run_tty(name, argv, rules, **kwargs):
+                rejection = next(rule for rule in rules if "could not build read-only decision preview" in rule.pattern.pattern)
+                observed["name"] = name
+                with self.assertRaisesRegex(RuntimeError, "preview was unexpectedly rejected"):
+                    rejection.callback(None, "could not build read-only decision preview: application proposal plan: application machine: denied")
+
+            with patch.object(guided, "state_snapshot", return_value={}), \
+                 patch.object(guided, "run_tty", side_effect=run_tty), \
+                 patch.object(guided, "footprint", return_value={}):
+                guided.edit_application(project, "remove", native=False)
+            self.assertEqual(observed["name"], "new-edit-" + project.name + "-remove")
+
 
 
 class SQLWorkloadTransitionTest(unittest.TestCase):
