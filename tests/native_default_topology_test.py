@@ -57,12 +57,20 @@ class NativeTopologyQualificationTests(unittest.TestCase):
     def test_auxiliary_and_foreign_resources_never_become_replicas_or_leak_secrets(self):
         with tempfile.TemporaryDirectory() as root:
             path = Path(root) / "qualified.json"
-            containers = self.fixture() + [self.container("postgres-admin", "postgres:18"), self.container("postgres-init", "postgres:18"), self.container("seaweedfs-node-2", "chrislusf/seaweedfs:4", "foreign-project")]
+            containers = self.fixture() + [
+                self.container("postgres-admin", "postgres:18"),
+                self.container("postgres-init", "postgres:18"),
+                self.container("seaweedfs-node-2", "chrislusf/seaweedfs:4", "foreign-project"),
+                self.container("custom-cache", "registry.private.example/team/private-cache-codename:private-tag"),
+            ]
             self.invoke(containers, path)
             result = path.read_text()
             self.assertNotIn("PRIVATE_VALUE", result)
             self.assertNotIn("must-not-persist", result)
             self.assertNotIn("foreign-project", result)
+            self.assertNotIn("private-cache-codename", result)
+            self.assertNotIn("image_repository", result)
+            self.assertIn('"role": "unclassified"', result)
             self.assertTrue(all(m["count"] == 1 for m in json.loads(result)["members"]))
 
     def test_digest_pinned_native_provider_images_are_classified(self):
@@ -110,7 +118,7 @@ class NativeTopologyQualificationTests(unittest.TestCase):
                 self.invoke(containers, path)
             self.assertFalse(path.exists())
 
-    def test_missing_provider_failure_reports_sanitized_selected_inventory(self):
+    def test_missing_provider_failure_inventory_never_reports_private_image_name(self):
         with tempfile.TemporaryDirectory() as root:
             path = Path(root) / "qualified.json"
             containers = [c for c in self.fixture()
@@ -124,9 +132,10 @@ class NativeTopologyQualificationTests(unittest.TestCase):
                 self.invoke(containers, path)
             message = str(raised.exception)
             self.assertIn("bh-test-core-shared/shared-valkey-core-shared-default", message)
-            self.assertIn("role=auxiliary running=true image=cache-custom", message)
+            self.assertIn("role=unclassified running=true", message)
             self.assertNotIn("registry.private.example", message)
             self.assertNotIn("secret-namespace", message)
+            self.assertNotIn("cache-custom", message)
             self.assertNotIn("private-tag", message)
             self.assertNotIn("PRIVATE_VALUE", message)
             self.assertFalse(path.exists())
@@ -140,7 +149,7 @@ class NativeTopologyQualificationTests(unittest.TestCase):
             self.invoke(self.fixture() + helpers, path)
             result = json.loads(path.read_text())
             self.assertTrue(all(m["count"] == 1 for m in result["members"]))
-            self.assertTrue(all(row["role"] == "auxiliary" for row in result["services"]
+            self.assertTrue(all(row["role"] == "unclassified" for row in result["services"]
                                 if row["service"] in {"seaweedfs-admin-1", "postgres-admin-1", "keycloak-init-1"}))
 
     def test_native_extra_data_member_blocks_default_acceptance(self):
