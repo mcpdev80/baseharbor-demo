@@ -6,13 +6,49 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
-from new_edit import (CurrentConsent, edit_picker_rule, filesystem_snapshot, picker_keys,
-                      provider_choice_response, provider_choice_rule)
+from new_edit import (CurrentConsent, edit_candidate_confirmation, edit_picker_rule,
+                      filesystem_snapshot, picker_keys, provider_choice_response,
+                      provider_choice_rule, resume_confirmed_edit_apply)
 import drive
 
 
 class FixtureHelpersTest(unittest.TestCase):
+    def test_edit_candidate_confirmation_accepts_only_exact_consent_abort(self):
+        digest = "a" * 64
+        refusal = drive.EXPECTED_CANDIDATE_CONSENT_REFUSAL
+        transcript = (f"Re-run with --confirm-candidate {digest} to acknowledge this exact submission.\n"
+                      + refusal + "\nError: application machine: partial\n")
+        self.assertEqual(edit_candidate_confirmation(2, transcript), digest)
+        for invalid in (
+            (2, transcript.replace(refusal, "Error: unrelated edit failure")),
+            (2, transcript + "Error: unrelated failure\n"),
+            (2, refusal),
+            (0, transcript),
+        ):
+            with self.subTest(invalid=invalid), self.assertRaises(RuntimeError):
+                edit_candidate_confirmation(*invalid)
+        self.assertIsNone(edit_candidate_confirmation(0, "Edit complete\n"))
+
+    def test_confirmed_edit_apply_uses_exact_candidate_and_current_consent(self):
+        digest = "b" * 64
+        consent = CurrentConsent()
+        consent.plan = "stale"
+        project = Path("/tmp/project")
+        with patch("new_edit.run_tty") as run:
+            resume_confirmed_edit_apply(project, "remove", digest, consent,
+                                        {"EXTRA": "value"})
+        args, kwargs = run.call_args
+        self.assertEqual(args[0], "new-edit-project-remove-apply")
+        self.assertEqual(args[1], [drive.BAHA, "app", "apply", "--confirm-candidate", digest])
+        self.assertEqual(kwargs["cwd"], project)
+        self.assertEqual(kwargs["env"]["EXTRA"], "value")
+        self.assertEqual(kwargs["env"]["BASEHARBOR_LOGS_ENABLED"], "false")
+        self.assertIsNone(consent.plan)
+        self.assertTrue(any("Confirm the displayed provider changes" in rule.pattern.pattern
+                            for rule in args[2]))
+
     def test_explicit_provider_uses_current_actual_named_sql_row(self):
         instance = "postgresql/application/fixture/dev/default"
         frame = ("What does your application need?\n"

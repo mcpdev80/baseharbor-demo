@@ -15,7 +15,10 @@ import stat
 import subprocess
 
 from drive import (ANSI_ESCAPE, ARTIFACT_DIR, BAHA, ROOT, Rule,
-                   capture_confirm_hash, capture_provider_impact_candidate_hash, run_tty)
+                   capture_confirm_hash, capture_provider_impact_candidate_hash,
+                   contains_candidate_abort_prompt, find_foreign_error_signature,
+                   EXPECTED_CANDIDATE_CONSENT_REFUSAL,
+                   run_tty)
 
 NEEDS_END = r"No SQL, identity service, secrets service or management stack is mandatory\."
 PICKER_END = r"[Pp]: (?:optional )?provider preference(?: · b/←: previous row)? · Esc/Ctrl\+C: cancel"
@@ -207,6 +210,41 @@ def apply_changes_rule(decision, *, require_provider_changes=False):
                 optional=decision != "run" or not require_provider_changes)
 
 
+def edit_candidate_confirmation(returncode, transcript):
+    """Accept only the exact post-edit candidate-consent refusal for retry."""
+    digest = capture_confirm_hash(transcript)
+    if returncode == 0:
+        if digest is not None or contains_candidate_abort_prompt(transcript):
+            raise RuntimeError("Edit completed while also reporting a candidate-consent refusal")
+        return None
+    if digest is None or not contains_candidate_abort_prompt(transcript):
+        raise RuntimeError("Edit failed without the documented candidate-consent digest")
+
+    normalized = re.sub(r"\s+", "", ANSI_ESCAPE.sub("", transcript))
+    refusal = re.sub(r"\s+", "", ANSI_ESCAPE.sub("", EXPECTED_CANDIDATE_CONSENT_REFUSAL))
+    if refusal not in normalized:
+        raise RuntimeError("candidate digest was not accompanied by the exact deployment-consent refusal")
+    # The lifecycle wraps the exact consent refusal as `application machine:
+    # partial`. Remove only these two known messages before checking that the
+    # transcript contains no unrelated failure alongside the candidate hash.
+    normalized = normalized.replace("Error:applicationmachine:partial", "")
+    if find_foreign_error_signature(normalized) is not None:
+        raise RuntimeError("candidate-consent refusal was accompanied by another failure")
+    return digest
+
+
+def resume_confirmed_edit_apply(project, operation, digest, consent, environment=None):
+    """Continue the persisted Edit intent through its exact candidate Apply."""
+    consent.reset()
+    rules = [consent.rule(), apply_changes_rule("run", require_provider_changes=True),
+             Rule(r"Is this installation running on a machine where you write code\?.*?Choice \[1\]:\s*$", "1\n", optional=True),
+             Rule(r"PostgreSQL host port \[\d+\]:\s*$", "\n", optional=True)]
+    run_tty("new-edit-" + project.name + "-" + operation + "-apply",
+            [BAHA, "app", "apply", "--confirm-candidate", digest], rules,
+            cwd=project, env={"BASEHARBOR_LOGS_ENABLED": "false", **(environment or {})},
+            timeout=600, no_output_timeout=120)
+
+
 def new_application(parent, name, *, sql=False, decision="run", native=True, environment=None,
                     mode="run"):
     if mode not in ("run", "create-only"):
@@ -377,15 +415,33 @@ def edit_application(project, operation, *, instance=None, native=True, environm
             r"could not build read-only decision preview: application proposal "
             r"(?:read|choices|plan): application machine: denied",
             callback=reject_unexpected_preview_failure,
+            optional=True,
         ))
     rules.append(consent.rule())
-    run_tty("new-edit-" + project.name + "-" + operation, [BAHA, "app", "edit"], rules,
+    if operation in ("add", "remove", "switch"):
+        # A confirmed Edit persists desired source before entering the normal
+        # lifecycle. If that lifecycle asks for repository candidate consent,
+        # continue the now-persisted intent through Apply with exactly the
+        # digest Core printed; do not replay the already-completed Edit wizard.
+        rc, transcript = run_tty(
+            "new-edit-" + project.name + "-" + operation, [BAHA, "app", "edit"], rules,
             cwd=project, env={"BASEHARBOR_LOGS_ENABLED": "false", **(environment or {})},
             timeout=600,
             # Core bounds a read-only preview refresh at 120s. Let that bounded
             # authority finish before the PTY harness declares the UI idle.
             no_output_timeout=150 if operation == "no" else 90,
-            expected_returncodes=(0, 1) if operation in ("no", "cancel") else (0,))
+            capture=True)
+        digest = edit_candidate_confirmation(rc, transcript)
+        if digest is not None:
+            resume_confirmed_edit_apply(project, operation, digest, consent, environment)
+    else:
+        run_tty("new-edit-" + project.name + "-" + operation, [BAHA, "app", "edit"], rules,
+                cwd=project, env={"BASEHARBOR_LOGS_ENABLED": "false", **(environment or {})},
+                timeout=600,
+                # Core bounds a read-only preview refresh at 120s. Let that bounded
+                # authority finish before the PTY harness declares the UI idle.
+                no_output_timeout=150 if operation == "no" else 90,
+                expected_returncodes=(0, 1) if operation in ("no", "cancel") else (0,))
     if operation in ("no", "cancel"):
         assert_unchanged(before, project, native)
         transcript = (ARTIFACT_DIR / ("new-edit-" + project.name + "-" + operation + ".txt")).read_text()
