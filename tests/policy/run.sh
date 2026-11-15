@@ -1,5 +1,20 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
+
+policy_unexpected_err() {
+  local exit_code=$?
+  local source_line="$1"
+  local failed_command="$2"
+  if [[ "$failed_command" == "("* ]]; then
+    return "$exit_code"
+  fi
+  printf 'policy gate unexpected ERR: line=%s exit=%s command=%q\n' \
+    "$source_line" "$exit_code" "$failed_command" >&2
+  return "$exit_code"
+}
+
+trap 'policy_unexpected_err "$LINENO" "$BASH_COMMAND"' ERR
+
 source "$DEMO_ROOT/tests/lib.sh"
 
 section "Environment and policy"
@@ -7,7 +22,11 @@ section "Environment and policy"
   cd "$DEMO_ROOT"
   "$BAHA" policy explain -e dev | tee "$ARTIFACT_DIR/policy-explain.txt"
   "$BAHA" policy check -e dev | tee "$ARTIFACT_DIR/policy-check.txt"
-  run_json policy-check "$BAHA" policy check -e dev -o json
+  if run_json policy-check "$BAHA" policy check -e dev -o json; then
+    :
+  else
+    exit $?
+  fi
 )
 pass "Policy" "explain + check + JSON"
 

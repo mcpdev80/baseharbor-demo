@@ -17,6 +17,39 @@ spec.loader.exec_module(fixture)
 
 
 class ConsentTests(unittest.TestCase):
+    def test_policy_gate_has_secret_safe_unexpected_error_diagnostic(self):
+        runner = (Path(__file__).parent / "policy" / "run.sh").read_text()
+        self.assertIn("set -Eeuo pipefail", runner)
+        self.assertIn("trap 'policy_unexpected_err \"$LINENO\" \"$BASH_COMMAND\"' ERR", runner)
+        self.assertIn("line=%s exit=%s command=%q", runner)
+        self.assertNotRegex(runner, r"(?m)^\s*(?:env|printenv)(?:\s|$)")
+        self.assertNotIn("set -x", runner)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            fake_baha = root / "baha"
+            fake_baha.write_text("#!/usr/bin/env bash\nexit 37\n")
+            fake_baha.chmod(0o755)
+            env = os.environ | {
+                "DEMO_ROOT": str(Path(__file__).parent.parent),
+                "ARTIFACT_DIR": str(root / "artifacts"),
+                "BAHA": str(fake_baha),
+                "BASEHARBOR_TEST_RUNTIME": "static",
+                "DIAGNOSTIC_TEST_SECRET": "must-not-appear",
+            }
+            result = subprocess.run(
+                ["bash", str(Path(__file__).parent / "policy" / "run.sh")],
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 37)
+        self.assertIn("policy gate unexpected ERR: line=23 exit=37 command=tee\\ ", result.stderr)
+        self.assertEqual(result.stderr.count("policy gate unexpected ERR:"), 1)
+        self.assertNotIn("must-not-appear", result.stdout + result.stderr)
+
     def test_recovery_atomic_bootstrap_does_not_enable_identity_or_management_ui(self):
         resources = json.loads((Path(__file__).parent / "gate-resources.json").read_text())
         recovery = resources["backup-restore"]
