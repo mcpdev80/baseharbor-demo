@@ -50,7 +50,16 @@ else:
             raise SystemExit('fresh-owner recovery did not materialize a new deployment owner')
         original['identity']['deployment_id'] = state['identity']['deployment_id']
     if original != state:
-        raise SystemExit('restore replaced original application identity or delivered secret')
+        # Keep private values and digests out of Actions logs while identifying
+        # which continuity assertion failed. This makes hosted-only recovery
+        # failures actionable without exposing the managed secret.
+        mismatches = {
+            'identity_same': original['identity'] == state['identity'],
+            'managed_secret_same': original['secret'] == state['secret'],
+            'authored_source_same': original['authored_source'] == state['authored_source'],
+        }
+        detail = ' '.join(f'{name}={str(matches).lower()}' for name, matches in mismatches.items())
+        raise SystemExit(f'restore continuity mismatch ({detail})')
     file.unlink()
     if a.fresh_owner:
         print('Original application identity, unchanged authored source and actual original managed secret verified after fresh-owner recovery; new deployment owner observed')
