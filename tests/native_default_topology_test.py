@@ -118,7 +118,7 @@ class NativeTopologyQualificationTests(unittest.TestCase):
                 self.invoke(containers, path)
             self.assertFalse(path.exists())
 
-    def test_missing_provider_failure_inventory_never_reports_private_image_name(self):
+    def test_canonical_shared_valkey_service_contract_handles_opaque_podman_image(self):
         with tempfile.TemporaryDirectory() as root:
             path = Path(root) / "qualified.json"
             containers = [c for c in self.fixture()
@@ -128,16 +128,32 @@ class NativeTopologyQualificationTests(unittest.TestCase):
                 "registry.private.example/secret-namespace/cache-custom:private-tag",
             )
             containers.append(candidate)
+            self.invoke(containers, path)
+            result = path.read_text()
+            self.assertEqual(sum(m["provider"] == "valkey" for m in json.loads(result)["members"]), 1)
+            self.assertIn('"role": "valkey"', result)
+            self.assertNotIn("registry.private.example", result)
+            self.assertNotIn("secret-namespace", result)
+            self.assertNotIn("cache-custom", result)
+            self.assertNotIn("private-tag", result)
+            self.assertNotIn("PRIVATE_VALUE", result)
+
+    def test_shared_valkey_service_fallback_rejects_helpers_and_foreign_projects(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / "qualified.json"
+            containers = [c for c in self.fixture()
+                          if c["Config"]["Labels"]["com.docker.compose.service"] != "valkey"]
+            containers.extend([
+                self.container("shared-valkey-core-shared-default-access", "opaque-id"),
+                self.container("shared-valkey-core-shared-default-helper", "opaque-id"),
+                self.container("shared-valkey-core-shared-default", "opaque-id", "foreign-project"),
+            ])
             with self.assertRaisesRegex(SystemExit, "required native default providers absent: valkey") as raised:
                 self.invoke(containers, path)
             message = str(raised.exception)
-            self.assertIn("bh-test-core-shared/shared-valkey-core-shared-default", message)
-            self.assertIn("role=unclassified running=true", message)
-            self.assertNotIn("registry.private.example", message)
-            self.assertNotIn("secret-namespace", message)
-            self.assertNotIn("cache-custom", message)
-            self.assertNotIn("private-tag", message)
-            self.assertNotIn("PRIVATE_VALUE", message)
+            self.assertIn("bh-test-core-shared/shared-valkey-core-shared-default-access role=unclassified", message)
+            self.assertIn("bh-test-core-shared/shared-valkey-core-shared-default-helper role=unclassified", message)
+            self.assertNotIn("foreign-project", message)
             self.assertFalse(path.exists())
 
     def test_unselected_running_valkey_is_aggregated_without_satisfying_requirement(self):

@@ -58,7 +58,8 @@ def collect_native_topology():
             if image
         }
         running = bool((item.get("State") or {}).get("Running"))
-        auxiliary = bool(re.search(r"(?:-admin|-init|-access|-ui)(?:-[1-9][0-9]*)?$|sentinel|etcd", service))
+        auxiliary = bool(re.search(r"(?:-admin|-init|-access|-helper|-ui)(?:-[1-9][0-9]*)?$|sentinel|etcd", service))
+        selected_project = project.startswith("bh-" + target + "-")
         provider = ""
         if not auxiliary:
             for name, marker in [("postgresql", "postgres:"), ("postgresql", "spilo-"), ("openbao", "openbao:"), ("keycloak", "keycloak:"), ("seaweedfs", "seaweedfs:"), ("valkey", "valkey:"), ("valkey", "baseharbor-valkey:"), ("prometheus", "prometheus:"), ("otel-collector", "opentelemetry-collector"), ("loki", "loki:"), ("tempo", "tempo:"), ("rabbitmq", "rabbitmq:"), ("mongodb", "mongo:")]:
@@ -66,7 +67,15 @@ def collect_native_topology():
                        for repository in image_repositories):
                     provider = name
                     break
-        if not project.startswith("bh-" + target + "-"):
+        # Core's shared Valkey renderer names data services
+        # shared-valkey-<normalized application-environment-instance token>.
+        # Podman can report only an opaque image ID for locally built images,
+        # so use this exact service contract only inside the selected target
+        # project. The access alias and helper services are excluded above.
+        if (not provider and selected_project and not auxiliary
+                and re.fullmatch(r"shared-valkey-[a-z0-9]+(?:-[a-z0-9]+)*", service)):
+            provider = "valkey"
+        if not selected_project:
             if provider:
                 key = (provider, running)
                 unselected_counts[key] = unselected_counts.get(key, 0) + 1
