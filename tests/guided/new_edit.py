@@ -17,7 +17,7 @@ import subprocess
 from drive import (ANSI_ESCAPE, ARTIFACT_DIR, BAHA, ROOT, Rule,
                    capture_confirm_hash, capture_provider_impact_candidate_hash,
                    contains_candidate_abort_prompt, find_foreign_error_signature,
-                   EXPECTED_CANDIDATE_CONSENT_REFUSAL,
+                   EXPECTED_CANDIDATE_CONSENT_REFUSAL, remove_known_candidate_consent_refusal,
                    run_tty)
 
 NEEDS_END = r"No SQL, identity service, secrets service or management stack is mandatory\."
@@ -221,12 +221,13 @@ def edit_candidate_confirmation(returncode, transcript):
         raise RuntimeError("Edit failed without the documented candidate-consent digest")
 
     normalized = re.sub(r"\s+", "", ANSI_ESCAPE.sub("", transcript))
-    refusal = re.sub(r"\s+", "", ANSI_ESCAPE.sub("", EXPECTED_CANDIDATE_CONSENT_REFUSAL))
-    if refusal not in normalized:
+    refusal = re.sub(r"\s+", "", EXPECTED_CANDIDATE_CONSENT_REFUSAL)
+    if refusal not in normalized and ("Error:" + refusal) not in normalized:
         raise RuntimeError("candidate digest was not accompanied by the exact deployment-consent refusal")
     # The lifecycle wraps the exact consent refusal as `application machine:
     # partial`. Remove only these two known messages before checking that the
     # transcript contains no unrelated failure alongside the candidate hash.
+    normalized = remove_known_candidate_consent_refusal(normalized)
     normalized = normalized.replace("Error:applicationmachine:partial", "")
     if find_foreign_error_signature(normalized) is not None:
         raise RuntimeError("candidate-consent refusal was accompanied by another failure")

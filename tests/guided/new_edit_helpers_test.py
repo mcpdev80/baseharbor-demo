@@ -35,6 +35,8 @@ class FixtureHelpersTest(unittest.TestCase):
         transcript = (f"Re-run with --confirm-candidate {digest} to acknowledge this exact submission.\n"
                       + refusal + "\nError: application machine: partial\n")
         self.assertEqual(edit_candidate_confirmation(2, transcript), digest)
+        prefixed = transcript.replace(refusal, "Error: " + refusal)
+        self.assertEqual(edit_candidate_confirmation(2, prefixed), digest)
         for invalid in (
             (2, transcript.replace(refusal, "Error: unrelated edit failure")),
             (2, transcript + "Error: unrelated failure\n"),

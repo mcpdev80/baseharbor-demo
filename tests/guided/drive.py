@@ -137,11 +137,18 @@ FOREIGN_ERROR_SIGNATURES = (
 )
 
 EXPECTED_CANDIDATE_CONSENT_REFUSAL = (
-    "Error: record deployment before mutation: candidate submission requires an explicit "
+    "record deployment before mutation: candidate submission requires an explicit "
     "operator/automation consent (--confirm-candidate); refusing to record deployment state: "
     "candidate submission requires an explicit operator/automation consent "
     "(--confirm-candidate); refusing to record deployment state"
 )
+
+
+def remove_known_candidate_consent_refusal(text):
+    """Remove only the exact consent refusal, with either PTY presentation prefix."""
+    normalized = re.sub(r"\s+", "", ANSI_ESCAPE.sub("", text))
+    body = re.sub(r"\s+", "", EXPECTED_CANDIDATE_CONSENT_REFUSAL)
+    return normalized.replace("Error:" + body, "").replace(body, "")
 
 
 def find_foreign_error_signature(text):
@@ -160,8 +167,7 @@ def find_foreign_error_signature(text):
     normalized = re.sub(r"\s+", "", ANSI_ESCAPE.sub("", text))
     # This exact refusal is the documented first half of candidate consent.
     # Remove only the complete known diagnostic; any other error remains fatal.
-    expected = re.sub(r"\s+", "", EXPECTED_CANDIDATE_CONSENT_REFUSAL)
-    normalized = normalized.replace(expected, "")
+    normalized = remove_known_candidate_consent_refusal(normalized)
     for signature in FOREIGN_ERROR_SIGNATURES:
         if re.sub(r"\s+", "", signature) in normalized:
             return signature
