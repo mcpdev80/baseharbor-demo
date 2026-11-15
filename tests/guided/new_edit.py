@@ -367,7 +367,11 @@ def edit_application(project, operation, *, instance=None, native=True, environm
     rules.append(consent.rule())
     run_tty("new-edit-" + project.name + "-" + operation, [BAHA, "app", "edit"], rules,
             cwd=project, env={"BASEHARBOR_LOGS_ENABLED": "false", **(environment or {})},
-            timeout=600, no_output_timeout=90, expected_returncodes=(0, 1) if operation in ("no", "cancel") else (0,))
+            timeout=600,
+            # Core bounds a read-only preview refresh at 120s. Let that bounded
+            # authority finish before the PTY harness declares the UI idle.
+            no_output_timeout=150 if operation == "no" else 90,
+            expected_returncodes=(0, 1) if operation in ("no", "cancel") else (0,))
     if operation in ("no", "cancel"):
         assert_unchanged(before, project, native)
         transcript = (ARTIFACT_DIR / ("new-edit-" + project.name + "-" + operation + ".txt")).read_text()

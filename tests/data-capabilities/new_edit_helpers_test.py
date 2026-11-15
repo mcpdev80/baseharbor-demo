@@ -222,6 +222,24 @@ class NewCreateOnlyPromptRegressionTest(unittest.TestCase):
             self.assertEqual(observed["name"], "new-edit-new-only")
             self.assertEqual(project, parent / "new-only")
 
+    def test_zero_needs_no_allows_core_bounded_preview_refresh(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory) / "zero-no"
+            project.mkdir()
+            artifacts = Path(directory) / "artifacts"
+
+            def run_tty(name, argv, rules, **kwargs):
+                self.assertEqual(kwargs["no_output_timeout"], 150)
+                artifacts.mkdir()
+                (artifacts / (name + ".txt")).write_text("Error: wizard cancelled without changes\n")
+
+            with patch.object(guided, "ARTIFACT_DIR", artifacts), \
+                 patch.object(guided, "state_snapshot", return_value={}), \
+                 patch.object(guided, "run_tty", side_effect=run_tty), \
+                 patch.object(guided, "footprint", return_value={}) as footprint:
+                guided.edit_application(project, "no", native=False)
+            footprint.assert_called_once_with(project)
+
 
 class EditNeedsPickerRuleTest(unittest.TestCase):
     def test_sql_removal_sends_complete_space_and_redraw_navigation_before_enter(self):
