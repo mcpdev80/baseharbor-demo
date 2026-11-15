@@ -182,9 +182,9 @@ class ZeroNeedsPreviewRuleTest(unittest.TestCase):
         advance, decline, cancel = rules
         needs = "No SQL, identity service, secrets service or management stack is mandatory."
 
-        self.assertEqual(advance.callback(None, needs), "enter\n")
+        self.assertEqual(advance.callback(None, needs), "\r")
         self.assertTrue(advance.repeat)
-        self.assertEqual(advance.callback(None, needs), "enter\n")
+        self.assertEqual(advance.callback(None, needs), "\r")
         with self.assertRaisesRegex(RuntimeError, "bounded retry"):
             advance.callback(None, needs)
 
@@ -192,6 +192,30 @@ class ZeroNeedsPreviewRuleTest(unittest.TestCase):
         self.assertFalse(advance.repeat)
         self.assertEqual(cancel.callback(None, needs), "cancel\n")
         self.assertEqual(len(cancelled), 1)
+
+
+class EditNeedsPickerRuleTest(unittest.TestCase):
+    def test_sql_removal_sends_complete_space_and_redraw_navigation_before_enter(self):
+        rule = guided.edit_picker_rule(False)
+        prompt = """What does your application need?
+↑/↓ move · b/← previous row · Space toggle · Enter confirm · Esc cancel
+
+> [x] SQL database — Store relational application data
+  [ ] Cache — Cache temporary application data
+  [ ] Protected application secrets — Store application secret values
+  [ ] Application login — Sign in application end users via OIDC
+  [ ] TLS / HTTPS — Expose the application over HTTP with TLS
+No SQL, identity service, secrets service or management stack is mandatory.
+"""
+        response = rule.callback(None, prompt)
+        self.assertEqual(response, [" \n", "down\n", "up\n"])
+
+        # A repaint that still shows SQL selected must never trigger a second
+        # toggle or Enter. The helper waits for a verified state change.
+        self.assertIsNone(rule.callback(None, prompt))
+
+        unchecked = prompt.replace("> [x] SQL database", "> [ ] SQL database")
+        self.assertEqual(rule.callback(None, unchecked), "\r")
 
 
 

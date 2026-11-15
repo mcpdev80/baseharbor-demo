@@ -150,6 +150,7 @@ PY
     --password-file "$ARTIFACT_DIR/backup.pass" \
     > "$ARTIFACT_DIR/restore.txt"
 
+  python3 "$DEMO_ROOT/tests/native-default-topology.py" --profile recovery --output "$ARTIFACT_DIR/native-topology-immediate-restore.json"
   "$BAHA" app doctor > "$ARTIFACT_DIR/restore-doctor.txt"
   "$BAHA" app evidence -o json > "$ARTIFACT_DIR/recovery-evidence-after-restore.json"
 

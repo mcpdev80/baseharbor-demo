@@ -38,6 +38,18 @@ class ConsentTests(unittest.TestCase):
                 self.assertIn(f'run_consented "$BAHA" app apply > "$ARTIFACT_DIR/{output}"', runner)
                 self.assertNotIn(f'  "$BAHA" app apply > "$ARTIFACT_DIR/{output}"', runner)
 
+    def test_backup_restore_checks_topology_immediately_and_after_recovery(self):
+        runner = (Path(__file__).parent / "backup-restore" / "run.sh").read_text()
+        restore = runner.index('run_consented "$BAHA" app restore')
+        immediate = runner.index('--output "$ARTIFACT_DIR/native-topology-immediate-restore.json"')
+        doctor = runner.index('"$BAHA" app doctor > "$ARTIFACT_DIR/restore-doctor.txt"')
+        evidence = runner.index('"$BAHA" app evidence -o json > "$ARTIFACT_DIR/recovery-evidence-after-restore.json"')
+        later = runner.index('--output "$ARTIFACT_DIR/native-topology-after-restore.json"')
+        self.assertLess(restore, immediate)
+        self.assertLess(immediate, doctor)
+        self.assertLess(doctor, evidence)
+        self.assertLess(evidence, later)
+
     def test_fixture_cwd_allows_only_registered_core_bootstrap_project(self):
         with tempfile.TemporaryDirectory() as temporary:
             runner_temp = Path(temporary)

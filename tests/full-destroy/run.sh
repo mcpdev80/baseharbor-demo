@@ -31,9 +31,33 @@ if [ ! -s "$DEMO_ROOT/baseharbor.yaml" ]; then
   exit 1
 fi
 
-if "$BASEHARBOR_TEST_RUNTIME" ps -a --format '{{.Names}}' | grep -Eiq '^baseharbor-|demo'; then
+target_container_prefix="bh-${BASEHARBOR_TARGET}-"
+is_target_container_name() {
+  case "$1" in
+    "${target_container_prefix}"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Regression: persistent shared infrastructure and another Target's project
+# namespace are not application leftovers for this full-destroy fixture.
+if is_target_container_name "baseharbor-pre-release-registry" \
+  || is_target_container_name "bh-unrelated-target-demo-app" \
+  || ! is_target_container_name "${target_container_prefix}demo-app"; then
+  echo "Full-destroy container scope regression: target prefix is not exact" >&2
+  exit 1
+fi
+
+remaining_target_containers=()
+while IFS= read -r container_name; do
+  if is_target_container_name "$container_name"; then
+    remaining_target_containers+=("$container_name")
+  fi
+done < <("$BASEHARBOR_TEST_RUNTIME" ps -a --format '{{.Names}}')
+
+if ((${#remaining_target_containers[@]} > 0)); then
   echo "BaseHarbor-managed/application containers remain after full destroy" >&2
-  "$BASEHARBOR_TEST_RUNTIME" ps -a --format '{{.Names}}' >&2
+  printf '%s\n' "${remaining_target_containers[@]}" >&2
   exit 1
 fi
 

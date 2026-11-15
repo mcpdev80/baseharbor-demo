@@ -68,7 +68,7 @@ class FixtureHelpersTest(unittest.TestCase):
         rule = edit_picker_rule(False)
         match = rule.match(checked)
         self.assertIsNotNone(match)
-        self.assertEqual(rule.value(match, checked), [" "])
+        self.assertEqual(rule.value(match, checked), [" \n", "down\n", "up\n"])
         self.assertIsNone(rule.value(match, checked))  # stale frame: do not toggle twice
         match = rule.match(unchecked)
         self.assertIsNotNone(match)

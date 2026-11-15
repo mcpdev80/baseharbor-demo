@@ -160,8 +160,11 @@ def edit_picker_rule(sql):
                 # instead of toggling the same visible state twice.
                 return None
             changed = True
-            keys = ["\x1b[B" if index > cursor else "\x1b[A"] * abs(index - cursor)
-            return keys + [" "]
+            keys = [("down\n" if index > cursor else "up\n")] * abs(index - cursor)
+            # Edit's needs surface reads complete lines. Send a real Space
+            # command, cycle the cursor to force a redraw, then wait for the
+            # next rendered frame before deciding whether Enter is safe.
+            return keys + [" \n", "down\n", "up\n"]
         rule.repeat = False
         return "\r"
 
@@ -299,7 +302,7 @@ def zero_needs_no_rules(cancel):
         attempts += 1
         if attempts > 2:
             raise RuntimeError("zero-needs Edit did not advance to its preview after a bounded retry")
-        return "enter\n"
+        return "\r"
 
     advance = Rule(NEEDS_END, callback=advance_to_preview, repeat=True)
 

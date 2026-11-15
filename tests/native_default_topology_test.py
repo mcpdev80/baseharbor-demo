@@ -22,8 +22,8 @@ class NativeTopologyQualificationTests(unittest.TestCase):
     def container(self, service, image, project="bh-test-core-shared"):
         return {"Config": {"Image": image, "Env": ["PRIVATE_VALUE=must-not-persist"], "Labels": {"com.docker.compose.project": project, "com.docker.compose.service": service}}, "State": {"Running": True}}
 
-    def invoke(self, containers, output):
-        with patch.dict(os.environ, {"CONTAINER_CLI": "podman", "BASEHARBOR_TARGET": "test", "XDG_CONFIG_HOME": "/isolated/baseharbor/config", "XDG_DATA_HOME": "/isolated/baseharbor/data"}), patch.object(sys, "argv", ["native-default-topology.py", "--output", str(output)]), patch("subprocess.check_output", side_effect=["owned-id\n", json.dumps(containers)]) as native:
+    def invoke(self, containers, output, profile="default"):
+        with patch.dict(os.environ, {"CONTAINER_CLI": "podman", "BASEHARBOR_TARGET": "test", "XDG_CONFIG_HOME": "/isolated/baseharbor/config", "XDG_DATA_HOME": "/isolated/baseharbor/data"}), patch.object(sys, "argv", ["native-default-topology.py", "--output", str(output), "--profile", profile]), patch("subprocess.check_output", side_effect=["owned-id\n", json.dumps(containers)]) as native:
             runpy.run_path(str(Path(__file__).with_name("native-default-topology.py")), run_name="__main__")
             for call in native.call_args_list:
                 self.assertNotIn("XDG_CONFIG_HOME", call.kwargs["env"])
@@ -91,6 +91,19 @@ class NativeTopologyQualificationTests(unittest.TestCase):
             path = Path(root) / "qualified.json"
             with self.assertRaisesRegex(SystemExit, "duplicate shared default provider"):
                 self.invoke(self.fixture() + [self.container("shared-postgres-dev", "postgres:18", "bh-test-shared")], path)
+            self.assertFalse(path.exists())
+
+    def test_recovery_identity_failure_reports_only_running_keycloak_project_and_service(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / "qualified.json"
+            containers = self.fixture()
+            with self.assertRaises(SystemExit) as raised:
+                self.invoke(containers, path, profile="recovery")
+            message = str(raised.exception)
+            self.assertIn("running Keycloak project/service: bh-test-core-shared/keycloak-1", message)
+            self.assertNotIn("PRIVATE_VALUE", message)
+            self.assertNotIn("must-not-persist", message)
+            self.assertNotIn("Mount", message)
             self.assertFalse(path.exists())
 
 

@@ -63,7 +63,16 @@ if args.profile == "default":
     required.add("keycloak")
 observed = {provider for _, provider, _ in groups}
 if args.profile == "recovery" and "keycloak" in observed:
-    raise SystemExit("recovery fixture enabled unrequested Identity/management Core")
+    running_keycloak = sorted(
+        f"{row['project']}/{row['service']}"
+        for row in rows
+        if row["role"] == "keycloak" and row["running"]
+    )
+    details = ", ".join(running_keycloak) or "provider classification unavailable"
+    raise SystemExit(
+        "recovery fixture enabled unrequested Identity/management Core; "
+        "running Keycloak project/service: " + details
+    )
 if not required <= observed:
     raise SystemExit("required native default providers absent: " + ",".join(sorted(required - observed)))
 violations = [f"{project}/{provider}/{root}: {count} members" for (project, provider, root), count in groups.items() if count != 1]
