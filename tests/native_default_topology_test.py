@@ -22,8 +22,10 @@ class NativeTopologyQualificationTests(unittest.TestCase):
     def container(self, service, image, project="bh-test-core-shared"):
         return {"Config": {"Image": image, "Env": ["PRIVATE_VALUE=must-not-persist"], "Labels": {"com.docker.compose.project": project, "com.docker.compose.service": service}}, "State": {"Running": True}}
 
-    def invoke(self, containers, output, profile="default", baseline=None, snapshot=False):
+    def invoke(self, containers, output, profile="default", baseline=None, snapshot=False, wait_seconds=0):
         argv = ["native-default-topology.py", "--output", str(output), "--profile", profile]
+        if wait_seconds:
+            argv.extend(["--wait-required-providers-seconds", str(wait_seconds)])
         if baseline is not None:
             argv.extend(["--compare-keycloak-baseline", str(baseline)])
         if snapshot:
@@ -37,6 +39,20 @@ class NativeTopologyQualificationTests(unittest.TestCase):
             for call in native.call_args_list:
                 self.assertNotIn("XDG_CONFIG_HOME", call.kwargs["env"])
                 self.assertNotIn("XDG_DATA_HOME", call.kwargs["env"])
+
+    def test_recovery_topology_retries_transient_missing_running_provider(self):
+        with tempfile.TemporaryDirectory() as root:
+            output = Path(root) / "qualified.json"
+            without_valkey = [c for c in self.fixture()
+                              if c["Config"]["Labels"]["com.docker.compose.service"] != "valkey"]
+            native_calls = ["owned-id\n", json.dumps(without_valkey), "owned-id\n", json.dumps(self.fixture())]
+            with patch.dict(os.environ, {"CONTAINER_CLI": "podman", "BASEHARBOR_TARGET": "test"}), \
+                 patch.object(sys, "argv", ["native-default-topology.py", "--output", str(output),
+                                              "--profile", "recovery", "--wait-required-providers-seconds", "2"]), \
+                 patch("subprocess.check_output", side_effect=native_calls) as native:
+                runpy.run_path(str(Path(__file__).with_name("native-default-topology.py")), run_name="__main__")
+            self.assertEqual(native.call_count, 4)
+            self.assertIn('"provider": "valkey"', output.read_text())
 
     def test_auxiliary_and_foreign_resources_never_become_replicas_or_leak_secrets(self):
         with tempfile.TemporaryDirectory() as root:

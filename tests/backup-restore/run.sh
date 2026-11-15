@@ -93,10 +93,12 @@ EOF
 api_host="demo.baha.localhost"
 python3 "$DEMO_ROOT/tests/native-default-topology.py" --profile recovery \
   --compare-keycloak-baseline "$ARTIFACT_DIR/recovery-keycloak-baseline.json" \
+  --wait-required-providers-seconds 30 \
   --output "$ARTIFACT_DIR/native-topology-before.json"
 ( cd "$DEMO_ROOT" && run_consented "$BAHA" up --yes )
 python3 "$DEMO_ROOT/tests/native-default-topology.py" --profile recovery \
   --compare-keycloak-baseline "$ARTIFACT_DIR/recovery-keycloak-baseline.json" \
+  --wait-required-providers-seconds 30 \
   --output "$ARTIFACT_DIR/native-topology-repeated-up.json"
 gateway_port="$(dev_gateway_port)"
 base="$(dev_gateway_url "$api_host")"

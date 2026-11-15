@@ -5,11 +5,13 @@ import json
 import os
 import re
 import subprocess
+import time
 from pathlib import Path
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--output", required=True)
 parser.add_argument("--profile", choices=("default", "recovery"), default="default")
+parser.add_argument("--wait-required-providers-seconds", type=float, default=0)
 keycloak_mode = parser.add_mutually_exclusive_group()
 keycloak_mode.add_argument("--snapshot-keycloak-baseline", action="store_true")
 keycloak_mode.add_argument("--compare-keycloak-baseline")
@@ -24,41 +26,58 @@ if engine == "podman":
     # BaseHarbor state isolation, not a separate Podman container store.
     native_environment.pop("XDG_CONFIG_HOME", None)
     native_environment.pop("XDG_DATA_HOME", None)
-# Enumerate native IDs first. Podman's label-presence filter differs between
-# versions; ownership is checked against inspect labels below on both engines.
-ids = subprocess.check_output([engine, "ps", "-a", "--format", "{{.ID}}"], text=True, env=native_environment).split()
-if not ids:
-    raise SystemExit("native inventory is empty")
-# Inspect output stays in memory: credentials/environment/bind paths are never
-# printed, written or copied into the public qualification artifact.
-native = json.loads(subprocess.check_output([engine, "inspect", *ids], text=True, env=native_environment))
-groups = {}
-rows = []
-for item in native:
-    config = item.get("Config") or {}
-    labels = config.get("Labels") or {}
-    project = labels.get("com.docker.compose.project", "")
-    service = labels.get("com.docker.compose.service", "")
-    if not project.startswith("bh-" + target + "-"):
-        continue
-    image = str(config.get("Image") or item.get("ImageName") or "")
-    # Native inspect may return a digest-only reference without a tag.
-    image_repository = image.split("@", 1)[0].rsplit("/", 1)[-1].split(":", 1)[0]
-    running = bool((item.get("State") or {}).get("Running"))
-    auxiliary = bool(re.search(r"(?:-admin|-init|-access|-ui)(?:-[1-9][0-9]*)?$|sentinel|etcd", service))
-    provider = ""
-    if not auxiliary:
-        for name, marker in [("postgresql", "postgres:"), ("postgresql", "spilo-"), ("openbao", "openbao:"), ("keycloak", "keycloak:"), ("seaweedfs", "seaweedfs:"), ("valkey", "valkey:"), ("prometheus", "prometheus:"), ("otel-collector", "opentelemetry-collector"), ("loki", "loki:"), ("tempo", "tempo:"), ("rabbitmq", "rabbitmq:"), ("mongodb", "mongo:")]:
-            if (image_repository == marker[:-1] if marker.endswith(":") else marker in image_repository):
-                provider = name
-                break
-    if provider:
-        root = re.sub(r"-(?:member-|node-)?[1-9][0-9]*$", "", service)
-        key = (project, provider, root)
-        if running:
-            groups[key] = groups.get(key, 0) + 1
-    volumes = sorted(m["Name"] for m in item.get("Mounts", []) if m.get("Type") == "volume" and m.get("Name"))
-    rows.append({"project": project, "service": service, "role": provider or "auxiliary", "running": running, "volumes": volumes})
+required = {"postgresql", "openbao", "seaweedfs", "valkey", "loki"}
+if args.profile == "default":
+    required.add("keycloak")
+
+
+def collect_native_topology():
+    # Enumerate native IDs first. Podman's label-presence filter differs between
+    # versions; ownership is checked against inspect labels below on both engines.
+    ids = subprocess.check_output([engine, "ps", "-a", "--format", "{{.ID}}"], text=True, env=native_environment).split()
+    if not ids:
+        raise SystemExit("native inventory is empty")
+    # Inspect output stays in memory: credentials/environment/bind paths are never
+    # printed, written or copied into the public qualification artifact.
+    native = json.loads(subprocess.check_output([engine, "inspect", *ids], text=True, env=native_environment))
+    groups = {}
+    rows = []
+    for item in native:
+        config = item.get("Config") or {}
+        labels = config.get("Labels") or {}
+        project = labels.get("com.docker.compose.project", "")
+        service = labels.get("com.docker.compose.service", "")
+        if not project.startswith("bh-" + target + "-"):
+            continue
+        image = str(config.get("Image") or item.get("ImageName") or "")
+        # Native inspect may return a digest-only reference without a tag.
+        image_repository = image.split("@", 1)[0].rsplit("/", 1)[-1].split(":", 1)[0]
+        running = bool((item.get("State") or {}).get("Running"))
+        auxiliary = bool(re.search(r"(?:-admin|-init|-access|-ui)(?:-[1-9][0-9]*)?$|sentinel|etcd", service))
+        provider = ""
+        if not auxiliary:
+            for name, marker in [("postgresql", "postgres:"), ("postgresql", "spilo-"), ("openbao", "openbao:"), ("keycloak", "keycloak:"), ("seaweedfs", "seaweedfs:"), ("valkey", "valkey:"), ("prometheus", "prometheus:"), ("otel-collector", "opentelemetry-collector"), ("loki", "loki:"), ("tempo", "tempo:"), ("rabbitmq", "rabbitmq:"), ("mongodb", "mongo:")]:
+                if (image_repository == marker[:-1] if marker.endswith(":") else marker in image_repository):
+                    provider = name
+                    break
+        if provider:
+            root = re.sub(r"-(?:member-|node-)?[1-9][0-9]*$", "", service)
+            key = (project, provider, root)
+            if running:
+                groups[key] = groups.get(key, 0) + 1
+        volumes = sorted(m["Name"] for m in item.get("Mounts", []) if m.get("Type") == "volume" and m.get("Name"))
+        rows.append({"project": project, "service": service, "role": provider or "auxiliary", "running": running, "volumes": volumes})
+    return groups, rows
+
+
+deadline = time.monotonic() + max(0, args.wait_required_providers_seconds)
+while True:
+    groups, rows = collect_native_topology()
+    observed = {provider for _, provider, _ in groups}
+    missing = required - observed
+    if not missing or time.monotonic() >= deadline:
+        break
+    time.sleep(min(1, max(0, deadline - time.monotonic())))
 if not rows:
     raise SystemExit("no selected demo-owned native containers found")
 running_keycloak = sorted(
@@ -92,10 +111,6 @@ if args.compare_keycloak_baseline:
             "recovery fixture introduced unrequested Identity/management Core; "
             "new running Keycloak project/service: " + ", ".join(introduced)
         )
-required = {"postgresql", "openbao", "seaweedfs", "valkey", "loki"}
-if args.profile == "default":
-    required.add("keycloak")
-observed = {provider for _, provider, _ in groups}
 if not required <= observed:
     raise SystemExit("required native default providers absent: " + ",".join(sorted(required - observed)))
 violations = [f"{project}/{provider}/{root}: {count} members" for (project, provider, root), count in groups.items() if count != 1]
