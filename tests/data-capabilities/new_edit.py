@@ -17,9 +17,9 @@ import stat
 import signal
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "guided"))
-from new_edit import (ARTIFACT_DIR, ROOT, cli, edit_application, footprint,
-                      footprint_parity, new_application, native_environment,
-                      apply_created_application)
+from new_edit import (ANSI_ESCAPE, ARTIFACT_DIR, ROOT, cli, edit_application,
+                      footprint, footprint_parity, new_application,
+                      native_environment, apply_created_application)
 
 RUNTIME = os.environ["BASEHARBOR_TEST_RUNTIME"]
 OWNER_LABEL = "org.baseharbor.demo.new-edit-owner"
@@ -66,7 +66,8 @@ def create_sql_removal_application(parent, *, environment=None):
         restore_sql_workload(project, original, staged)
         raise
     transcript = (ARTIFACT_DIR / "new-edit-new-sql-apply.txt").read_text()
-    if "READY application and requested infrastructure verified" not in transcript:
+    normalized = ANSI_ESCAPE.sub("", transcript)
+    if "READY application and requested infrastructure verified" not in normalized:
         raise RuntimeError("prepared SQL source did not complete its lifecycle")
     return project, original, staged
 
