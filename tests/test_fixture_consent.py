@@ -98,6 +98,25 @@ class ConsentTests(unittest.TestCase):
         self.assertLess(doctor, evidence)
         self.assertLess(evidence, later)
 
+    def test_full_journey_resets_prior_sql_runtime_before_backup_restore(self):
+        tests = Path(__file__).parent
+        runner = (tests / "backup-restore" / "run.sh").read_text()
+        gates = json.loads((tests / "gates.json").read_text())
+        names = [gate["name"] for gate in gates]
+        self.assertLess(names.index("data-capabilities"), names.index("backup-restore"))
+
+        guard = 'if [ "${DEMO_ATOMIC_GATE:-0}" != "1" ]; then'
+        start = runner.index(guard)
+        reset = runner[start:runner.index("\nfi", start)]
+        self.assertIn('run_consented "$BAHA" destroy --all --yes', reset)
+        self.assertIn('test ! -e "$XDG_DATA_HOME/baseharbor"', reset)
+        self.assertIn('"$BAHA" target create "$BASEHARBOR_TARGET"', reset)
+        self.assertIn('bash "$DEMO_ROOT/tests/core-bootstrap.sh"', reset)
+        self.assertLess(reset.index('run_consented "$BAHA" destroy --all --yes'), reset.index('"$BAHA" target create'))
+        self.assertLess(reset.index('"$BAHA" target create'), reset.index('tests/core-bootstrap.sh'))
+        self.assertLess(runner.index('bash "$DEMO_ROOT/tests/core-bootstrap.sh"'), runner.index('"$BAHA" app init demo'))
+        self.assertIn("Atomic gates already receive that isolated setup", runner)
+
     def test_retained_restore_preserves_deployment_owner_before_restore(self):
         runner = (Path(__file__).parent / "backup-restore" / "run.sh").read_text()
         branch_start = runner.index('if [ "${BASEHARBOR_DEMO_RECOVERY_MODE:-retained}" = fresh-owner ]; then')

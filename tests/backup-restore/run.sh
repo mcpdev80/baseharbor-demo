@@ -24,8 +24,27 @@ chmod 600 "$ARTIFACT_DIR/backup.pass"
 
 # Build one deterministic recovery contract that exercises SQL, secrets, S3,
 # application-owned workload storage and application log history.
-# This atomic gate starts with a fresh isolated Target and no deployment owner.
-# Existing lifecycle fixtures are retired only when their canonical owner exists.
+# In the full reference journey earlier gates share this Target and may have
+# left target-wide providers from their selected SQL topology. Recreate the
+# owned installation before this gate so its one-provider recovery assertion
+# observes a fresh Target. Atomic gates already receive that isolated setup
+# from atomic-bootstrap.sh and retain their existing path.
+if [ "${DEMO_ATOMIC_GATE:-0}" != "1" ]; then
+  ( cd "$DEMO_ROOT" && run_consented "$BAHA" destroy --all --yes )
+  test ! -e "$XDG_CONFIG_HOME/baseharbor"
+  test ! -e "$XDG_DATA_HOME/baseharbor"
+  rm -rf "$XDG_DATA_HOME/baseharbor-recovery"
+  clean_generated_state
+  "$BAHA" target create "$BASEHARBOR_TARGET" \
+    --provider "$BASEHARBOR_TEST_RUNTIME" \
+    --access "local-$BASEHARBOR_TEST_RUNTIME" \
+    --reference local \
+    --scope default \
+    --default >/dev/null
+  bash "$DEMO_ROOT/tests/core-bootstrap.sh"
+fi
+
+# Retire a previous app manifest only when its canonical owner exists.
 if [ -s "$DEMO_ROOT/baseharbor.yaml" ]; then
   ( cd "$DEMO_ROOT" && run_consented "$BAHA" app destroy --yes )
 fi
