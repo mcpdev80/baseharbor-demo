@@ -220,6 +220,36 @@ No SQL, identity service, secrets service or management stack is mandatory.
 
 
 class SQLWorkloadTransitionTest(unittest.TestCase):
+    def test_source_is_prepared_before_candidate_apply(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project = root / "new-sql"
+            project.mkdir()
+            (project / "main.go").write_bytes(b"package main\n" + fixture.SQL_STARTUP)
+            artifact_dir = root / "artifacts"
+            artifact_dir.mkdir()
+            events = []
+
+            def create(parent, name, *, sql, mode, environment):
+                events.append(("create", mode, sql))
+                self.assertEqual((parent, name), (root, "new-sql"))
+                return project
+
+            def apply(path, *, environment):
+                events.append(("apply", (path / "main.go").read_bytes()))
+                (artifact_dir / "new-edit-new-sql-apply.txt").write_text("Lifecycle: VERIFIED\n")
+
+            with patch.object(fixture, "new_application", side_effect=create), \
+                 patch.object(fixture, "apply_created_application", side_effect=apply), \
+                 patch.object(fixture, "ARTIFACT_DIR", artifact_dir):
+                actual, original, staged = fixture.create_sql_removal_application(root)
+
+            self.assertIs(actual, project)
+            self.assertEqual(events[0], ("create", "create-only", True))
+            self.assertEqual(events[1], ("apply", staged))
+            self.assertNotEqual(original, staged)
+            self.assertIn(b'os.Getenv("DATABASE_URL")', events[1][1])
+
     def test_removal_adapts_usage_and_add_restores_exact_strict_source(self):
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)

@@ -10,6 +10,9 @@ from pathlib import Path
 parser = argparse.ArgumentParser()
 parser.add_argument("--output", required=True)
 parser.add_argument("--profile", choices=("default", "recovery"), default="default")
+keycloak_mode = parser.add_mutually_exclusive_group()
+keycloak_mode.add_argument("--snapshot-keycloak-baseline", action="store_true")
+keycloak_mode.add_argument("--compare-keycloak-baseline")
 args = parser.parse_args()
 engine = os.environ["CONTAINER_CLI"]
 target = os.environ["BASEHARBOR_TARGET"].replace(".", "-")
@@ -58,21 +61,41 @@ for item in native:
     rows.append({"project": project, "service": service, "role": provider or "auxiliary", "running": running, "volumes": volumes})
 if not rows:
     raise SystemExit("no selected demo-owned native containers found")
+running_keycloak = sorted(
+    f"{row['project']}/{row['service']}"
+    for row in rows
+    if row["role"] == "keycloak" and row["running"]
+)
+if args.snapshot_keycloak_baseline:
+    Path(args.output).write_text(json.dumps({
+        "schema": "baseharbor.demo-keycloak-baseline/v1",
+        "services": running_keycloak,
+    }, indent=2) + "\n")
+    print("Native Keycloak baseline captured")
+    raise SystemExit(0)
+if args.compare_keycloak_baseline:
+    baseline_path = Path(args.compare_keycloak_baseline)
+    try:
+        baseline = json.loads(baseline_path.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"cannot read Keycloak baseline: {baseline_path}") from exc
+    if (
+        not isinstance(baseline, dict)
+        or baseline.get("schema") != "baseharbor.demo-keycloak-baseline/v1"
+        or not isinstance(baseline.get("services"), list)
+        or not all(isinstance(service, str) for service in baseline["services"])
+    ):
+        raise SystemExit("invalid Keycloak baseline schema")
+    introduced = sorted(set(running_keycloak) - set(baseline["services"]))
+    if introduced:
+        raise SystemExit(
+            "recovery fixture introduced unrequested Identity/management Core; "
+            "new running Keycloak project/service: " + ", ".join(introduced)
+        )
 required = {"postgresql", "openbao", "seaweedfs", "valkey", "loki"}
 if args.profile == "default":
     required.add("keycloak")
 observed = {provider for _, provider, _ in groups}
-if args.profile == "recovery" and "keycloak" in observed:
-    running_keycloak = sorted(
-        f"{row['project']}/{row['service']}"
-        for row in rows
-        if row["role"] == "keycloak" and row["running"]
-    )
-    details = ", ".join(running_keycloak) or "provider classification unavailable"
-    raise SystemExit(
-        "recovery fixture enabled unrequested Identity/management Core; "
-        "running Keycloak project/service: " + details
-    )
 if not required <= observed:
     raise SystemExit("required native default providers absent: " + ",".join(sorted(required - observed)))
 violations = [f"{project}/{provider}/{root}: {count} members" for (project, provider, root), count in groups.items() if count != 1]

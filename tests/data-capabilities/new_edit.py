@@ -18,7 +18,8 @@ import signal
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "guided"))
 from new_edit import (ARTIFACT_DIR, ROOT, cli, edit_application, footprint,
-                      footprint_parity, new_application, native_environment)
+                      footprint_parity, new_application, native_environment,
+                      apply_created_application)
 
 RUNTIME = os.environ["BASEHARBOR_TEST_RUNTIME"]
 OWNER_LABEL = "org.baseharbor.demo.new-edit-owner"
@@ -51,6 +52,23 @@ def restore_sql_workload(project, original, staged):
     if path.is_symlink() or path.read_bytes() != staged:
         raise RuntimeError("SQL fixture source changed after preparing removal")
     path.write_bytes(original)
+
+
+def create_sql_removal_application(parent, *, environment=None):
+    """Create source only, stage its removal form, then bind/apply that source."""
+    project = new_application(parent, "new-sql", sql=True, mode="create-only",
+        environment={"BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE": "application", **(environment or {})})
+    original, staged = prepare_sql_removal_workload(project)
+    try:
+        apply_created_application(project,
+            environment={"BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE": "application", **(environment or {})})
+    except BaseException:
+        restore_sql_workload(project, original, staged)
+        raise
+    transcript = (ARTIFACT_DIR / "new-edit-new-sql-apply.txt").read_text()
+    if "Lifecycle: VERIFIED" not in transcript:
+        raise RuntimeError("prepared SQL source did not complete its lifecycle")
+    return project, original, staged
 
 
 def receipt_path():
@@ -310,7 +328,7 @@ def main():
 
         parent = ROOT / ".new-edit-fixtures"
         parent.mkdir(exist_ok=True)
-        project = new_application(parent, "new-sql", sql=True,
+        project, original_workload, staged_workload = create_sql_removal_application(parent,
             environment={"BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE": "application"})
         dedicated_id = selected_sql(footprint_parity(project))
         if dedicated_id == shared_id:
@@ -328,7 +346,6 @@ def main():
 
         # Capability intent and application usage change together, as in a
         # developer migration. Keep real SQL startup strict for every SQL phase.
-        original_workload, staged_workload = prepare_sql_removal_workload(project)
         removed = edit_application(project, "remove")
         if removed.get("requirements"):
             raise RuntimeError("Edit remove did not persist zero managed needs")

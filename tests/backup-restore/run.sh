@@ -82,13 +82,22 @@ EOF
 
   "$BAHA" app init --tls local --yes
 
+  # Shared Core services can predate this recovery fixture. Record the exact
+  # running target-owned Keycloak set before apply, then reject additions.
+  python3 "$DEMO_ROOT/tests/native-default-topology.py" \
+    --snapshot-keycloak-baseline \
+    --output "$ARTIFACT_DIR/recovery-keycloak-baseline.json"
   run_consented "$BAHA" --verbose up --yes 2>&1 | tee "$ARTIFACT_DIR/recovery-apply.txt"
 )
 
 api_host="demo.baha.localhost"
-python3 "$DEMO_ROOT/tests/native-default-topology.py" --profile recovery --output "$ARTIFACT_DIR/native-topology-before.json"
+python3 "$DEMO_ROOT/tests/native-default-topology.py" --profile recovery \
+  --compare-keycloak-baseline "$ARTIFACT_DIR/recovery-keycloak-baseline.json" \
+  --output "$ARTIFACT_DIR/native-topology-before.json"
 ( cd "$DEMO_ROOT" && run_consented "$BAHA" up --yes )
-python3 "$DEMO_ROOT/tests/native-default-topology.py" --profile recovery --output "$ARTIFACT_DIR/native-topology-repeated-up.json"
+python3 "$DEMO_ROOT/tests/native-default-topology.py" --profile recovery \
+  --compare-keycloak-baseline "$ARTIFACT_DIR/recovery-keycloak-baseline.json" \
+  --output "$ARTIFACT_DIR/native-topology-repeated-up.json"
 gateway_port="$(dev_gateway_port)"
 base="$(dev_gateway_url "$api_host")"
 gateway_ca="$XDG_DATA_HOME/baseharbor/targets/$BASEHARBOR_TARGET/developer-access/dev/gateway/runtime/ca.pem"
@@ -165,7 +174,9 @@ PY
     --password-file "$ARTIFACT_DIR/backup.pass" \
     > "$ARTIFACT_DIR/restore.txt"
 
-  python3 "$DEMO_ROOT/tests/native-default-topology.py" --profile recovery --output "$ARTIFACT_DIR/native-topology-immediate-restore.json"
+  python3 "$DEMO_ROOT/tests/native-default-topology.py" --profile recovery \
+    --compare-keycloak-baseline "$ARTIFACT_DIR/recovery-keycloak-baseline.json" \
+    --output "$ARTIFACT_DIR/native-topology-immediate-restore.json"
   "$BAHA" app doctor > "$ARTIFACT_DIR/restore-doctor.txt"
   "$BAHA" app evidence -o json > "$ARTIFACT_DIR/recovery-evidence-after-restore.json"
 
@@ -181,7 +192,9 @@ PY
 )
 
 grep -q '^READY' "$ARTIFACT_DIR/restore-doctor.txt"
-python3 "$DEMO_ROOT/tests/native-default-topology.py" --profile recovery --output "$ARTIFACT_DIR/native-topology-after-restore.json"
+python3 "$DEMO_ROOT/tests/native-default-topology.py" --profile recovery \
+  --compare-keycloak-baseline "$ARTIFACT_DIR/recovery-keycloak-baseline.json" \
+  --output "$ARTIFACT_DIR/native-topology-after-restore.json"
 
 post_restore_ready=false
 for attempt in 1 2 3 4 5 6; do

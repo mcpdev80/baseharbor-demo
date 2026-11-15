@@ -14,7 +14,7 @@ import re
 import stat
 import subprocess
 
-from drive import ANSI_ESCAPE, ARTIFACT_DIR, BAHA, ROOT, Rule, run_tty
+from drive import ANSI_ESCAPE, ARTIFACT_DIR, BAHA, ROOT, Rule, capture_confirm_hash, run_tty
 
 NEEDS_END = r"No SQL, identity service, secrets service or management stack is mandatory\."
 PICKER_END = r"[Pp]: (?:optional )?provider preference(?: · b/←: previous row)? · Esc/Ctrl\+C: cancel"
@@ -206,7 +206,10 @@ def apply_changes_rule(decision, *, require_provider_changes=False):
                 optional=decision != "run" or not require_provider_changes)
 
 
-def new_application(parent, name, *, sql=False, decision="run", native=True, environment=None):
+def new_application(parent, name, *, sql=False, decision="run", native=True, environment=None,
+                    mode="run"):
+    if mode not in ("run", "create-only"):
+        raise ValueError("New fixture mode must be run or create-only")
     project = parent / name
     if project.exists():
         raise RuntimeError("New fixture refuses to reuse an existing application directory")
@@ -224,7 +227,7 @@ def new_application(parent, name, *, sql=False, decision="run", native=True, env
     rules = [Rule(r"Application name:\s*$", name + "\n"),
              Rule(r"Project location(?::[^\r\n]*\$ | \[[^\]]+\]:\s*)$", str(parent) + "\n"),
              Rule(r"Choose a stack.*?Selection \[1\]:\s*$", callback=stack_go),
-             Rule(r"After creation \(create-only or run\) \[create-only\]:\s*$", "run\n"),
+             Rule(r"After creation \(create-only or run\) \[create-only\]:\s*$", mode + "\n"),
              Rule(PICKER_END, callback=picker)]
     if decision != "cancel":
         returned_picker = Rule(PICKER_END, callback=picker, optional=True)
@@ -240,7 +243,7 @@ def new_application(parent, name, *, sql=False, decision="run", native=True, env
                 return "n\n"
             return "y\n"
 
-        rules.append(Rule(r"Create project files and continue into the separately authorized lifecycle\? \[Y/n\]\s*$",
+        rules.append(Rule(r"Create project files (?:only \(does not start containers or deploy providers\)|and continue into the separately authorized lifecycle)\? \[Y/n\]\s*$",
                           callback=confirm))
         rules.append(returned_picker)
     consent = CurrentConsent()
@@ -268,7 +271,7 @@ def new_application(parent, name, *, sql=False, decision="run", native=True, env
             raise RuntimeError("New No did not return to the needs picker before Cancel")
         return None
     actual = footprint(project)
-    if "Lifecycle: VERIFIED" not in (ARTIFACT_DIR / ("new-edit-" + name + ".txt")).read_text():
+    if mode == "run" and "Lifecycle: VERIFIED" not in (ARTIFACT_DIR / ("new-edit-" + name + ".txt")).read_text():
         raise RuntimeError("New returned without its completed lifecycle receipt")
     requirements = actual.get("requirements") or []
     kinds = {row["requirement"]["kind"] for row in requirements}
@@ -277,6 +280,26 @@ def new_application(parent, name, *, sql=False, decision="run", native=True, env
     if not actual.get("complete"):
         raise RuntimeError("New did not establish a complete native Footprint")
     return project
+
+
+def apply_created_application(project, *, environment=None, name=None):
+    """Bind the current source and run the normal explicitly consented lifecycle."""
+    argv = [BAHA, "app", "apply"]
+    env = {**os.environ, "BASEHARBOR_LOGS_ENABLED": "false", **(environment or {})}
+    first = subprocess.run(argv, cwd=project, env=env, capture_output=True, text=True, timeout=120)
+    transcript = first.stdout + first.stderr
+    digest = capture_confirm_hash(transcript)
+    if first.returncode == 0 or digest is None:
+        raise RuntimeError("app apply did not produce the exact candidate-consent challenge: " + transcript[-2000:])
+
+    consent = CurrentConsent()
+    rules = [consent.rule(), apply_changes_rule("run", require_provider_changes=True),
+             Rule(r"Is this installation running on a machine where you write code\?.*?Choice \[1\]:\s*$", "1\n", optional=True),
+             Rule(r"PostgreSQL host port \[\d+\]:\s*$", "\n", optional=True)]
+    label = name or project.name
+    run_tty("new-edit-" + label + "-apply", [*argv, "--confirm-candidate", digest], rules,
+            cwd=project, env={"BASEHARBOR_LOGS_ENABLED": "false", **(environment or {})},
+            timeout=600, no_output_timeout=120)
 
 
 def provider_choice_response(text, instance):

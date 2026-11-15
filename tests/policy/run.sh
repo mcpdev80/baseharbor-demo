@@ -18,8 +18,32 @@ trap 'policy_unexpected_err "$LINENO" "$BASH_COMMAND"' ERR
 source "$DEMO_ROOT/tests/lib.sh"
 
 section "Environment and policy"
+policy_org="$ARTIFACT_DIR/policy-organization"
+mkdir -p "$policy_org"
+cat > "$policy_org/organization.yaml" <<'YAML'
+apiVersion: baseharbor.organization/v1
+organization: demo-policy
+operation: read
+targets:
+  dev:
+    reference: local-dev
+environments:
+  dev: {}
+profiles:
+  demo-policy-reader:
+    name: demo-policy-reader
+    target: dev
+    environment: dev
+    operations: [read]
+YAML
+cat > "$policy_org/local-dev" <<'TARGET'
+kind: target
+name: local-dev
+TARGET
 (
   cd "$DEMO_ROOT"
+  "$BAHA" config organization set --source local --location "$policy_org" --environment dev -o json \
+    > "$ARTIFACT_DIR/policy-organization-active.json"
   "$BAHA" policy explain -e dev | tee "$ARTIFACT_DIR/policy-explain.txt"
   "$BAHA" policy check -e dev | tee "$ARTIFACT_DIR/policy-check.txt"
   if run_json policy-check "$BAHA" policy check -e dev -o json; then

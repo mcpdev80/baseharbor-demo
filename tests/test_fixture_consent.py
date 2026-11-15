@@ -19,6 +19,11 @@ spec.loader.exec_module(fixture)
 class ConsentTests(unittest.TestCase):
     def test_policy_gate_has_secret_safe_unexpected_error_diagnostic(self):
         runner = (Path(__file__).parent / "policy" / "run.sh").read_text()
+        self.assertIn('policy_org="$ARTIFACT_DIR/policy-organization"', runner)
+        self.assertIn("organization: demo-policy", runner)
+        self.assertIn("operation: read", runner)
+        self.assertIn("operations: [read]", runner)
+        self.assertLess(runner.index('"$BAHA" config organization set'), runner.index('"$BAHA" policy check -e dev'))
         self.assertIn("set -Eeuo pipefail", runner)
         self.assertIn("trap 'policy_unexpected_err \"$LINENO\" \"$BASH_COMMAND\"' ERR", runner)
         self.assertIn("line=%s exit=%s command=%q", runner)
@@ -28,7 +33,14 @@ class ConsentTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             fake_baha = root / "baha"
-            fake_baha.write_text("#!/usr/bin/env bash\nexit 37\n")
+            fake_baha.write_text(
+                "#!/usr/bin/env bash\n"
+                'if [[ "$1 $2 $3" == "config organization set" ]]; then\n'
+                "  printf '{\\\"organization\\\":\\\"demo-policy\\\"}\\n'\n"
+                "  exit 0\n"
+                "fi\n"
+                "exit 37\n"
+            )
             fake_baha.chmod(0o755)
             env = os.environ | {
                 "DEMO_ROOT": str(Path(__file__).parent.parent),
@@ -46,7 +58,7 @@ class ConsentTests(unittest.TestCase):
             )
 
         self.assertEqual(result.returncode, 37)
-        self.assertIn("policy gate unexpected ERR: line=23 exit=37 command=tee\\ ", result.stderr)
+        self.assertIn("policy gate unexpected ERR: line=47 exit=37 command=tee\\ ", result.stderr)
         self.assertEqual(result.stderr.count("policy gate unexpected ERR:"), 1)
         self.assertNotIn("must-not-appear", result.stdout + result.stderr)
 
