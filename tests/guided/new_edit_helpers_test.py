@@ -7,7 +7,8 @@ import sys
 import tempfile
 import unittest
 
-from new_edit import CurrentConsent, filesystem_snapshot, picker_keys, provider_choice_response, provider_choice_rule
+from new_edit import (CurrentConsent, edit_picker_rule, filesystem_snapshot, picker_keys,
+                      provider_choice_response, provider_choice_rule)
 import drive
 
 
@@ -57,6 +58,36 @@ class FixtureHelpersTest(unittest.TestCase):
         self.assertEqual(picker_keys(frame, sql=True), [" "] + ["\x1b[B"] * 4 + [" ", "\r"])
         with self.assertRaises(RuntimeError):
             picker_keys(frame.replace("  [ ] Cache — cache\n", ""))
+
+    def test_edit_picker_changes_only_visible_sql_choice_and_waits_for_redraw(self):
+        checked = ("What does your application need?\n" + "\n".join([
+            "> [x] SQL database — data", "  [ ] Cache — cache",
+            "  [ ] Protected application secrets — secrets", "  [ ] Application login — login",
+            "  [x] TLS / HTTPS — exposure", "No SQL, identity service, secrets service or management stack is mandatory."]))
+        unchecked = checked.replace("> [x] SQL database", "> [ ] SQL database")
+        rule = edit_picker_rule(False)
+        match = rule.match(checked)
+        self.assertIsNotNone(match)
+        self.assertEqual(rule.value(match, checked), [" "])
+        self.assertIsNone(rule.value(match, checked))  # stale frame: do not toggle twice
+        match = rule.match(unchecked)
+        self.assertIsNotNone(match)
+        self.assertEqual(rule.value(match, unchecked), "\r")
+        self.assertFalse(rule.repeat)
+
+        already_unchecked = edit_picker_rule(False)
+        match = already_unchecked.match(unchecked)
+        self.assertEqual(already_unchecked.value(match, unchecked), "\r")
+
+    def test_edit_picker_fails_closed_when_sql_row_is_missing(self):
+        text = ("What does your application need?\n" + "\n".join([
+            "> [ ] Cache — cache", "  [ ] Protected application secrets — secrets",
+            "  [ ] Application login — login", "  [ ] TLS / HTTPS — exposure",
+            "  [ ] Metrics — metrics",
+            "No SQL, identity service, secrets service or management stack is mandatory."]))
+        rule = edit_picker_rule(False)
+        with self.assertRaisesRegex(RuntimeError, "exactly one SQL choice"):
+            rule.value(rule.match(text), text)
 
     def test_consent_rejects_replayed_stale_and_impossible_stages(self):
         consent = CurrentConsent()

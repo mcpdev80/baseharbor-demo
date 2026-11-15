@@ -175,6 +175,25 @@ if sys.argv[1:] == ["env"]:
                 self.assertEqual(os.environ["XDG_CONFIG_HOME"], str(root / "config"))
 
 
+class ZeroNeedsPreviewRuleTest(unittest.TestCase):
+    def test_no_preview_path_has_one_safe_enter_retry_then_no_execution(self):
+        cancelled = []
+        rules = guided.zero_needs_no_rules(lambda match, text: cancelled.append(text) or "cancel\n")
+        advance, decline, cancel = rules
+        needs = "No SQL, identity service, secrets service or management stack is mandatory."
+
+        self.assertEqual(advance.callback(None, needs), "enter\n")
+        self.assertTrue(advance.repeat)
+        self.assertEqual(advance.callback(None, needs), "enter\n")
+        with self.assertRaisesRegex(RuntimeError, "bounded retry"):
+            advance.callback(None, needs)
+
+        self.assertEqual(decline.callback(None, "Read-only decision preview (not execution)"), "no\n")
+        self.assertFalse(advance.repeat)
+        self.assertEqual(cancel.callback(None, needs), "cancel\n")
+        self.assertEqual(len(cancelled), 1)
+
+
 
 class SQLWorkloadTransitionTest(unittest.TestCase):
     def test_removal_adapts_usage_and_add_restores_exact_strict_source(self):

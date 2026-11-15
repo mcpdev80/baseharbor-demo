@@ -137,6 +137,38 @@ def picker_keys(text, sql=False):
     return keys + ["\r"]
 
 
+def edit_picker_rule(sql):
+    """Change only the SQL checkbox shown by the current Edit needs picker."""
+    changed = False
+
+    def respond(match, text):
+        nonlocal changed
+        clean = ANSI_ESCAPE.sub("", text)
+        frame = clean.rsplit("What does your application need?", 1)[-1]
+        rows = re.findall(r"(?m)^\s*([>]?)\s*\[([ x])\]\s+([^\r\n]+?) —", frame)
+        if len(rows) != 5 or sum(pointer == ">" for pointer, _, _ in rows) != 1:
+            raise RuntimeError("Edit needs picker did not render its five everyday choices")
+        sql_rows = [(index, row) for index, row in enumerate(rows) if row[2] == "SQL database"]
+        if len(sql_rows) != 1:
+            raise RuntimeError("Edit needs picker did not render exactly one SQL choice")
+        index, (pointer, mark, _) = sql_rows[0]
+        cursor = next(i for i, row in enumerate(rows) if row[0] == ">")
+        selected = mark == "x"
+        if selected != sql:
+            if changed:
+                # A redraw has not yet reflected the first key. Wait for output
+                # instead of toggling the same visible state twice.
+                return None
+            changed = True
+            keys = ["\x1b[B" if index > cursor else "\x1b[A"] * abs(index - cursor)
+            return keys + [" "]
+        rule.repeat = False
+        return "\r"
+
+    rule = Rule(NEEDS_END, callback=respond, repeat=True)
+    return rule
+
+
 class CurrentConsent:
     """Only the displayed operation's exact ordered non-destructive plan."""
     def __init__(self):
@@ -257,6 +289,29 @@ def provider_choice_rule(instance):
                 callback=lambda match, text: provider_choice_response(text, instance))
 
 
+def zero_needs_no_rules(cancel):
+    """Advance to preview, allowing one no-op retry; then return without execution."""
+    attempts = 0
+    advance = None
+
+    def advance_to_preview(match, text):
+        nonlocal attempts
+        attempts += 1
+        if attempts > 2:
+            raise RuntimeError("zero-needs Edit did not advance to its preview after a bounded retry")
+        return "enter\n"
+
+    advance = Rule(NEEDS_END, callback=advance_to_preview, repeat=True)
+
+    def decline_preview(match, text):
+        advance.repeat = False
+        return "no\n"
+
+    return [advance,
+            Rule(r"Read-only decision preview \(not execution\)", callback=decline_preview),
+            Rule(NEEDS_END, callback=cancel)]
+
+
 def edit_application(project, operation, *, instance=None, native=True, environment=None):
     """Drive the actual public Edit needs/preview/consequence prompts."""
     before = state_snapshot(project, native)
@@ -265,17 +320,15 @@ def edit_application(project, operation, *, instance=None, native=True, environm
         def cancel(match, text):
             assert_unchanged(before, project, native)
             return "cancel\n"
-        rules = [Rule(NEEDS_END, callback=cancel)] if operation == "cancel" else [
-            Rule(NEEDS_END, "enter\n"),
-            Rule(r"Read-only decision preview \(not execution\)", "no\n"),
-            Rule(NEEDS_END, callback=cancel),
-        ]
+        if operation == "cancel":
+            rules = [Rule(NEEDS_END, callback=cancel)]
+        else:
+            rules = zero_needs_no_rules(cancel)
     elif operation in ("add", "remove"):
-        rules = [Rule(NEEDS_END, "space\n")]
+        rules = [edit_picker_rule(operation == "add")]
         if operation == "add" and instance:
             rules.append(provider_choice_rule(instance))
-        rules.extend([Rule(NEEDS_END, "enter\n"),
-                      Rule(r"Read-only decision preview \(not execution\)", "yes\n")])
+        rules.append(Rule(r"Read-only decision preview \(not execution\)", "yes\n"))
     elif operation == "switch" and instance:
         rules = [provider_choice_rule(instance),
                  Rule(NEEDS_END, "enter\n"),

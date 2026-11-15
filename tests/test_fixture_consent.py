@@ -17,6 +17,27 @@ spec.loader.exec_module(fixture)
 
 
 class ConsentTests(unittest.TestCase):
+    def test_recovery_atomic_bootstrap_does_not_enable_identity_or_management_ui(self):
+        resources = json.loads((Path(__file__).parent / "gate-resources.json").read_text())
+        recovery = resources["backup-restore"]
+        self.assertEqual(recovery["profile"], "recovery")
+        self.assertEqual(recovery["guided_selection"], "1,2,8,9,13")
+        self.assertEqual(recovery["management_ui"], "none")
+        self.assertNotIn("identity.oidc", recovery["capabilities"])
+        self.assertNotIn("identity-management-ui", recovery["capabilities"])
+
+    def test_connectivity_companion_up_uses_exact_fixture_consent_wrapper(self):
+        runner = (Path(__file__).parent / "connectivity" / "run.sh").read_text()
+        self.assertIn('run_consented "$BAHA" up --yes > "$ARTIFACT_DIR/companion-up.txt"', runner)
+        self.assertNotIn('  "$BAHA" up --yes > "$ARTIFACT_DIR/companion-up.txt"', runner)
+
+    def test_reconciliation_apply_steps_use_fixture_consent_wrapper(self):
+        runner = (Path(__file__).parent / "reconciliation" / "run.sh").read_text()
+        for output in ("reconcile-insync.txt", "reconcile-missing.txt"):
+            with self.subTest(output=output):
+                self.assertIn(f'run_consented "$BAHA" app apply > "$ARTIFACT_DIR/{output}"', runner)
+                self.assertNotIn(f'  "$BAHA" app apply > "$ARTIFACT_DIR/{output}"', runner)
+
     def test_fixture_cwd_allows_only_registered_core_bootstrap_project(self):
         with tempfile.TemporaryDirectory() as temporary:
             runner_temp = Path(temporary)
