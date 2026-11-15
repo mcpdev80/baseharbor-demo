@@ -49,15 +49,22 @@ def collect_native_topology():
         service = labels.get("com.docker.compose.service", "")
         if not project.startswith("bh-" + target + "-"):
             continue
-        image = str(config.get("Image") or item.get("ImageName") or "")
-        # Native inspect may return a digest-only reference without a tag.
-        image_repository = image.split("@", 1)[0].rsplit("/", 1)[-1].split(":", 1)[0]
+        # Podman may return the immutable image ID in Config.Image and keep
+        # the selected registry/tag in ImageName. Docker generally fills only
+        # Config.Image. Check both so a digest-only ID cannot hide a managed
+        # provider image from the ownership inventory.
+        image_repositories = {
+            image.split("@", 1)[0].rsplit("/", 1)[-1].split(":", 1)[0]
+            for image in (str(config.get("Image") or ""), str(item.get("ImageName") or ""))
+            if image
+        }
         running = bool((item.get("State") or {}).get("Running"))
         auxiliary = bool(re.search(r"(?:-admin|-init|-access|-ui)(?:-[1-9][0-9]*)?$|sentinel|etcd", service))
         provider = ""
         if not auxiliary:
             for name, marker in [("postgresql", "postgres:"), ("postgresql", "spilo-"), ("openbao", "openbao:"), ("keycloak", "keycloak:"), ("seaweedfs", "seaweedfs:"), ("valkey", "valkey:"), ("valkey", "baseharbor-valkey:"), ("prometheus", "prometheus:"), ("otel-collector", "opentelemetry-collector"), ("loki", "loki:"), ("tempo", "tempo:"), ("rabbitmq", "rabbitmq:"), ("mongodb", "mongo:")]:
-                if (image_repository == marker[:-1] if marker.endswith(":") else marker in image_repository):
+                if any((repository == marker[:-1] if marker.endswith(":") else marker in repository)
+                       for repository in image_repositories):
                     provider = name
                     break
         if provider:
