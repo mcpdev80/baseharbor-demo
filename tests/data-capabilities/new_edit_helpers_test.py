@@ -284,7 +284,8 @@ class SQLWorkloadTransitionTest(unittest.TestCase):
 
             def apply(path, *, environment):
                 events.append(("apply", (path / "main.go").read_bytes()))
-                (artifact_dir / "new-edit-new-sql-apply.txt").write_text("Lifecycle: VERIFIED\n")
+                (artifact_dir / "new-edit-new-sql-apply.txt").write_text(
+                    "READY application and requested infrastructure verified\n")
 
             with patch.object(fixture, "new_application", side_effect=create), \
                  patch.object(fixture, "apply_created_application", side_effect=apply), \

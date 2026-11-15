@@ -66,7 +66,7 @@ def create_sql_removal_application(parent, *, environment=None):
         restore_sql_workload(project, original, staged)
         raise
     transcript = (ARTIFACT_DIR / "new-edit-new-sql-apply.txt").read_text()
-    if "Lifecycle: VERIFIED" not in transcript:
+    if "READY application and requested infrastructure verified" not in transcript:
         raise RuntimeError("prepared SQL source did not complete its lifecycle")
     return project, original, staged
 
