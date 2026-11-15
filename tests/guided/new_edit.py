@@ -429,7 +429,9 @@ def edit_application(project, operation, *, instance=None, native=True, environm
             timeout=600,
             # Core bounds a read-only preview refresh at 120s. Let that bounded
             # authority finish before the PTY harness declares the UI idle.
-            no_output_timeout=150 if operation == "no" else 90,
+            # A read-only preview can take the full 120s Core bound. Keep
+            # mutating Edit journeys alive through that bound plus PTY margin.
+            no_output_timeout=180,
             capture=True)
         digest = edit_candidate_confirmation(rc, transcript)
         if digest is not None:

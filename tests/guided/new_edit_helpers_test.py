@@ -9,12 +9,26 @@ import unittest
 from unittest.mock import patch
 
 from new_edit import (CurrentConsent, edit_candidate_confirmation, edit_picker_rule,
-                      filesystem_snapshot, picker_keys, provider_choice_response,
-                      provider_choice_rule, resume_confirmed_edit_apply)
+                      edit_application, filesystem_snapshot, picker_keys,
+                      provider_choice_response, provider_choice_rule,
+                      resume_confirmed_edit_apply)
 import drive
 
 
 class FixtureHelpersTest(unittest.TestCase):
+    def test_mutating_edit_tty_allowance_exceeds_core_preview_bound(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            config, data = project / "config", project / "data"
+            config.mkdir()
+            data.mkdir()
+            with patch.dict(os.environ, {"XDG_CONFIG_HOME": str(config), "XDG_DATA_HOME": str(data)}):
+                with patch("new_edit.run_tty", return_value=(0, "Edit complete\n")) as run:
+                    with patch("new_edit.footprint", return_value={"ok": True}):
+                        edit_application(project, "remove", native=False)
+        self.assertEqual(run.call_args.kwargs["no_output_timeout"], 180)
+        self.assertGreater(run.call_args.kwargs["no_output_timeout"], 120)
+
     def test_edit_candidate_confirmation_accepts_only_exact_consent_abort(self):
         digest = "a" * 64
         refusal = drive.EXPECTED_CANDIDATE_CONSENT_REFUSAL

@@ -106,7 +106,8 @@ EOF
   python3 "$DEMO_ROOT/tests/native-default-topology.py" \
     --snapshot-keycloak-baseline \
     --output "$ARTIFACT_DIR/recovery-keycloak-baseline.json"
-  run_consented "$BAHA" --verbose up --yes 2>&1 | tee "$ARTIFACT_DIR/recovery-apply.txt"
+  run_consented "$BAHA" --verbose up --yes 2>&1 \
+    | python3 "$DEMO_ROOT/tests/backup-restore/copy_stream.py" "$ARTIFACT_DIR/recovery-apply.txt"
 )
 
 api_host="demo.baha.localhost"

@@ -17,6 +17,33 @@ spec.loader.exec_module(fixture)
 
 
 class ConsentTests(unittest.TestCase):
+    def test_backup_restore_binary_capture_preserves_stdout_artifact_and_pipe_status(self):
+        tests = Path(__file__).parent
+        copier = tests / "backup-restore" / "copy_stream.py"
+        runner = (tests / "backup-restore" / "run.sh").read_text()
+        self.assertIn('python3 "$DEMO_ROOT/tests/backup-restore/copy_stream.py"', runner)
+        self.assertNotIn('run_consented "$BAHA" --verbose up --yes 2>&1 | tee ', runner)
+        payload = b"runtime output\x00\xff\r\n"
+        with tempfile.TemporaryDirectory() as temporary:
+            artifact = Path(temporary) / "capture.bin"
+            result = subprocess.run(
+                [sys.executable, str(copier), str(artifact)], input=payload,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout, payload)
+            self.assertEqual(artifact.read_bytes(), payload)
+
+            failed_artifact = Path(temporary) / "failed-capture.bin"
+            failed = subprocess.run(
+                ["bash", "-c", "set -o pipefail; (printf 'partial'; exit 37) | python3 \"$1\" \"$2\"", "bash",
+                 str(copier), str(failed_artifact)],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+            )
+            self.assertEqual(failed.returncode, 37)
+            self.assertEqual(failed.stdout, b"partial")
+            self.assertEqual(failed_artifact.read_bytes(), b"partial")
+
     def test_policy_gate_has_secret_safe_unexpected_error_diagnostic(self):
         runner = (Path(__file__).parent / "policy" / "run.sh").read_text()
         self.assertIn('policy_org="$ARTIFACT_DIR/policy-organization"', runner)
