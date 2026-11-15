@@ -76,6 +76,18 @@ class NativeTopologyQualificationTests(unittest.TestCase):
             self.assertEqual({m["provider"] for m in json.loads(path.read_text())["members"]},
                              {"postgresql", "openbao", "keycloak", "seaweedfs", "valkey", "loki"})
 
+    def test_pinned_baseharbor_valkey_image_is_classified_as_valkey(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / "qualified.json"
+            containers = self.fixture()
+            valkey = next(c for c in containers
+                          if c["Config"]["Labels"]["com.docker.compose.service"] == "valkey")
+            valkey["Config"]["Image"] = "localhost/baseharbor-valkey:9.1.2-arbitrary-uid1"
+            self.invoke(containers, path)
+            result = json.loads(path.read_text())
+            self.assertEqual(sum(m["provider"] == "valkey" for m in result["members"]), 1)
+            self.assertEqual(next(s for s in result["services"] if s["service"] == "valkey")["role"], "valkey")
+
     def test_foreign_digest_pinned_keycloak_cannot_satisfy_required_provider(self):
         with tempfile.TemporaryDirectory() as root:
             path = Path(root) / "qualified.json"
