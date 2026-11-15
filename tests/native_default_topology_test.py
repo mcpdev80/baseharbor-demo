@@ -140,6 +140,26 @@ class NativeTopologyQualificationTests(unittest.TestCase):
             self.assertNotIn("PRIVATE_VALUE", message)
             self.assertFalse(path.exists())
 
+    def test_unselected_running_valkey_is_aggregated_without_satisfying_requirement(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / "qualified.json"
+            containers = [c for c in self.fixture()
+                          if c["Config"]["Labels"]["com.docker.compose.service"] != "valkey"]
+            containers.append(self.container(
+                "private-cache-codename",
+                "registry.private.example/secret-namespace/valkey:private-tag",
+                "foreign-project",
+            ))
+            with self.assertRaisesRegex(SystemExit, "required native default providers absent: valkey") as raised:
+                self.invoke(containers, path)
+            message = str(raised.exception)
+            self.assertIn("unselected valkey running=1 count=1", message)
+            self.assertNotIn("registry.private.example", message)
+            self.assertNotIn("secret-namespace", message)
+            self.assertNotIn("private-cache-codename", message)
+            self.assertNotIn("private-tag", message)
+            self.assertFalse(path.exists())
+
     def test_numbered_provider_admin_helpers_do_not_count_as_data_members(self):
         with tempfile.TemporaryDirectory() as root:
             path = Path(root) / "qualified.json"

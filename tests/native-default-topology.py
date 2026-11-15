@@ -42,13 +42,12 @@ def collect_native_topology():
     native = json.loads(subprocess.check_output([engine, "inspect", *ids], text=True, env=native_environment))
     groups = {}
     rows = []
+    unselected_counts = {}
     for item in native:
         config = item.get("Config") or {}
         labels = config.get("Labels") or {}
         project = labels.get("com.docker.compose.project", "")
         service = labels.get("com.docker.compose.service", "")
-        if not project.startswith("bh-" + target + "-"):
-            continue
         # Podman may return the immutable image ID in Config.Image and keep
         # the selected registry/tag in ImageName. Docker generally fills only
         # Config.Image. Check both so a digest-only ID cannot hide a managed
@@ -67,6 +66,11 @@ def collect_native_topology():
                        for repository in image_repositories):
                     provider = name
                     break
+        if not project.startswith("bh-" + target + "-"):
+            if provider:
+                key = (provider, running)
+                unselected_counts[key] = unselected_counts.get(key, 0) + 1
+            continue
         if provider:
             root = re.sub(r"-(?:member-|node-)?[1-9][0-9]*$", "", service)
             key = (project, provider, root)
@@ -76,19 +80,23 @@ def collect_native_topology():
         # Public artifacts and failure logs may contain only an allowlisted
         # provider label, never an arbitrary private image repository name.
         rows.append({"project": project, "service": service, "role": provider or "unclassified", "running": running, "volumes": volumes})
-    return groups, rows
+    return groups, rows, unselected_counts
 
 
 deadline = time.monotonic() + max(0, args.wait_required_providers_seconds)
 while True:
-    groups, rows = collect_native_topology()
+    groups, rows, unselected_counts = collect_native_topology()
     observed = {provider for _, provider, _ in groups}
     missing = required - observed
     if not missing or time.monotonic() >= deadline:
         break
     time.sleep(min(1, max(0, deadline - time.monotonic())))
 if not rows:
-    raise SystemExit("no selected demo-owned native containers found")
+    unselected = "; ".join(
+        f"unselected {provider} running={int(running)} count={count}"
+        for (provider, running), count in sorted(unselected_counts.items())
+    )
+    raise SystemExit("no selected demo-owned native containers found" + (f"; {unselected}" if unselected else ""))
 running_keycloak = sorted(
     f"{row['project']}/{row['service']}"
     for row in rows
@@ -126,7 +134,14 @@ if not required <= observed:
         f"{row['project']}/{row['service']} role={row['role']} running={str(row['running']).lower()}"
         for row in rows
     )
-    raise SystemExit(f"required native default providers absent: {missing}; selected containers: {inventory or 'none'}")
+    unselected = "; ".join(
+        f"unselected {provider} running={int(running)} count={count}"
+        for (provider, running), count in sorted(unselected_counts.items())
+    )
+    diagnostic = f"; selected containers: {inventory or 'none'}"
+    if unselected:
+        diagnostic += f"; unselected containers: {unselected}"
+    raise SystemExit(f"required native default providers absent: {missing}{diagnostic}")
 violations = [f"{project}/{provider}/{root}: {count} members" for (project, provider, root), count in groups.items() if count != 1]
 if violations:
     raise SystemExit("unexpected implicit default HA: " + "; ".join(violations))
