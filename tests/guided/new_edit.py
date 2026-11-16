@@ -425,6 +425,12 @@ def edit_application(project, operation, *, instance=None, native=True, environm
         ))
     rules.append(consent.rule())
     if operation in ("add", "remove", "switch"):
+        # The confirmed Edit proceeds into the ordinary lifecycle UI. It may
+        # request a second, standard apply confirmation after the provider
+        # consequence plan was accepted; answer it when present, while still
+        # allowing a fail-closed candidate-consent refusal to return first.
+        rules.append(Rule(r"Apply these changes\? \[y/N\]:?\s*$", "y\n",
+                          repeat=True, optional=True))
         # A confirmed Edit persists desired source before entering the normal
         # lifecycle. If that lifecycle asks for repository candidate consent,
         # continue the now-persisted intent through Apply with exactly the
