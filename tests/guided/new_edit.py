@@ -234,12 +234,24 @@ def edit_candidate_confirmation(returncode, transcript):
     return digest
 
 
-def resume_confirmed_edit_apply(project, operation, digest, consent, environment=None):
+def resume_confirmed_edit_apply(project, operation, digest, consent, environment=None,
+                                instance=None):
     """Continue the persisted Edit intent through its exact candidate Apply."""
     consent.reset()
-    rules = [consent.rule(), apply_changes_rule("run", require_provider_changes=True),
+    rules = [consent.rule()]
+    if instance:
+        # Candidate confirmation re-enters the normal Apply wizard. Preserve
+        # the exact provider selected in Edit instead of silently falling back
+        # to the prior binding (or waiting at the provider picker).
+        choice = provider_choice_rule(instance)
+        choice.optional = True
+        rules.extend([choice, Rule(NEEDS_END, "enter\n", optional=True)])
+    rules.extend([
+             Rule(r"Bind this exact candidate and continue with its lifecycle\? \[y/N\]\s*$", "y\n",
+                  optional=True),
+             apply_changes_rule("run", require_provider_changes=True),
              Rule(r"Is this installation running on a machine where you write code\?.*?Choice \[1\]:\s*$", "1\n", optional=True),
-             Rule(r"PostgreSQL host port \[\d+\]:\s*$", "\n", optional=True)]
+             Rule(r"PostgreSQL host port \[\d+\]:\s*$", "\n", optional=True)])
     run_tty("new-edit-" + project.name + "-" + operation + "-apply",
             [BAHA, "app", "apply", "--confirm-candidate", digest], rules,
             cwd=project, env={"BASEHARBOR_LOGS_ENABLED": "false", **(environment or {})},
@@ -447,7 +459,8 @@ def edit_application(project, operation, *, instance=None, native=True, environm
             capture=True)
         digest = edit_candidate_confirmation(rc, transcript)
         if digest is not None:
-            resume_confirmed_edit_apply(project, operation, digest, consent, environment)
+            resume_confirmed_edit_apply(project, operation, digest, consent, environment,
+                                        instance=instance)
     else:
         run_tty("new-edit-" + project.name + "-" + operation, [BAHA, "app", "edit"], rules,
                 cwd=project, env={"BASEHARBOR_LOGS_ENABLED": "false", **(environment or {})},

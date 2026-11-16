@@ -65,6 +65,28 @@ class FixtureHelpersTest(unittest.TestCase):
         self.assertTrue(any("Confirm the displayed provider changes" in rule.pattern.pattern
                             for rule in args[2]))
 
+    def test_confirmed_provider_switch_replays_exact_choice_if_apply_reopens_picker(self):
+        digest = "c" * 64
+        instance = "postgresql/shared/selected"
+        consent = CurrentConsent()
+        project = Path("/tmp/project")
+        with patch("new_edit.run_tty") as run:
+            resume_confirmed_edit_apply(project, "switch", digest, consent,
+                                        instance=instance)
+        rules = run.call_args.args[2]
+        picker = next(rule for rule in rules if rule.pattern.pattern.startswith(r"\[[ x]\] "))
+        frame = ("What does your application need?\n"
+                 "database.sql/default on Target fixture — Explicit\n"
+                 "[ ] " + instance + " (postgresql): supports SQL (scope: shared)\n")
+        match = picker.match(frame)
+        self.assertIsNotNone(match)
+        self.assertEqual(picker.value(match, frame), "provider database.sql/default " + instance + "\n")
+        self.assertTrue(picker.optional)
+        self.assertTrue(any("Bind this exact candidate" in rule.pattern.pattern and rule.optional
+                            for rule in rules))
+        self.assertTrue(any(rule.pattern.pattern == r"No SQL, identity service, secrets service or management stack is mandatory\."
+                            for rule in rules))
+
     def test_explicit_provider_uses_current_actual_named_sql_row(self):
         instance = "postgresql/application/fixture/dev/default"
         frame = ("What does your application need?\n"
