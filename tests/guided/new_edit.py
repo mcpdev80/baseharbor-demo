@@ -401,6 +401,9 @@ def edit_application(project, operation, *, instance=None, native=True, environm
         rules = [edit_picker_rule(operation == "add")]
         if operation == "add" and instance:
             rules.append(provider_choice_rule(instance))
+            # The provider command chooses the exact instance but leaves the
+            # line-oriented Edit wizard open until it receives Enter.
+            rules.append(Rule(NEEDS_END, "enter\n"))
         rules.append(Rule(r"Read-only decision preview \(not execution\)", "yes\n"))
     elif operation == "switch" and instance:
         rules = [provider_choice_rule(instance),

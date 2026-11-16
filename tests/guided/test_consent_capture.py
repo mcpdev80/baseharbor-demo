@@ -33,6 +33,7 @@ Discovered by `python3 -m unittest discover -s tests/guided -p "test_*.py"`.
 """
 import os
 import io
+from pathlib import Path
 import sys
 import tempfile
 import time
@@ -159,6 +160,30 @@ def flow_ready(core_path, exit_code, timeout=30):
 
 
 class ConsentCaptureRegression(unittest.TestCase):
+    def test_edit_add_provider_selection_advances_with_line_enter(self):
+        instance = "postgresql/application/fixture/dev/default"
+        with mock.patch("new_edit.state_snapshot", return_value={}), \
+                mock.patch("new_edit.run_tty", return_value=(0, "Edit complete\n")) as run, \
+                mock.patch("new_edit.footprint", return_value={"ok": True}):
+            new_edit.edit_application(Path("/tmp/project"), "add", instance=instance, native=False)
+
+        rules = run.call_args.args[2]
+        provider_frame = ("What does your application need?\n"
+                          "database.sql/analytics on Target native-fixture — Automatic\n"
+                          "Reason: choose an explicit compatible instance\n"
+                          "[ ] " + instance + " (postgresql): supports SQL (scope: application)\n")
+        provider_rule = next(rule for rule in rules if instance in rule.pattern.pattern)
+        match = provider_rule.match(provider_frame)
+        self.assertIsNotNone(match)
+        self.assertEqual(provider_rule.value(match, provider_frame),
+                         "provider database.sql/analytics " + instance + "\n")
+
+        footer = "No SQL, identity service, secrets service or management stack is mandatory."
+        advance_rule = rules[rules.index(provider_rule) + 1]
+        match = advance_rule.match(footer)
+        self.assertIsNotNone(match)
+        self.assertEqual(advance_rule.value(match, footer), "enter\n")
+
     def test_01_rc0_no_ready_aborts(self):
         # rc=0 but the mandatory READY marker is absent => production run_tty raises.
         core = write_fake_core([
