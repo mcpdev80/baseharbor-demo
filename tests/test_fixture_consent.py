@@ -17,6 +17,185 @@ spec.loader.exec_module(fixture)
 
 
 class ConsentTests(unittest.TestCase):
+    def test_backup_restore_binary_capture_preserves_stdout_artifact_and_pipe_status(self):
+        tests = Path(__file__).parent
+        copier = tests / "backup-restore" / "copy_stream.py"
+        runner = (tests / "backup-restore" / "run.sh").read_text()
+        self.assertIn('python3 "$DEMO_ROOT/tests/backup-restore/copy_stream.py"', runner)
+        self.assertNotIn('run_consented "$BAHA" --verbose up --yes 2>&1 | tee ', runner)
+        payload = b"runtime output\x00\xff\r\n"
+        with tempfile.TemporaryDirectory() as temporary:
+            artifact = Path(temporary) / "capture.bin"
+            result = subprocess.run(
+                [sys.executable, str(copier), str(artifact)], input=payload,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout, payload)
+            self.assertEqual(artifact.read_bytes(), payload)
+
+            failed_artifact = Path(temporary) / "failed-capture.bin"
+            failed = subprocess.run(
+                ["bash", "-c", "set -o pipefail; (printf 'partial'; exit 37) | python3 \"$1\" \"$2\"", "bash",
+                 str(copier), str(failed_artifact)],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+            )
+            self.assertEqual(failed.returncode, 37)
+            self.assertEqual(failed.stdout, b"partial")
+            self.assertEqual(failed_artifact.read_bytes(), b"partial")
+
+    def test_policy_gate_has_secret_safe_unexpected_error_diagnostic(self):
+        runner = (Path(__file__).parent / "policy" / "run.sh").read_text()
+        self.assertIn('policy_org="$ARTIFACT_DIR/policy-organization"', runner)
+        self.assertIn("organization: demo-policy", runner)
+        self.assertIn("operation: read", runner)
+        self.assertIn("operations: [read]", runner)
+        self.assertLess(runner.index('"$BAHA" config organization set'), runner.index('"$BAHA" policy check -e dev'))
+        self.assertIn("set -Eeuo pipefail", runner)
+        self.assertIn("trap 'policy_unexpected_err \"$LINENO\" \"$BASH_COMMAND\"' ERR", runner)
+        self.assertIn("line=%s exit=%s command=%q", runner)
+        self.assertNotRegex(runner, r"(?m)^\s*(?:env|printenv)(?:\s|$)")
+        self.assertNotIn("set -x", runner)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            fake_baha = root / "baha"
+            fake_baha.write_text(
+                "#!/usr/bin/env bash\n"
+                'if [[ "$1 $2 $3" == "config organization set" ]]; then\n'
+                "  printf '{\\\"organization\\\":\\\"demo-policy\\\"}\\n'\n"
+                "  exit 0\n"
+                "fi\n"
+                "exit 37\n"
+            )
+            fake_baha.chmod(0o755)
+            env = os.environ | {
+                "DEMO_ROOT": str(Path(__file__).parent.parent),
+                "ARTIFACT_DIR": str(root / "artifacts"),
+                "BAHA": str(fake_baha),
+                "BASEHARBOR_TEST_RUNTIME": "static",
+                "DIAGNOSTIC_TEST_SECRET": "must-not-appear",
+            }
+            result = subprocess.run(
+                ["bash", str(Path(__file__).parent / "policy" / "run.sh")],
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 37)
+        self.assertIn("policy gate unexpected ERR: line=47 exit=37 command=tee\\ ", result.stderr)
+        self.assertEqual(result.stderr.count("policy gate unexpected ERR:"), 1)
+        self.assertNotIn("must-not-appear", result.stdout + result.stderr)
+
+    def test_recovery_atomic_bootstrap_does_not_enable_identity_or_management_ui(self):
+        resources = json.loads((Path(__file__).parent / "gate-resources.json").read_text())
+        recovery = resources["backup-restore"]
+        self.assertEqual(recovery["profile"], "recovery")
+        self.assertEqual(recovery["guided_selection"], "1,2,8,9,13")
+        self.assertEqual(recovery["management_ui"], "none")
+        self.assertNotIn("identity.oidc", recovery["capabilities"])
+        self.assertNotIn("identity-management-ui", recovery["capabilities"])
+
+    def test_connectivity_companion_up_uses_exact_fixture_consent_wrapper(self):
+        runner = (Path(__file__).parent / "connectivity" / "run.sh").read_text()
+        self.assertIn('run_consented "$BAHA" up --yes > "$ARTIFACT_DIR/companion-up.txt"', runner)
+        self.assertNotIn('  "$BAHA" up --yes > "$ARTIFACT_DIR/companion-up.txt"', runner)
+
+    def test_reconciliation_apply_steps_use_fixture_consent_wrapper(self):
+        runner = (Path(__file__).parent / "reconciliation" / "run.sh").read_text()
+        for output in ("reconcile-insync.txt", "reconcile-missing.txt"):
+            with self.subTest(output=output):
+                self.assertIn(f'run_consented "$BAHA" app apply > "$ARTIFACT_DIR/{output}"', runner)
+                self.assertNotIn(f'  "$BAHA" app apply > "$ARTIFACT_DIR/{output}"', runner)
+
+    def test_backup_restore_checks_topology_immediately_and_after_recovery(self):
+        runner = (Path(__file__).parent / "backup-restore" / "run.sh").read_text()
+        self.assertIn("set -Eeuo pipefail", runner)
+        self.assertIn('trap \'backup_unexpected_err "$LINENO" "$?" "$BASH_COMMAND"\' ERR', runner)
+        self.assertIn("backup-restore gate unexpected ERR: line=%s exit=%s", runner)
+        restore = runner.index('run_consented "$BAHA" app restore')
+        immediate = runner.index('--output "$ARTIFACT_DIR/native-topology-immediate-restore.json"')
+        doctor = runner.index('"$BAHA" app doctor > "$ARTIFACT_DIR/restore-doctor.txt"')
+        evidence = runner.index('"$BAHA" app evidence -o json > "$ARTIFACT_DIR/recovery-evidence-after-restore.json"')
+        later = runner.index('--output "$ARTIFACT_DIR/native-topology-after-restore.json"')
+        self.assertLess(restore, immediate)
+        self.assertLess(immediate, doctor)
+        self.assertLess(doctor, evidence)
+        self.assertLess(evidence, later)
+
+    def test_full_journey_resets_prior_sql_runtime_before_backup_restore(self):
+        tests = Path(__file__).parent
+        runner = (tests / "backup-restore" / "run.sh").read_text()
+        gates = json.loads((tests / "gates.json").read_text())
+        names = [gate["name"] for gate in gates]
+        self.assertLess(names.index("data-capabilities"), names.index("backup-restore"))
+
+        guard = 'if [ "${DEMO_ATOMIC_GATE:-0}" != "1" ]; then'
+        start = runner.index(guard)
+        reset = runner[start:runner.index("\nfi", start)]
+        self.assertIn('run_consented "$BAHA" destroy --all --yes', reset)
+        self.assertIn('test ! -e "$XDG_DATA_HOME/baseharbor"', reset)
+        self.assertIn('"$BAHA" target create "$BASEHARBOR_TARGET"', reset)
+        self.assertIn('bash "$DEMO_ROOT/tests/core-bootstrap.sh"', reset)
+        self.assertLess(reset.index('run_consented "$BAHA" destroy --all --yes'), reset.index('"$BAHA" target create'))
+        self.assertLess(reset.index('"$BAHA" target create'), reset.index('tests/core-bootstrap.sh'))
+        self.assertLess(runner.index('bash "$DEMO_ROOT/tests/core-bootstrap.sh"'), runner.index('"$BAHA" app init demo'))
+        self.assertIn("Atomic gates already receive that isolated setup", runner)
+
+    def test_retained_restore_preserves_deployment_owner_before_restore(self):
+        runner = (Path(__file__).parent / "backup-restore" / "run.sh").read_text()
+        branch_start = runner.index('if [ "${BASEHARBOR_DEMO_RECOVERY_MODE:-retained}" = fresh-owner ]; then')
+        restore = runner.index('run_consented "$BAHA" app restore', branch_start)
+        recovery_setup = runner[branch_start:restore]
+
+        # Only fresh-owner recovery may destroy the deployment owner. In
+        # retained mode, app restore's own scoped reset replaces runtime/data
+        # while preserving the canonical deployment identity.
+        destroy_commands = [
+            line.strip()
+            for line in recovery_setup.splitlines()
+            if 'run_consented "$BAHA" app destroy' in line
+        ]
+        self.assertEqual(destroy_commands, ['run_consented "$BAHA" app destroy --yes --full-reset'])
+        self.assertNotIn("\n  else\n", recovery_setup)
+        self.assertIn("Restore performs its own scoped reset", runner[restore - 200:restore])
+
+    def test_fixture_cwd_allows_only_registered_core_bootstrap_project(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            runner_temp = Path(temporary)
+            demo = runner_temp / "demo"
+            project = runner_temp / "baseharbor-core-bootstrap.123"
+            unrelated = runner_temp / "unrelated-project"
+            demo.mkdir()
+            project.mkdir()
+            unrelated.mkdir()
+            with mock.patch.dict(os.environ, {
+                "RUNNER_TEMP": str(runner_temp),
+                "BASEHARBOR_DEMO_ALLOWED_PROJECT_ROOT": str(project),
+            }):
+                fixture.validate_fixture_cwd(project, demo)
+                fixture.validate_fixture_cwd(demo, demo)
+                with self.assertRaises(ValueError):
+                    fixture.validate_fixture_cwd(unrelated, demo)
+
+    def test_fixture_cwd_rejects_unregistered_or_misplaced_project(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            demo = root / "demo"
+            runner_temp = root / "runner"
+            project = runner_temp / "not-core-bootstrap.123"
+            demo.mkdir()
+            runner_temp.mkdir()
+            project.mkdir()
+            with mock.patch.dict(os.environ, {
+                "RUNNER_TEMP": str(runner_temp),
+                "BASEHARBOR_DEMO_ALLOWED_PROJECT_ROOT": str(project),
+            }):
+                with self.assertRaises(ValueError):
+                    fixture.validate_fixture_cwd(project, demo)
+
     def refusal(self):
         return {"contract_version": "v1", "error": {"code": "approval_required", "cause": "impact-confirmation-required", "details": {"scope": {"version": "baseharbor.provider-impact-scope/v1", "plan_id": "a" * 64, "confirmations_required": 2, "complete": False, "destructive": True}}}}
 
@@ -57,8 +236,11 @@ class ConsentTests(unittest.TestCase):
         self.assertEqual(fixture.candidate_confirmation(self.candidate_refusal(digest)), digest)
         wrapped = self.candidate_refusal(digest)
         direct = wrapped["error"]["message"]
-        wrapped["error"]["message"] = "record deployment before mutation: " + direct + ": " + direct
+        wrapped["error"]["message"] = "record deployment before mutation: " + direct
         self.assertEqual(fixture.candidate_confirmation(wrapped), digest)
+        nested = self.candidate_refusal(digest)
+        nested["error"]["message"] = "record deployment before mutation: " + direct + ": " + direct
+        self.assertEqual(fixture.candidate_confirmation(nested), digest)
         for change in (
             {"contract_version": "v2"},
             {"error": {"code": "execution_failed"}},
@@ -77,7 +259,9 @@ class ConsentTests(unittest.TestCase):
 
     def test_fixture_retries_only_with_reported_candidate_digest(self):
         digest = "d" * 64
-        refusal = subprocess.CompletedProcess([], 1, b"", json.dumps(self.candidate_refusal(digest)).encode())
+        value = self.candidate_refusal(digest)
+        value["error"]["message"] = "record deployment before mutation: " + value["error"]["message"]
+        refusal = subprocess.CompletedProcess([], 1, b"", json.dumps(value).encode())
         success = subprocess.CompletedProcess([], 0, b"accepted\n", b"")
         seen_args = []
         replies = iter((refusal, success))

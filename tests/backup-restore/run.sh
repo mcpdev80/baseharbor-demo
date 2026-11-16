@@ -1,5 +1,20 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
+
+backup_unexpected_err() {
+  local source_line="$1"
+  local exit_code="$2"
+  local failed_command="$3"
+  if [[ "$failed_command" == "("* ]]; then
+    return "$exit_code"
+  fi
+  printf 'backup-restore gate unexpected ERR: line=%s exit=%s\n' \
+    "$source_line" "$exit_code" >&2
+  return "$exit_code"
+}
+
+trap 'backup_unexpected_err "$LINENO" "$?" "$BASH_COMMAND"' ERR
+
 source "$DEMO_ROOT/tests/lib.sh"
 
 section "Backup and restore"
@@ -9,8 +24,27 @@ chmod 600 "$ARTIFACT_DIR/backup.pass"
 
 # Build one deterministic recovery contract that exercises SQL, secrets, S3,
 # application-owned workload storage and application log history.
-# This atomic gate starts with a fresh isolated Target and no deployment owner.
-# Existing lifecycle fixtures are retired only when their canonical owner exists.
+# In the full reference journey earlier gates share this Target and may have
+# left target-wide providers from their selected SQL topology. Recreate the
+# owned installation before this gate so its one-provider recovery assertion
+# observes a fresh Target. Atomic gates already receive that isolated setup
+# from atomic-bootstrap.sh and retain their existing path.
+if [ "${DEMO_ATOMIC_GATE:-0}" != "1" ]; then
+  ( cd "$DEMO_ROOT" && run_consented "$BAHA" destroy --all --yes )
+  test ! -e "$XDG_CONFIG_HOME/baseharbor"
+  test ! -e "$XDG_DATA_HOME/baseharbor"
+  rm -rf "$XDG_DATA_HOME/baseharbor-recovery"
+  clean_generated_state
+  "$BAHA" target create "$BASEHARBOR_TARGET" \
+    --provider "$BASEHARBOR_TEST_RUNTIME" \
+    --access "local-$BASEHARBOR_TEST_RUNTIME" \
+    --reference local \
+    --scope default \
+    --default >/dev/null
+  bash "$DEMO_ROOT/tests/core-bootstrap.sh"
+fi
+
+# Retire a previous app manifest only when its canonical owner exists.
 if [ -s "$DEMO_ROOT/baseharbor.yaml" ]; then
   ( cd "$DEMO_ROOT" && run_consented "$BAHA" app destroy --yes )
 fi
@@ -67,13 +101,25 @@ EOF
 
   "$BAHA" app init --tls local --yes
 
-  run_consented "$BAHA" --verbose up --yes 2>&1 | tee "$ARTIFACT_DIR/recovery-apply.txt"
+  # Shared Core services can predate this recovery fixture. Record the exact
+  # running target-owned Keycloak set before apply, then reject additions.
+  python3 "$DEMO_ROOT/tests/native-default-topology.py" \
+    --snapshot-keycloak-baseline \
+    --output "$ARTIFACT_DIR/recovery-keycloak-baseline.json"
+  run_consented "$BAHA" --verbose up --yes 2>&1 \
+    | python3 "$DEMO_ROOT/tests/backup-restore/copy_stream.py" "$ARTIFACT_DIR/recovery-apply.txt"
 )
 
 api_host="demo.baha.localhost"
-python3 "$DEMO_ROOT/tests/native-default-topology.py" --profile recovery --output "$ARTIFACT_DIR/native-topology-before.json"
+python3 "$DEMO_ROOT/tests/native-default-topology.py" --profile recovery \
+  --compare-keycloak-baseline "$ARTIFACT_DIR/recovery-keycloak-baseline.json" \
+  --wait-required-providers-seconds 30 \
+  --output "$ARTIFACT_DIR/native-topology-before.json"
 ( cd "$DEMO_ROOT" && run_consented "$BAHA" up --yes )
-python3 "$DEMO_ROOT/tests/native-default-topology.py" --profile recovery --output "$ARTIFACT_DIR/native-topology-repeated-up.json"
+python3 "$DEMO_ROOT/tests/native-default-topology.py" --profile recovery \
+  --compare-keycloak-baseline "$ARTIFACT_DIR/recovery-keycloak-baseline.json" \
+  --wait-required-providers-seconds 30 \
+  --output "$ARTIFACT_DIR/native-topology-repeated-up.json"
 gateway_port="$(dev_gateway_port)"
 base="$(dev_gateway_url "$api_host")"
 gateway_ca="$XDG_DATA_HOME/baseharbor/targets/$BASEHARBOR_TARGET/developer-access/dev/gateway/runtime/ca.pem"
@@ -142,14 +188,17 @@ manifest.unlink()
 owner.rmdir()
 print('Fresh-owner fixture: native full reset completed; only exact original canonical fixture owner removed')
 PY
-  else
-    run_consented "$BAHA" app destroy --yes
   fi
 
+  # In retained-owner mode, keep the registered deployment identity in place.
+  # Restore performs its own scoped reset under the separate restore consent.
   run_consented "$BAHA" app restore "$ARTIFACT_DIR/demo.bhbackup" \
     --password-file "$ARTIFACT_DIR/backup.pass" \
     > "$ARTIFACT_DIR/restore.txt"
 
+  python3 "$DEMO_ROOT/tests/native-default-topology.py" --profile recovery \
+    --compare-keycloak-baseline "$ARTIFACT_DIR/recovery-keycloak-baseline.json" \
+    --output "$ARTIFACT_DIR/native-topology-immediate-restore.json"
   "$BAHA" app doctor > "$ARTIFACT_DIR/restore-doctor.txt"
   "$BAHA" app evidence -o json > "$ARTIFACT_DIR/recovery-evidence-after-restore.json"
 
@@ -165,7 +214,9 @@ PY
 )
 
 grep -q '^READY' "$ARTIFACT_DIR/restore-doctor.txt"
-python3 "$DEMO_ROOT/tests/native-default-topology.py" --profile recovery --output "$ARTIFACT_DIR/native-topology-after-restore.json"
+python3 "$DEMO_ROOT/tests/native-default-topology.py" --profile recovery \
+  --compare-keycloak-baseline "$ARTIFACT_DIR/recovery-keycloak-baseline.json" \
+  --output "$ARTIFACT_DIR/native-topology-after-restore.json"
 
 post_restore_ready=false
 for attempt in 1 2 3 4 5 6; do

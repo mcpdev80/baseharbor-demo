@@ -40,9 +40,10 @@ def candidate_confirmation(value):
     # nested pre-mutation boundaries. Accept that exact wrapper as well as the
     # direct `app apply` form; do not accept arbitrary messages that merely
     # contain the candidate-consent phrase.
-    wrapped_message = "record deployment before mutation: " + direct_message + ": " + direct_message
+    wrapped_message = "record deployment before mutation: " + direct_message
+    nested_wrapped_message = wrapped_message + ": " + direct_message
     if (value.get("contract_version") != "v1" or error.get("code") != "validation_failed"
-            or message not in {direct_message, wrapped_message}):
+            or message not in {direct_message, wrapped_message, nested_wrapped_message}):
         raise ValueError("not a candidate-source consent refusal")
     match = re.fullmatch(
         r"Re-run with --confirm-candidate ([0-9a-f]{64}) to acknowledge this exact submission\.",
@@ -71,6 +72,23 @@ def set_candidate_confirmation(args, digest):
         raise ValueError("candidate confirmation flag has no digest")
     updated.extend(("--confirm-candidate", digest))
     return updated
+
+
+def validate_fixture_cwd(cwd, root):
+    """Allow Demo source plus the one registered isolated Core bootstrap project."""
+    if cwd == root or root in cwd.parents:
+        return
+
+    allowed_project_value = os.environ.get("BASEHARBOR_DEMO_ALLOWED_PROJECT_ROOT", "")
+    if allowed_project_value:
+        allowed_project = Path(allowed_project_value).resolve(strict=True)
+        runner_temp = Path(os.environ["RUNNER_TEMP"]).resolve(strict=True)
+        if (allowed_project.parent == runner_temp
+                and allowed_project.name.startswith("baseharbor-core-bootstrap.")
+                and cwd == allowed_project):
+            return
+
+    raise ValueError("fixture command outside selected Demo source or registered Core bootstrap project")
 
 
 def installation_remainder(previous, result):
@@ -114,8 +132,7 @@ def main():
     fixture = Path(os.environ["BASEHARBOR_DEMO_FIXTURE"]).resolve(strict=True)
     root = Path(os.environ["DEMO_ROOT"]).resolve(strict=True)
     cwd = Path.cwd().resolve(strict=True)
-    if cwd != root and root not in cwd.parents:
-        raise ValueError("fixture command outside selected Demo source")
+    validate_fixture_cwd(cwd, root)
     for key in ("XDG_DATA_HOME", "XDG_CONFIG_HOME"):
         if fixture not in Path(os.environ[key]).resolve().parents:
             raise ValueError("provider owner outside isolated fixture")

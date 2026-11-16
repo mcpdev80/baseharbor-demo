@@ -31,7 +31,7 @@ trap cleanup_companion EXIT
   cd "$companion"
   "$BAHA" app inspect . > "$ARTIFACT_DIR/companion-inspect.txt"
   "$BAHA" app init --quick --json > "$ARTIFACT_DIR/companion-init.json"
-  "$BAHA" up --yes > "$ARTIFACT_DIR/companion-up.txt"
+  run_consented "$BAHA" up --yes > "$ARTIFACT_DIR/companion-up.txt"
   "$BAHA" app doctor > "$ARTIFACT_DIR/companion-doctor.txt"
 )
 grep -q '^READY' "$ARTIFACT_DIR/companion-doctor.txt"

@@ -175,8 +175,146 @@ if sys.argv[1:] == ["env"]:
                 self.assertEqual(os.environ["XDG_CONFIG_HOME"], str(root / "config"))
 
 
+class ZeroNeedsPreviewRuleTest(unittest.TestCase):
+    def test_no_preview_path_has_one_safe_enter_retry_then_no_execution(self):
+        cancelled = []
+        rules = guided.zero_needs_no_rules(lambda match, text: cancelled.append(text) or "cancel\n")
+        advance, decline, cancel = rules
+        needs = "No SQL, identity service, secrets service or management stack is mandatory."
+
+        self.assertEqual(advance.callback(None, needs), "enter\n")
+        self.assertTrue(advance.repeat)
+        self.assertEqual(advance.callback(None, needs), "enter\n")
+        with self.assertRaisesRegex(RuntimeError, "bounded retry"):
+            advance.callback(None, needs)
+
+        self.assertEqual(decline.callback(None, "Read-only decision preview (not execution)"), "no\n")
+        self.assertFalse(advance.repeat)
+        self.assertEqual(cancel.callback(None, needs), "cancel\n")
+        self.assertEqual(len(cancelled), 1)
+
+
+class NewCreateOnlyPromptRegressionTest(unittest.TestCase):
+    def test_create_only_requires_file_creation_but_not_lifecycle_prompts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            observed = {}
+
+            def run_tty(name, argv, rules, **kwargs):
+                observed["name"] = name
+                observed["rules"] = rules
+                mode_rule = next(rule for rule in rules if "After creation" in rule.pattern.pattern)
+                self.assertEqual(mode_rule.response, "create-only\n")
+                creation_rule = next(rule for rule in rules if "Create project files" in rule.pattern.pattern)
+                self.assertIsNotNone(creation_rule.match(
+                    "Create project files only (does not start containers or deploy providers)? [Y/n]"))
+                self.assertIsNone(next((rule for rule in rules
+                    if "Bind this exact candidate" in rule.pattern.pattern), None))
+                self.assertIsNone(next((rule for rule in rules
+                    if "Apply these changes" in rule.pattern.pattern), None))
+                (parent / "new-only").mkdir()
+
+            with patch.object(guided, "state_snapshot", return_value={}), \
+                 patch.object(guided, "run_tty", side_effect=run_tty), \
+                 patch.object(guided, "footprint", return_value={"requirements": [], "complete": True}):
+                project = guided.new_application(parent, "new-only", mode="create-only", native=False)
+
+            self.assertEqual(observed["name"], "new-edit-new-only")
+            self.assertEqual(project, parent / "new-only")
+
+    def test_zero_needs_no_allows_core_bounded_preview_refresh(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory) / "zero-no"
+            project.mkdir()
+            artifacts = Path(directory) / "artifacts"
+
+            def run_tty(name, argv, rules, **kwargs):
+                self.assertEqual(kwargs["no_output_timeout"], 150)
+                artifacts.mkdir()
+                (artifacts / (name + ".txt")).write_text("Error: wizard cancelled without changes\n")
+
+            with patch.object(guided, "ARTIFACT_DIR", artifacts), \
+                 patch.object(guided, "state_snapshot", return_value={}), \
+                 patch.object(guided, "run_tty", side_effect=run_tty), \
+                 patch.object(guided, "footprint", return_value={}) as footprint:
+                guided.edit_application(project, "no", native=False)
+            footprint.assert_called_once_with(project)
+
+
+class EditNeedsPickerRuleTest(unittest.TestCase):
+    def test_sql_removal_sends_complete_space_and_redraw_navigation_before_enter(self):
+        rule = guided.edit_picker_rule(False)
+        prompt = """What does your application need?
+↑/↓ move · b/← previous row · Space toggle · Enter confirm · Esc cancel
+
+> [x] SQL database — Store relational application data
+  [ ] Cache — Cache temporary application data
+  [ ] Protected application secrets — Store application secret values
+  [ ] Application login — Sign in application end users via OIDC
+  [ ] TLS / HTTPS — Expose the application over HTTP with TLS
+No SQL, identity service, secrets service or management stack is mandatory.
+"""
+        response = rule.callback(None, prompt)
+        self.assertEqual(response, [" \n", "down\n", "up\n"])
+
+        # A repaint that still shows SQL selected must never trigger a second
+        # toggle or Enter. The helper waits for a verified state change.
+        self.assertIsNone(rule.callback(None, prompt))
+
+        unchecked = prompt.replace("> [x] SQL database", "> [ ] SQL database")
+        self.assertEqual(rule.callback(None, unchecked), "enter\n")
+
+    def test_sql_removal_preview_rejection_aborts_without_waiting_for_idle_timeout(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            observed = {}
+
+            def run_tty(name, argv, rules, **kwargs):
+                rejection = next(rule for rule in rules if "could not build read-only decision preview" in rule.pattern.pattern)
+                observed["name"] = name
+                with self.assertRaisesRegex(RuntimeError, "preview was unexpectedly rejected"):
+                    rejection.callback(None, "could not build read-only decision preview: application proposal plan: application machine: denied")
+
+            with patch.object(guided, "state_snapshot", return_value={}), \
+                 patch.object(guided, "run_tty", side_effect=run_tty), \
+                 patch.object(guided, "footprint", return_value={}):
+                guided.edit_application(project, "remove", native=False)
+            self.assertEqual(observed["name"], "new-edit-" + project.name + "-remove")
+
+
 
 class SQLWorkloadTransitionTest(unittest.TestCase):
+    def test_source_is_prepared_before_candidate_apply(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project = root / "new-sql"
+            project.mkdir()
+            (project / "main.go").write_bytes(b"package main\n" + fixture.SQL_STARTUP)
+            artifact_dir = root / "artifacts"
+            artifact_dir.mkdir()
+            events = []
+
+            def create(parent, name, *, sql, mode, environment):
+                events.append(("create", mode, sql))
+                self.assertEqual((parent, name), (root, "new-sql"))
+                return project
+
+            def apply(path, *, environment):
+                events.append(("apply", (path / "main.go").read_bytes()))
+                (artifact_dir / "new-edit-new-sql-apply.txt").write_text(
+                    "\x1b[32mREADY\x1b[0m                    application and requested infrastructure verified\n")
+
+            with patch.object(fixture, "new_application", side_effect=create), \
+                 patch.object(fixture, "apply_created_application", side_effect=apply), \
+                 patch.object(fixture, "ARTIFACT_DIR", artifact_dir):
+                actual, original, staged = fixture.create_sql_removal_application(root)
+
+            self.assertIs(actual, project)
+            self.assertEqual(events[0], ("create", "create-only", True))
+            self.assertEqual(events[1], ("apply", staged))
+            self.assertNotEqual(original, staged)
+            self.assertIn(b'os.Getenv("DATABASE_URL")', events[1][1])
+
     def test_removal_adapts_usage_and_add_restores_exact_strict_source(self):
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)

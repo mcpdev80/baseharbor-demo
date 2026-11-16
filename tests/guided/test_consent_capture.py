@@ -37,6 +37,8 @@ import sys
 import tempfile
 import time
 import unittest
+from types import SimpleNamespace
+from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
 import drive  # noqa: E402
@@ -402,6 +404,45 @@ class ConsentCaptureRegression(unittest.TestCase):
             "Error: unrelated deployment failure"))
         self.assertIsNone(drive.find_foreign_error_signature("READY"))
 
+    def test_18_provider_impact_refusal_captures_only_exact_candidate(self):
+        digest = "e" * 64
+        transcript = (
+            "Installation on target\n"
+            "Some existing resources could not be fully checked.\n"
+            "Error\n  provider change: impact-confirmation-required\n"
+            f"Candidate: --confirm-candidate {digest}\n"
+        )
+        self.assertEqual(digest, drive.capture_provider_impact_candidate_hash(transcript))
+        wrapped = transcript.replace(digest, digest[:32] + "\n" + digest[32:])
+        self.assertEqual(digest, drive.capture_provider_impact_candidate_hash(wrapped))
+        self.assertIsNone(drive.capture_provider_impact_candidate_hash(
+            transcript + "Error: unrelated provider failure\n"))
+        self.assertIsNone(drive.capture_provider_impact_candidate_hash(
+            transcript.replace("impact-confirmation-required", "network failure")))
+        self.assertIsNone(drive.capture_provider_impact_candidate_hash(
+            transcript.replace(digest, "not-a-digest")))
+
+    def test_19_apply_fixture_retries_provider_impact_with_exact_candidate(self):
+        digest = "f" * 64
+        transcript = (
+            "Error\n  provider change: impact-confirmation-required\n"
+            f"Candidate: --confirm-candidate {digest}\n"
+        )
+        first = SimpleNamespace(returncode=1, stdout=transcript, stderr="")
+        with mock.patch.object(new_edit.subprocess, "run", return_value=first), \
+                mock.patch.object(new_edit, "run_tty") as run_tty:
+            new_edit.apply_created_application(new_edit.Path("/tmp/new-sql"), environment={
+                "BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE": "application"})
+        run_tty.assert_called_once()
+        argv = run_tty.call_args.args[1]
+        self.assertEqual([new_edit.BAHA, "app", "apply", "--confirm-candidate", digest], argv)
+        rules = run_tty.call_args.args[2]
+        self.assertTrue(any(
+            rule.pattern.pattern.startswith("(?:Confirm the displayed provider changes")
+            for rule in rules
+        ))
+        self.assertTrue(any(rule.pattern.pattern == r"Apply these changes\? \[y/N\]:?\s*$" for rule in rules))
+
     def test_13_unrelated_error_with_candidate_hash_still_aborts(self):
         digest = "c" * 64
         core = write_fake_core([
@@ -488,14 +529,18 @@ class ConsentCaptureRegression(unittest.TestCase):
         self.assertRegex("P: optional provider preference · Esc/Ctrl+C: cancel",
                          new_edit.PICKER_END)
 
-    def test_17_app_new_confirms_normal_apply_prompt(self):
+    def test_17_app_new_apply_prompt_tracks_provider_changes(self):
         prompt = "Apply these changes? [y/N]"
-        rule = new_edit.apply_changes_rule("run")
-        match = rule.match(prompt)
+        provider_change_rule = new_edit.apply_changes_rule("run", require_provider_changes=True)
+        match = provider_change_rule.match(prompt)
         self.assertIsNotNone(match)
-        self.assertEqual(rule.value(match, prompt), "y\n")
-        self.assertTrue(rule.repeat)
-        self.assertFalse(rule.optional)
+        self.assertEqual(provider_change_rule.value(match, prompt), "y\n")
+        self.assertTrue(provider_change_rule.repeat)
+        self.assertFalse(provider_change_rule.optional)
+
+        no_provider_change_rule = new_edit.apply_changes_rule("run")
+        self.assertTrue(no_provider_change_rule.optional)
+        self.assertIsNotNone(no_provider_change_rule.match(prompt))
 
         no_rule = new_edit.apply_changes_rule("no")
         self.assertTrue(no_rule.optional)

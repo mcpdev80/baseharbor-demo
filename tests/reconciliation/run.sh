@@ -6,7 +6,7 @@ section "Reconciliation"
 
 (
   cd "$DEMO_ROOT"
-  "$BAHA" app apply > "$ARTIFACT_DIR/reconcile-insync.txt"
+  run_consented "$BAHA" app apply > "$ARTIFACT_DIR/reconcile-insync.txt"
 )
 pass "Reconciliation IN_SYNC -> NOOP" "repeated apply converged"
 
@@ -17,7 +17,7 @@ remove_managed_service_for_reconcile demo-app "$project"
 
 (
   cd "$DEMO_ROOT"
-  "$BAHA" app apply > "$ARTIFACT_DIR/reconcile-missing.txt"
+  run_consented "$BAHA" app apply > "$ARTIFACT_DIR/reconcile-missing.txt"
   "$BAHA" app doctor > "$ARTIFACT_DIR/reconcile-missing-doctor.txt"
 )
 grep -q '^READY' "$ARTIFACT_DIR/reconcile-missing-doctor.txt"

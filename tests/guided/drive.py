@@ -92,6 +92,30 @@ def capture_confirm_hash(text):
     return match.group(1) if match else None
 
 
+def capture_provider_impact_candidate_hash(text):
+    """Capture only the candidate named by the exact provider-impact refusal.
+
+    ``app apply`` can stop before printing the ordinary candidate-consent
+    prompt when a newly selected provider also needs impact consent. In that
+    case Core reports ``impact-confirmation-required`` and names the exact
+    candidate to retry. The retry still requires the PTY to acknowledge every
+    ordered provider-impact stage and the normal apply prompt.
+    """
+    normalized = re.sub(r"\s+", "", ANSI_ESCAPE.sub("", text))
+    if "providerchange:impact-confirmation-required" not in normalized:
+        return None
+    match = re.search(r"Candidate:--confirm-candidate([0-9a-f]{64})", normalized)
+    if match is None:
+        return None
+    digest = match.group(1)
+    # This is an explicitly allowed impact refusal. Strip only that exact
+    # diagnostic before applying the existing fail-closed foreign-error scan.
+    normalized = normalized.replace("Errorproviderchange:impact-confirmation-required", "")
+    if any(re.sub(r"\s+", "", signature) in normalized for signature in FOREIGN_ERROR_SIGNATURES):
+        return None
+    return digest
+
+
 # Foreign error/failure signatures the documented candidate-consent abort must
 # NEVER co-exist with. A non-zero exit that carries a valid hash and the
 # documented confirm prompt but ALSO any of these is an unexpected failure, not
@@ -113,11 +137,18 @@ FOREIGN_ERROR_SIGNATURES = (
 )
 
 EXPECTED_CANDIDATE_CONSENT_REFUSAL = (
-    "Error: record deployment before mutation: candidate submission requires an explicit "
+    "record deployment before mutation: candidate submission requires an explicit "
     "operator/automation consent (--confirm-candidate); refusing to record deployment state: "
     "candidate submission requires an explicit operator/automation consent "
     "(--confirm-candidate); refusing to record deployment state"
 )
+
+
+def remove_known_candidate_consent_refusal(text):
+    """Remove only the exact consent refusal, with either PTY presentation prefix."""
+    normalized = re.sub(r"\s+", "", ANSI_ESCAPE.sub("", text))
+    body = re.sub(r"\s+", "", EXPECTED_CANDIDATE_CONSENT_REFUSAL)
+    return normalized.replace("Error:" + body, "").replace(body, "")
 
 
 def find_foreign_error_signature(text):
@@ -136,8 +167,7 @@ def find_foreign_error_signature(text):
     normalized = re.sub(r"\s+", "", ANSI_ESCAPE.sub("", text))
     # This exact refusal is the documented first half of candidate consent.
     # Remove only the complete known diagnostic; any other error remains fatal.
-    expected = re.sub(r"\s+", "", EXPECTED_CANDIDATE_CONSENT_REFUSAL)
-    normalized = normalized.replace(expected, "")
+    normalized = remove_known_candidate_consent_refusal(normalized)
     for signature in FOREIGN_ERROR_SIGNATURES:
         if re.sub(r"\s+", "", signature) in normalized:
             return signature

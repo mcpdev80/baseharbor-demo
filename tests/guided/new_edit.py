@@ -14,7 +14,11 @@ import re
 import stat
 import subprocess
 
-from drive import ANSI_ESCAPE, ARTIFACT_DIR, BAHA, ROOT, Rule, run_tty
+from drive import (ANSI_ESCAPE, ARTIFACT_DIR, BAHA, ROOT, Rule,
+                   capture_confirm_hash, capture_provider_impact_candidate_hash,
+                   contains_candidate_abort_prompt, find_foreign_error_signature,
+                   EXPECTED_CANDIDATE_CONSENT_REFUSAL, remove_known_candidate_consent_refusal,
+                   run_tty)
 
 NEEDS_END = r"No SQL, identity service, secrets service or management stack is mandatory\."
 PICKER_END = r"[Pp]: (?:optional )?provider preference(?: · b/←: previous row)? · Esc/Ctrl\+C: cancel"
@@ -137,6 +141,43 @@ def picker_keys(text, sql=False):
     return keys + ["\r"]
 
 
+def edit_picker_rule(sql):
+    """Change only the SQL checkbox shown by the current Edit needs picker."""
+    changed = False
+
+    def respond(match, text):
+        nonlocal changed
+        clean = ANSI_ESCAPE.sub("", text)
+        frame = clean.rsplit("What does your application need?", 1)[-1]
+        rows = re.findall(r"(?m)^\s*([>]?)\s*\[([ x])\]\s+([^\r\n]+?) —", frame)
+        if len(rows) != 5 or sum(pointer == ">" for pointer, _, _ in rows) != 1:
+            raise RuntimeError("Edit needs picker did not render its five everyday choices")
+        sql_rows = [(index, row) for index, row in enumerate(rows) if row[2] == "SQL database"]
+        if len(sql_rows) != 1:
+            raise RuntimeError("Edit needs picker did not render exactly one SQL choice")
+        index, (pointer, mark, _) = sql_rows[0]
+        cursor = next(i for i, row in enumerate(rows) if row[0] == ">")
+        selected = mark == "x"
+        if selected != sql:
+            if changed:
+                # A redraw has not yet reflected the first key. Wait for output
+                # instead of toggling the same visible state twice.
+                return None
+            changed = True
+            keys = [("down\n" if index > cursor else "up\n")] * abs(index - cursor)
+            # Edit's needs surface reads complete lines. Send a real Space
+            # command, cycle the cursor to force a redraw, then wait for the
+            # next rendered frame before deciding whether Enter is safe.
+            return keys + [" \n", "down\n", "up\n"]
+        rule.repeat = False
+        # driveAppEditWizard reads newline-delimited commands from its stdin
+        # reader; a bare carriage return leaves it waiting forever.
+        return "enter\n"
+
+    rule = Rule(NEEDS_END, callback=respond, repeat=True)
+    return rule
+
+
 class CurrentConsent:
     """Only the displayed operation's exact ordered non-destructive plan."""
     def __init__(self):
@@ -163,13 +204,52 @@ class CurrentConsent:
                     callback=self.respond, repeat=True, optional=True)
 
 
-def apply_changes_rule(decision):
-    """Confirm only the normal provider-plan apply prompt on the run path."""
+def apply_changes_rule(decision, *, require_provider_changes=False):
+    """Confirm provider-plan changes when this journey selects a provider."""
     return Rule(r"Apply these changes\? \[y/N\]:?\s*$", "y\n", repeat=True,
-                optional=decision != "run")
+                optional=decision != "run" or not require_provider_changes)
 
 
-def new_application(parent, name, *, sql=False, decision="run", native=True, environment=None):
+def edit_candidate_confirmation(returncode, transcript):
+    """Accept only the exact post-edit candidate-consent refusal for retry."""
+    digest = capture_confirm_hash(transcript)
+    if returncode == 0:
+        if digest is not None or contains_candidate_abort_prompt(transcript):
+            raise RuntimeError("Edit completed while also reporting a candidate-consent refusal")
+        return None
+    if digest is None or not contains_candidate_abort_prompt(transcript):
+        raise RuntimeError("Edit failed without the documented candidate-consent digest")
+
+    normalized = re.sub(r"\s+", "", ANSI_ESCAPE.sub("", transcript))
+    refusal = re.sub(r"\s+", "", EXPECTED_CANDIDATE_CONSENT_REFUSAL)
+    if refusal not in normalized and ("Error:" + refusal) not in normalized:
+        raise RuntimeError("candidate digest was not accompanied by the exact deployment-consent refusal")
+    # The lifecycle wraps the exact consent refusal as `application machine:
+    # partial`. Remove only these two known messages before checking that the
+    # transcript contains no unrelated failure alongside the candidate hash.
+    normalized = remove_known_candidate_consent_refusal(normalized)
+    normalized = normalized.replace("Error:applicationmachine:partial", "")
+    if find_foreign_error_signature(normalized) is not None:
+        raise RuntimeError("candidate-consent refusal was accompanied by another failure")
+    return digest
+
+
+def resume_confirmed_edit_apply(project, operation, digest, consent, environment=None):
+    """Continue the persisted Edit intent through its exact candidate Apply."""
+    consent.reset()
+    rules = [consent.rule(), apply_changes_rule("run", require_provider_changes=True),
+             Rule(r"Is this installation running on a machine where you write code\?.*?Choice \[1\]:\s*$", "1\n", optional=True),
+             Rule(r"PostgreSQL host port \[\d+\]:\s*$", "\n", optional=True)]
+    run_tty("new-edit-" + project.name + "-" + operation + "-apply",
+            [BAHA, "app", "apply", "--confirm-candidate", digest], rules,
+            cwd=project, env={"BASEHARBOR_LOGS_ENABLED": "false", **(environment or {})},
+            timeout=600, no_output_timeout=120)
+
+
+def new_application(parent, name, *, sql=False, decision="run", native=True, environment=None,
+                    mode="run"):
+    if mode not in ("run", "create-only"):
+        raise ValueError("New fixture mode must be run or create-only")
     project = parent / name
     if project.exists():
         raise RuntimeError("New fixture refuses to reuse an existing application directory")
@@ -187,7 +267,7 @@ def new_application(parent, name, *, sql=False, decision="run", native=True, env
     rules = [Rule(r"Application name:\s*$", name + "\n"),
              Rule(r"Project location(?::[^\r\n]*\$ | \[[^\]]+\]:\s*)$", str(parent) + "\n"),
              Rule(r"Choose a stack.*?Selection \[1\]:\s*$", callback=stack_go),
-             Rule(r"After creation \(create-only or run\) \[create-only\]:\s*$", "run\n"),
+             Rule(r"After creation \(create-only or run\) \[create-only\]:\s*$", mode + "\n"),
              Rule(PICKER_END, callback=picker)]
     if decision != "cancel":
         returned_picker = Rule(PICKER_END, callback=picker, optional=True)
@@ -203,7 +283,7 @@ def new_application(parent, name, *, sql=False, decision="run", native=True, env
                 return "n\n"
             return "y\n"
 
-        rules.append(Rule(r"Create project files and continue into the separately authorized lifecycle\? \[Y/n\]\s*$",
+        rules.append(Rule(r"Create project files (?:only \(does not start containers or deploy providers\)|and continue into the separately authorized lifecycle)\? \[Y/n\]\s*$",
                           callback=confirm))
         rules.append(returned_picker)
     consent = CurrentConsent()
@@ -214,12 +294,13 @@ def new_application(parent, name, *, sql=False, decision="run", native=True, env
         consent.reset()
         return "y\n"
 
-    rules.extend([
-        Rule(r"Bind this exact candidate and continue with its lifecycle\? \[y/N\]\s*$", callback=confirm_candidate, optional=decision != "run"),
-        consent.rule(),
-        apply_changes_rule(decision),
-        Rule(r"Is this installation running on a machine where you write code\?.*?Choice \[1\]:\s*$", "1\n", optional=True),
-        Rule(r"PostgreSQL host port \[\d+\]:\s*$", "\n", optional=True)])
+    if mode == "run":
+        rules.extend([
+            Rule(r"Bind this exact candidate and continue with its lifecycle\? \[y/N\]\s*$", callback=confirm_candidate, optional=decision != "run"),
+            consent.rule(),
+            apply_changes_rule(decision, require_provider_changes=sql),
+            Rule(r"Is this installation running on a machine where you write code\?.*?Choice \[1\]:\s*$", "1\n", optional=True),
+            Rule(r"PostgreSQL host port \[\d+\]:\s*$", "\n", optional=True)])
     run_tty("new-edit-" + name, [BAHA, "app", "new"], rules, cwd=ROOT,
             env={"BASEHARBOR_LOGS_ENABLED": "false", **(environment or {})},
             timeout=600, no_output_timeout=90)
@@ -231,7 +312,7 @@ def new_application(parent, name, *, sql=False, decision="run", native=True, env
             raise RuntimeError("New No did not return to the needs picker before Cancel")
         return None
     actual = footprint(project)
-    if "Lifecycle: VERIFIED" not in (ARTIFACT_DIR / ("new-edit-" + name + ".txt")).read_text():
+    if mode == "run" and "Lifecycle: VERIFIED" not in (ARTIFACT_DIR / ("new-edit-" + name + ".txt")).read_text():
         raise RuntimeError("New returned without its completed lifecycle receipt")
     requirements = actual.get("requirements") or []
     kinds = {row["requirement"]["kind"] for row in requirements}
@@ -242,19 +323,66 @@ def new_application(parent, name, *, sql=False, decision="run", native=True, env
     return project
 
 
+def apply_created_application(project, *, environment=None, name=None):
+    """Bind the current source and run the normal explicitly consented lifecycle."""
+    argv = [BAHA, "app", "apply"]
+    env = {**os.environ, "BASEHARBOR_LOGS_ENABLED": "false", **(environment or {})}
+    first = subprocess.run(argv, cwd=project, env=env, capture_output=True, text=True, timeout=120)
+    transcript = first.stdout + first.stderr
+    digest = capture_confirm_hash(transcript)
+    if digest is None:
+        digest = capture_provider_impact_candidate_hash(transcript)
+    if first.returncode == 0 or digest is None:
+        raise RuntimeError("app apply did not produce the exact candidate-consent challenge: " + transcript[-2000:])
+
+    consent = CurrentConsent()
+    rules = [consent.rule(), apply_changes_rule("run", require_provider_changes=True),
+             Rule(r"Is this installation running on a machine where you write code\?.*?Choice \[1\]:\s*$", "1\n", optional=True),
+             Rule(r"PostgreSQL host port \[\d+\]:\s*$", "\n", optional=True)]
+    label = name or project.name
+    run_tty("new-edit-" + label + "-apply", [*argv, "--confirm-candidate", digest], rules,
+            cwd=project, env={"BASEHARBOR_LOGS_ENABLED": "false", **(environment or {})},
+            timeout=600, no_output_timeout=120)
+
+
 def provider_choice_response(text, instance):
     """Select only the requested instance offered for the current SQL need."""
     frame = ANSI_ESCAPE.sub("", text).rsplit("What does your application need?", 1)[-1]
     references = re.findall(r"(?m)^(database\.sql/[^\s]+) on Target [^\r\n]+", frame)
-    candidate = re.search(r"(?m)^\[[ x]\] " + re.escape(instance) + r" \(postgresql\):[^\r\n]+", frame)
+    candidate = re.search(r"(?m)^\[[ x]\] " + re.escape(instance) +
+                         r"[ \t\r\n]*\(postgresql\):[^\r\n]+", frame)
     if len(references) != 1 or candidate is None:
         raise RuntimeError("provider selection requires one current SQL need and its offered instance")
     return "provider " + references[0] + " " + instance + "\n"
 
 
 def provider_choice_rule(instance):
-    return Rule(r"\[[ x]\] " + re.escape(instance) + r" \(postgresql\):[^\r\n]+",
+    return Rule(r"\[[ x]\] " + re.escape(instance) +
+                r"[ \t\r\n]*\(postgresql\):[^\r\n]+",
                 callback=lambda match, text: provider_choice_response(text, instance))
+
+
+def zero_needs_no_rules(cancel):
+    """Advance to preview, allowing one no-op retry; then return without execution."""
+    attempts = 0
+    advance = None
+
+    def advance_to_preview(match, text):
+        nonlocal attempts
+        attempts += 1
+        if attempts > 2:
+            raise RuntimeError("zero-needs Edit did not advance to its preview after a bounded retry")
+        return "enter\n"
+
+    advance = Rule(NEEDS_END, callback=advance_to_preview, repeat=True)
+
+    def decline_preview(match, text):
+        advance.repeat = False
+        return "no\n"
+
+    return [advance,
+            Rule(r"Read-only decision preview \(not execution\)", callback=decline_preview),
+            Rule(NEEDS_END, callback=cancel)]
 
 
 def edit_application(project, operation, *, instance=None, native=True, environment=None):
@@ -265,27 +393,60 @@ def edit_application(project, operation, *, instance=None, native=True, environm
         def cancel(match, text):
             assert_unchanged(before, project, native)
             return "cancel\n"
-        rules = [Rule(NEEDS_END, callback=cancel)] if operation == "cancel" else [
-            Rule(NEEDS_END, "enter\n"),
-            Rule(r"Read-only decision preview \(not execution\)", "no\n"),
-            Rule(NEEDS_END, callback=cancel),
-        ]
+        if operation == "cancel":
+            rules = [Rule(NEEDS_END, callback=cancel)]
+        else:
+            rules = zero_needs_no_rules(cancel)
     elif operation in ("add", "remove"):
-        rules = [Rule(NEEDS_END, "space\n")]
+        rules = [edit_picker_rule(operation == "add")]
         if operation == "add" and instance:
             rules.append(provider_choice_rule(instance))
-        rules.extend([Rule(NEEDS_END, "enter\n"),
-                      Rule(r"Read-only decision preview \(not execution\)", "yes\n")])
+        rules.append(Rule(r"Read-only decision preview \(not execution\)", "yes\n"))
     elif operation == "switch" and instance:
         rules = [provider_choice_rule(instance),
                  Rule(NEEDS_END, "enter\n"),
                  Rule(r"Read-only decision preview \(not execution\)", "yes\n")]
     else:
         raise ValueError("unknown Edit fixture operation")
+    if operation in ("add", "remove", "switch"):
+        def reject_unexpected_preview_failure(match, text):
+            raise RuntimeError(
+                "Edit read-only preview was unexpectedly rejected; see the captured "
+                "transcript for its safe authority stage"
+            )
+        rules.append(Rule(
+            r"could not build read-only decision preview: application proposal "
+            r"(?:read|choices|plan): application machine: denied",
+            callback=reject_unexpected_preview_failure,
+            optional=True,
+        ))
     rules.append(consent.rule())
-    run_tty("new-edit-" + project.name + "-" + operation, [BAHA, "app", "edit"], rules,
+    if operation in ("add", "remove", "switch"):
+        # A confirmed Edit persists desired source before entering the normal
+        # lifecycle. If that lifecycle asks for repository candidate consent,
+        # continue the now-persisted intent through Apply with exactly the
+        # digest Core printed; do not replay the already-completed Edit wizard.
+        rc, transcript = run_tty(
+            "new-edit-" + project.name + "-" + operation, [BAHA, "app", "edit"], rules,
             cwd=project, env={"BASEHARBOR_LOGS_ENABLED": "false", **(environment or {})},
-            timeout=600, no_output_timeout=90, expected_returncodes=(0, 1) if operation in ("no", "cancel") else (0,))
+            timeout=600,
+            # Core bounds a read-only preview refresh at 120s. Let that bounded
+            # authority finish before the PTY harness declares the UI idle.
+            # A read-only preview can take the full 120s Core bound. Keep
+            # mutating Edit journeys alive through that bound plus PTY margin.
+            no_output_timeout=180,
+            capture=True)
+        digest = edit_candidate_confirmation(rc, transcript)
+        if digest is not None:
+            resume_confirmed_edit_apply(project, operation, digest, consent, environment)
+    else:
+        run_tty("new-edit-" + project.name + "-" + operation, [BAHA, "app", "edit"], rules,
+                cwd=project, env={"BASEHARBOR_LOGS_ENABLED": "false", **(environment or {})},
+                timeout=600,
+                # Core bounds a read-only preview refresh at 120s. Let that bounded
+                # authority finish before the PTY harness declares the UI idle.
+                no_output_timeout=150 if operation == "no" else 90,
+                expected_returncodes=(0, 1) if operation in ("no", "cancel") else (0,))
     if operation in ("no", "cancel"):
         assert_unchanged(before, project, native)
         transcript = (ARTIFACT_DIR / ("new-edit-" + project.name + "-" + operation + ".txt")).read_text()
