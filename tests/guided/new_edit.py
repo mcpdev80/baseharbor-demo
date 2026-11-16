@@ -349,14 +349,16 @@ def provider_choice_response(text, instance):
     """Select only the requested instance offered for the current SQL need."""
     frame = ANSI_ESCAPE.sub("", text).rsplit("What does your application need?", 1)[-1]
     references = re.findall(r"(?m)^(database\.sql/[^\s]+) on Target [^\r\n]+", frame)
-    candidate = re.search(r"(?m)^\[[ x]\] " + re.escape(instance) + r" \(postgresql\):[^\r\n]+", frame)
+    candidate = re.search(r"(?m)^\[[ x]\] " + re.escape(instance) +
+                         r"[ \t\r\n]*\(postgresql\):[^\r\n]+", frame)
     if len(references) != 1 or candidate is None:
         raise RuntimeError("provider selection requires one current SQL need and its offered instance")
     return "provider " + references[0] + " " + instance + "\n"
 
 
 def provider_choice_rule(instance):
-    return Rule(r"\[[ x]\] " + re.escape(instance) + r" \(postgresql\):[^\r\n]+",
+    return Rule(r"\[[ x]\] " + re.escape(instance) +
+                r"[ \t\r\n]*\(postgresql\):[^\r\n]+",
                 callback=lambda match, text: provider_choice_response(text, instance))
 
 

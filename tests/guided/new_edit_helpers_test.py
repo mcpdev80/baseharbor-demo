@@ -78,6 +78,16 @@ class FixtureHelpersTest(unittest.TestCase):
         match = rule.match(frame)
         self.assertIsNotNone(match)
         self.assertEqual(rule.value(match, frame), expected)
+        wrapped = ("What does your application need?\n"
+                   "database.sql/analytics on Target native-fixture — Automatic\n"
+                   "[ ] " + instance + "\n"
+                   "  (postgresql): supports SQL (scope: application)\n"
+                   "[ ] postgresql/shared/other (postgresql): supports SQL (scope: shared)\n")
+        self.assertEqual(provider_choice_response(wrapped, instance), expected)
+        wrapped_rule = provider_choice_rule(instance)
+        wrapped_match = wrapped_rule.match(wrapped)
+        self.assertIsNotNone(wrapped_match)
+        self.assertEqual(wrapped_rule.value(wrapped_match, wrapped), expected)
         for invalid in (frame.replace(instance, "different-provider"),
                         frame + "database.sql/second on Target native-fixture — Automatic\n",
                         frame + "What does your application need?\nNo SQL need selected\n",
