@@ -592,6 +592,33 @@ class ConsentCaptureRegression(unittest.TestCase):
             apply_rule.used = 0
             cleanup_fake_core(core)
 
+    def test_20_dual_match_accepts_achtung_and_warning_confirm_prompts(self):
+        # 0428-099 dual-match: after core #1663 renames the CLI/contract marker
+        # "Achtung:" -> "Warning:", the demo consumer matchers must stay green
+        # against BOTH variants. Drive the production flow against a fake core
+        # that prints the POST-MERGE "Warning:" confirm prompt and reaches READY;
+        # the same rule set must accept it. This is the superset guarantee.
+        core = write_fake_core([
+            "Application name [demo]:",
+            "Environment [demo]:",
+            "",
+            "Warning: confirm the displayed outcome without a working alternative (1/2, plan "
+            + "a" * 64 + ")? [y/N]:",
+            "Warning: confirm the displayed outcome without a working alternative (2/2, plan "
+            + "a" * 64 + ")? [y/N]:",
+            "READY application and requested infrastructure verified",
+        ], exit_code=0)
+        try:
+            res = flow_ready(core, exit_code=0)
+            self.assertEqual("ready", res["outcome"])
+            self.assertEqual(0, res["first_rc"])
+            self.assertIsNone(res["confirm_hash"])
+            self.assertFalse(res["foreign_error_second_up"])
+        except RuntimeError as e:
+            self.assertTrue(False, f"dual-match Warning prompt should reach ready, got: {e}")
+        finally:
+            cleanup_fake_core(core)
+
 
 if __name__ == "__main__":
     # unittest.main() handles discovery; this block additionally emits the

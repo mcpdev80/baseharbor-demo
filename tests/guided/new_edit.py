@@ -200,7 +200,7 @@ class CurrentConsent:
         return "yes\n"
 
     def rule(self):
-        return Rule(r"(?:Confirm the displayed provider changes|Achtung: confirm the displayed outcome without a working alternative) \(([12])/([12]), plan ([0-9a-f]{64})\)\? \[y/N\]:\s*$",
+        return Rule(r"(?:Confirm the displayed provider changes|Achtung: confirm the displayed outcome without a working alternative|Warning: confirm the displayed outcome without a working alternative) \(([12])/([12]), plan ([0-9a-f]{64})\)\? \[y/N\]:\s*$",
                     callback=self.respond, repeat=True, optional=True)
 
 
