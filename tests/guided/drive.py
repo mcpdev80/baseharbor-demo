@@ -205,6 +205,67 @@ ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 # hidden by trimming the matcher window.
 MAX_CAPTURE_BYTES = 4 * 1024 * 1024
 
+# Labels the Core prints when it asks the operator to acknowledge displayed
+# consequences, as the core renders them today (baseharbor
+# cmd/baha/provider_change_confirmation.go, post core #1696):
+#   * "Confirm the displayed provider changes" - the hardcoded single-confirmation
+#     non-destructive stage label, now printed WITH the "Warning: " lead whenever
+#     the plan carries an attention marker (providerImpactAttentionLead);
+#   * the two-stage and destructive labels come from
+#     internal/application/provider_change_consent.go ProviderImpactConsentCatalog
+#     and carry the lead INSIDE their value, so they are stored here WITH it.
+#     For those two the core prints the catalog value verbatim and prepends
+#     nothing, so their lead is fixed, not optional;
+#   * the apply-stage labels are hardcoded and get the lead prepended.
+# The lead is a PRESENTATION MARKER ONLY: the gate keys on plan.Attention != ""
+# (core PR #1696 / card 0428-126), so an acknowledging stage may print with or
+# without it and consent semantics do not move. The matcher tracks the core rule
+# - one rule per stage, no per-spelling alternation, no second interpretation -
+# and treats a missing lead as the same stage it treats a present one.
+ACKNOWLEDGE_LABELS = (
+    "Confirm the displayed provider changes",
+    "Warning: confirm the displayed outcome without a working alternative",
+    "Warning: confirm the displayed changes and permanent data deletion",
+)
+
+# The prose lead the core renders for a set attention marker. "Achtung:" was the
+# pre-#1663 German prose and is RETIRED: no shipped core prints it any more
+# (internal/application/provider_change_plan.go sets the value "Warning"), so it
+# must not appear as a matcher alternative - only as a negative guard.
+ATTENTION_MARKER = "Warning:"
+ATTENTION_LEAD = ATTENTION_MARKER + " "
+RETIRED_ATTENTION_MARKER = "Achtung:"
+
+# Stage labels whose lead the core PREPENDS, i.e. the lead appears or disappears
+# with the attention marker and the rest of the label never changes.
+# ProviderImpactConsentCatalog labels are emitted verbatim, so they are absent.
+CORE_PREPENDED_LEAD_LABELS = frozenset({"Confirm the displayed provider changes"})
+
+
+def stage_pattern(label):
+    """Regex body for one core acknowledgement label, lead optional when the core prepends it."""
+    if label in CORE_PREPENDED_LEAD_LABELS:
+        return r"(?:" + re.escape(ATTENTION_LEAD) + ")?" + re.escape(label)
+    return re.escape(label)
+
+
+def provider_impact_acknowledgement_pattern(stage, total, labels=ACKNOWLEDGE_LABELS):
+    """Regex for one Core consequence-acknowledgement stage."""
+    return (r"(?:" + "|".join(stage_pattern(label) for label in labels) + r")"
+            + rf" \({stage}/{total}, plan [0-9a-f]{{64}}\)\? \[y/N\]:\s*$")
+
+
+def provider_impact_apply_pattern():
+    """Regex for the Core apply-stage confirmation, whose lead the core prepends.
+
+    Both shipped labels are hardcoded in the core (readProviderApplyAcknowledgement):
+    "Apply these changes?" and, for a destructive plan, "Apply these changes and
+    permanently delete the listed data?".
+    """
+    return (r"(?:" + re.escape(ATTENTION_LEAD) + r")?Apply these changes"
+            r"(?: and permanently delete the listed data)?\? \[y/N\]:?\s*$")
+
+
 def root_workload_source_response(match, text):
     clean = ANSI_ESCAPE.sub("", text)
     candidates = re.findall(
@@ -504,8 +565,14 @@ init_rules = [
 up_rules = [
     Rule(r"Is this installation running on a machine where you write code\?.*?Choice \[1\]:\s*$", "1\n", optional=True),
     Rule(r"Set them up now\? \[Y/n\]\s*$", "y\n", optional=True),
-    Rule(r"(?:Confirm the displayed provider changes|Achtung: confirm the displayed outcome without a working alternative) \(1/[12], plan [0-9a-f]{64}\)\? \[y/N\]:\s*$", "yes\n", repeat=True, optional=True),
-    Rule(r"Achtung: confirm the displayed outcome without a working alternative \(2/2, plan [0-9a-f]{64}\)\? \[y/N\]:\s*$", "yes\n", repeat=True, optional=True),
+    # The core prints the attention marker as a prose "Warning: " lead in every
+    # acknowledging stage (baseharbor cmd/baha/provider_change_confirmation.go,
+    # providerImpactAttentionLead, core PR #1696 / card 0428-126) and keeps the
+    # plain label when no marker is set. One rule, marker optional: the whole
+    # catalog of consequence-acknowledgement labels is generated from
+    # ACKNOWLEDGE_LABELS so the demo never carries a second interpretation.
+    Rule(provider_impact_acknowledgement_pattern(1, "[12]"), "yes\n", repeat=True, optional=True),
+    Rule(provider_impact_acknowledgement_pattern(2, "2"), "yes\n", repeat=True, optional=True),
     Rule(r"TLS:.*?3\. Local development certificate.*?>\s*$", "3\n", optional=True),
     Rule(r"PostgreSQL host port \[\d+\]:\s*$", "\n", optional=True),
     Rule(r"OpenBao host port \[\d+\]:\s*$", "\n", optional=True),
@@ -517,7 +584,7 @@ up_rules = [
     Rule(r"APP_SECRET value again:\s*$", "acceptance-secret-value\n", optional=True),
     # The fresh-reference journey presents one combined provider impact plan
     # before it can continue into the exact candidate-consent flow.
-    Rule(r"Apply these changes\? \[y/N\]:?\s*$", "y\n", optional=True),
+    Rule(provider_impact_apply_pattern(), "y\n", optional=True),
     Rule(r"Install the BaseHarbor CA into the host trust store\? \[y/N\]:\s*$", "n\n", optional=True),
     # Mandatory READY-abschluss-marker: the guided `up` MUST reach the Core's
     # documented READY completion line. This is the ONLY permitted clean

@@ -62,8 +62,15 @@ class FixtureHelpersTest(unittest.TestCase):
         self.assertEqual(kwargs["env"]["EXTRA"], "value")
         self.assertEqual(kwargs["env"]["BASEHARBOR_LOGS_ENABLED"], "false")
         self.assertIsNone(consent.plan)
-        self.assertTrue(any("Confirm the displayed provider changes" in rule.pattern.pattern
-                            for rule in args[2]))
+        # The rules the demo actually answers with must cover the Core's staged
+        # provider plan for BOTH marker variants (core #1696 prints the
+        # "Warning: " lead in every acknowledging stage). Behaviour, not a
+        # literal pattern copy, is the contract here.
+        self.assertTrue(any(rule.match(text) for rule in args[2])
+                        for text in (
+                            "Confirm the displayed provider changes (1/2, plan " + "a" * 64 + ")? [y/N]: ",
+                            "Warning: confirm the displayed outcome without a working alternative (1/2, plan "
+                            + "a" * 64 + ")? [y/N]: "))
 
     def test_confirmed_provider_switch_replays_exact_choice_if_apply_reopens_picker(self):
         digest = "c" * 64
@@ -187,6 +194,9 @@ class FixtureHelpersTest(unittest.TestCase):
         self.assertEqual(approve(2, 2, "a" * 64), "yes\n")
         with self.assertRaises(RuntimeError):
             approve(2, 1, "a" * 64)
+        # The Core's German prose marker was renamed to "Warning:" in core #1663
+        # and is retired in the demo matcher (see drive.RETIRED_ATTENTION_MARKER):
+        # a prompt that carries it must NOT be answered.
         self.assertIsNone(rule.match("Achtung: separately authorize permanent deletion of the displayed owned data (plan " + "a" * 64 + ")? [y/N]: "))
 
     def test_snapshot_detects_bytes_modes_links_and_empty_directories(self):
