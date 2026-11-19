@@ -14,10 +14,12 @@ import re
 import stat
 import subprocess
 
-from drive import (ANSI_ESCAPE, ARTIFACT_DIR, BAHA, ROOT, Rule,
+from drive import (ANSI_ESCAPE, ARTIFACT_DIR, ACKNOWLEDGE_LABELS, BAHA, ROOT, Rule,
                    capture_confirm_hash, capture_provider_impact_candidate_hash,
                    contains_candidate_abort_prompt, find_foreign_error_signature,
-                   EXPECTED_CANDIDATE_CONSENT_REFUSAL, remove_known_candidate_consent_refusal,
+                   EXPECTED_CANDIDATE_CONSENT_REFUSAL, provider_impact_apply_pattern,
+                   stage_pattern,
+                   remove_known_candidate_consent_refusal,
                    run_tty)
 
 NEEDS_END = r"No SQL, identity service, secrets service or management stack is mandatory\."
@@ -200,13 +202,17 @@ class CurrentConsent:
         return "yes\n"
 
     def rule(self):
-        return Rule(r"(?:Confirm the displayed provider changes|Achtung: confirm the displayed outcome without a working alternative|Warning: confirm the displayed outcome without a working alternative) \(([12])/([12]), plan ([0-9a-f]{64})\)\? \[y/N\]:\s*$",
+        # Same rule as the guided `up` set (drive.stage_pattern is the single
+        # interpretation of the core rule; the stage/total groups stay positional
+        # for the replay guard in respond(), so the body is built here).
+        return Rule(r"(?:" + "|".join(stage_pattern(label) for label in ACKNOWLEDGE_LABELS) + r")"
+                    r" \(([12])/([12]), plan ([0-9a-f]{64})\)\? \[y/N\]:\s*$",
                     callback=self.respond, repeat=True, optional=True)
 
 
 def apply_changes_rule(decision, *, require_provider_changes=False):
     """Confirm provider-plan changes when this journey selects a provider."""
-    return Rule(r"Apply these changes\? \[y/N\]:?\s*$", "y\n", repeat=True,
+    return Rule(provider_impact_apply_pattern(), "y\n", repeat=True,
                 optional=decision != "run" or not require_provider_changes)
 
 
@@ -441,7 +447,7 @@ def edit_application(project, operation, *, instance=None, native=True, environm
         # request a second, standard apply confirmation after the provider
         # consequence plan was accepted; answer it when present, while still
         # allowing a fail-closed candidate-consent refusal to return first.
-        rules.append(Rule(r"Apply these changes\? \[y/N\]:?\s*$", "y\n",
+        rules.append(Rule(provider_impact_apply_pattern(), "y\n",
                           repeat=True, optional=True))
         # A confirmed Edit persists desired source before entering the normal
         # lifecycle. If that lifecycle asks for repository candidate consent,
