@@ -42,17 +42,21 @@ export BASEHARBOR_TEST_RUNTIME="${BASEHARBOR_TEST_RUNTIME:-docker}"
 export BASEHARBOR_DEMO_FIXTURE="$(mktemp -d "${RUNNER_TEMP:-/tmp}/baseharbor-demo-fixture.XXXXXX")"
 export XDG_CONFIG_HOME="$BASEHARBOR_DEMO_FIXTURE/config"
 export XDG_DATA_HOME="$BASEHARBOR_DEMO_FIXTURE/data"
-export BASEHARBOR_TARGET="${BASEHARBOR_TARGET:-demo-${BASEHARBOR_TEST_RUNTIME}}"
+target_name="${BASEHARBOR_TARGET:-demo-${BASEHARBOR_TEST_RUNTIME}}"
 command -v "$BASEHARBOR_TEST_RUNTIME" >/dev/null 2>&1
 
 rm -rf "$XDG_CONFIG_HOME/baseharbor" "$XDG_DATA_HOME/baseharbor" "$XDG_DATA_HOME/baseharbor-recovery"
-printf '[acceptance] target: creating %s on %s\n' "$BASEHARBOR_TARGET" "$BASEHARBOR_TEST_RUNTIME"
-"$BAHA" target create "$BASEHARBOR_TARGET" \
+printf '[acceptance] target: creating %s on %s\n' "$target_name" "$BASEHARBOR_TEST_RUNTIME"
+# The environment variable selects an existing target. Keep it unset while
+# creating the fresh CI target, then select it for the gates below.
+unset BASEHARBOR_TARGET
+"$BAHA" target create "$target_name" \
   --provider "$BASEHARBOR_TEST_RUNTIME" \
   --access "local-$BASEHARBOR_TEST_RUNTIME" \
   --reference local \
   --scope default \
   --default >/dev/null
+export BASEHARBOR_TARGET="$target_name"
 printf '[acceptance] target: ready\n'
 
 # BaseHarbor keeps Podman storage in the host runtime context. The demo's

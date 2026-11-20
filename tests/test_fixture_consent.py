@@ -17,6 +17,13 @@ spec.loader.exec_module(fixture)
 
 
 class ConsentTests(unittest.TestCase):
+    def test_acceptance_creates_selected_target_before_exporting_its_selector(self):
+        acceptance = (Path(__file__).parent.parent / "scripts" / "acceptance.sh").read_text()
+        create = acceptance.index('"$BAHA" target create "$target_name"')
+        select = acceptance.index('export BASEHARBOR_TARGET="$target_name"')
+        self.assertLess(acceptance.index('unset BASEHARBOR_TARGET'), create)
+        self.assertLess(create, select)
+
     def test_backup_restore_binary_capture_preserves_stdout_artifact_and_pipe_status(self):
         tests = Path(__file__).parent
         copier = tests / "backup-restore" / "copy_stream.py"
