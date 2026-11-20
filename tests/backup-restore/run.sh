@@ -207,6 +207,8 @@ PY
   test -n "$loki_port"
   curl -fsS \
     --cacert "$loki_dir/service-access/pki/ca.pem" \
+    --cert "$loki_dir/service-access/pki/client-cert.pem" \
+    --key "$loki_dir/service-access/pki/client-key.pem" \
     --get "https://127.0.0.1:$loki_port/loki/api/v1/query_range" \
     --data-urlencode 'query={baseharbor_application="demo",baseharbor_environment="dev"} |= "recovery-marker-v0417"' \
     --data-urlencode 'limit=10' \
