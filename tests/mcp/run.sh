@@ -70,6 +70,10 @@ try:
         "baseharbor.node.status",
         "baseharbor.app.stop",
         "baseharbor.app.preflight",
+        "baseharbor.app.perses.status",
+        "baseharbor.app.perses.enable",
+        "baseharbor.app.perses.disable",
+        "baseharbor.app.perses.remove",
         "baseharbor.secret.list",
         "baseharbor.secret.set",
         "baseharbor.secret.delete",
@@ -144,6 +148,7 @@ try:
         "baseharbor.node.list",
         "baseharbor.node.status",
         "baseharbor.app.preflight",
+        "baseharbor.app.perses.status",
         "baseharbor.secret.list",
         "baseharbor.stack.list",
         "baseharbor.stack.show",
@@ -180,6 +185,7 @@ try:
         "baseharbor.app.prune",
         "baseharbor.destroy",
         "baseharbor.provider.remove",
+        "baseharbor.app.perses.remove",
     }
     for tool in entries:
         name = tool["name"]
