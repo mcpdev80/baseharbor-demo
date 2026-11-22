@@ -99,6 +99,10 @@ try:
         "baseharbor.app.new",
         "baseharbor.app.edit",
         "baseharbor.app.footprint.show",
+        "baseharbor.app.perses.status",
+        "baseharbor.app.perses.enable",
+        "baseharbor.app.perses.disable",
+        "baseharbor.app.perses.remove",
         "baseharbor.app.prune",
         "baseharbor.app.versions",
         "baseharbor.plan",
@@ -128,6 +132,7 @@ try:
         raise RuntimeError(f"MCP contract mismatch: missing={sorted(expected - names)} unexpected={sorted(names - expected)}")
     read_only = {
         "baseharbor.app.footprint.show",
+        "baseharbor.app.perses.status",
         "baseharbor.app.versions",
         "baseharbor.release.check",
         "baseharbor.control-plane.status",
@@ -177,6 +182,7 @@ try:
         "baseharbor.control-plane.destroy",
         "baseharbor.runtime-identity.revoke",
         "baseharbor.secret.delete",
+        "baseharbor.app.perses.remove",
         "baseharbor.app.prune",
         "baseharbor.destroy",
         "baseharbor.provider.remove",
