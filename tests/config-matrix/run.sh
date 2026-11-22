@@ -6,7 +6,7 @@ section "Capability config matrix"
 
 python3 "$DEMO_ROOT/tests/config-matrix/contract_check.py"   --baha "$BAHA"   --demo-root "$DEMO_ROOT"   | tee "$ARTIFACT_DIR/config-matrix-contract.txt"
 
-matrix_root="$(mktemp -d "$DEMO_ROOT/.config-matrix.XXXXXX")"
+matrix_root="$(mktemp -d "$DEMO_ROOT/baseharbor-core-bootstrap.XXXXXX")"
 cleanup_matrix() {
   local status=$?
   if [ "$status" -eq 0 ]; then
@@ -19,21 +19,20 @@ trap cleanup_matrix EXIT
 
 # Runtime matrix applications need an installation owner for their Target,
 # including cases with no managed providers of their own. Bootstrap the shared
-# control plane outside each app repository so `baha up` does not read the Demo
+# control plane inside the baseharbor-core-bootstrap temp root so the demo
+# operator allow-list accepts `baha up` (matching tests/core-bootstrap.sh),
+# and outside each app repository so `baha up` does not read the Demo
 # Compose source as an application. The static contract suite remains
 # mutation-free and is qualified separately.
 if [ -z "${DEMO_SUITE:-}" ]; then
-  bootstrap_root="$matrix_root/control-plane"
-  mkdir -p "$bootstrap_root"
-  (
-    cd "$bootstrap_root"
+  bootstrap_root="$matrix_root"
+  BASEHARBOR_DEMO_ALLOWED_PROJECT_ROOT="$bootstrap_root" \
     run_consented "$BAHA" up --yes >"$ARTIFACT_DIR/config-matrix-core-up.txt" 2>&1 || {
-      cat "$ARTIFACT_DIR/config-matrix-core-up.txt" >&2
-      exit 1
-    }
-    "$BAHA" doctor >"$ARTIFACT_DIR/config-matrix-core-doctor.txt"
-    grep -q '^READY' "$ARTIFACT_DIR/config-matrix-core-doctor.txt"
-  )
+    cat "$ARTIFACT_DIR/config-matrix-core-up.txt" >&2
+    exit 1
+  }
+  "$BAHA" doctor >"$ARTIFACT_DIR/config-matrix-core-doctor.txt"
+  grep -q '^READY' "$ARTIFACT_DIR/config-matrix-core-doctor.txt"
 fi
 
 run_runtime_case() {
