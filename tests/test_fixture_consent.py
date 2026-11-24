@@ -50,10 +50,20 @@ class ConsentTests(unittest.TestCase):
         self.assertIn("organization: demo-policy", runner)
         self.assertIn("operation: read", runner)
         self.assertIn("operations: [read]", runner)
-        self.assertLess(runner.index('"$BAHA" config organization set'), runner.index('"$BAHA" policy check -e dev'))
+        self.assertLess(runner.index('"$BAHA" config organization set'), runner.index('"$BAHA" policy check -e "$policy_environment"'))
         self.assertIn("set -Eeuo pipefail", runner)
         self.assertIn("trap 'policy_unexpected_err \"$LINENO\" \"$BASH_COMMAND\"' ERR", runner)
         self.assertIn("%s:%s: assertion command failed (exit %s): %q", runner)
+        self.assertIn('if [ -n "${CI:-}" ]; then', runner)
+        self.assertIn("operator_test_idp_setup", runner)
+        self.assertIn("operator_test_idp_cleanup", runner)
+        test_idp = (Path(__file__).parent / "policy" / "operator-test-certificate.sh").read_text()
+        self.assertIn('BASEHARBOR_OPERATOR_OIDC_ISSUER="$realm_url"', test_idp)
+        self.assertIn("BASEHARBOR_OPERATOR_OIDC_CLIENT_ID=baha-ci-test", test_idp)
+        self.assertIn('"$BAHA" login -e test --no-browser', test_idp)
+        self.assertIn('--cert "$BASEHARBOR_OPERATOR_TEST_CERT_FILE"', test_idp)
+        self.assertIn('--key "$BASEHARBOR_OPERATOR_TEST_KEY_FILE"', test_idp)
+        self.assertIn('"auth-x509-client-username-form"', test_idp)
         self.assertNotRegex(runner, r"(?m)^\s*(?:env|printenv)(?:\s|$)")
         self.assertNotIn("set -x", runner)
 
@@ -74,14 +84,16 @@ class ConsentTests(unittest.TestCase):
                 "exit 37\n"
             )
             fake_baha.chmod(0o755)
-            env = os.environ | {
+            env = os.environ.copy()
+            env.pop("CI", None)
+            env.update({
                 "DEMO_ROOT": str(Path(__file__).parent.parent),
                 "ARTIFACT_DIR": str(root / "artifacts"),
                 "BAHA": str(fake_baha),
                 "BASEHARBOR_TEST_RUNTIME": "static",
                 "DEMO_FAILURE_RECORD": str(root / "policy-failure.txt"),
                 "DIAGNOSTIC_TEST_SECRET": "must-not-appear",
-            }
+            })
             result = subprocess.run(
                 ["bash", str(Path(__file__).parent / "policy" / "run.sh")],
                 env=env,
