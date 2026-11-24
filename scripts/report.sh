@@ -13,7 +13,11 @@ done < "$results"
 if [ -s "$groups" ]; then
   printf '\nAcceptance groups\n\n'
   while IFS=$'\t' read -r name status detail; do
-    printf 'demo-%-23s %s\n' "$name" "$status"
+    if [ -n "$detail" ]; then
+      printf 'demo-%-23s %s — %s\n' "$name" "$status" "$detail"
+    else
+      printf 'demo-%-23s %s\n' "$name" "$status"
+    fi
   done < "$groups"
 fi
 

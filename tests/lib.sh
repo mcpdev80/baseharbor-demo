@@ -9,6 +9,20 @@ mkdir -p "$ARTIFACT_DIR"
 RESULTS_FILE="$ARTIFACT_DIR/results.tsv"
 touch "$RESULTS_FILE"
 
+set -E
+record_unexpected_assertion_failure() {
+  local exit_code=$?
+  local source_line="$1"
+  local failed_command="$2"
+  if [ -n "${DEMO_FAILURE_RECORD:-}" ]; then
+    printf -v failure_detail '%s:%s: assertion command failed (exit %s): %q' \
+      "${BASH_SOURCE[1]:-${BASH_SOURCE[0]}}" "$source_line" "$exit_code" "$failed_command"
+    printf '%s\n' "$failure_detail" > "$DEMO_FAILURE_RECORD"
+  fi
+  return "$exit_code"
+}
+trap 'record_unexpected_assertion_failure "$LINENO" "$BASH_COMMAND"' ERR
+
 CONTAINER_CLI="${BASEHARBOR_TEST_RUNTIME:-}"
 if [ "$CONTAINER_CLI" = "static" ]; then
   CONTAINER_CLI=""
