@@ -53,9 +53,14 @@ class ConsentTests(unittest.TestCase):
         self.assertLess(runner.index('"$BAHA" config organization set'), runner.index('"$BAHA" policy check -e dev'))
         self.assertIn("set -Eeuo pipefail", runner)
         self.assertIn("trap 'policy_unexpected_err \"$LINENO\" \"$BASH_COMMAND\"' ERR", runner)
-        self.assertIn("line=%s exit=%s command=%q", runner)
+        self.assertIn("%s:%s: assertion command failed (exit %s): %q", runner)
         self.assertNotRegex(runner, r"(?m)^\s*(?:env|printenv)(?:\s|$)")
         self.assertNotIn("set -x", runner)
+
+        acceptance = (Path(__file__).parents[1] / "scripts" / "acceptance.sh").read_text()
+        self.assertIn('detail="$(head -c 512 "$failure_file")"', acceptance)
+        report = (Path(__file__).parents[1] / "scripts" / "report.sh").read_text()
+        self.assertIn('"$name" "$status" "$detail"', report)
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -74,6 +79,7 @@ class ConsentTests(unittest.TestCase):
                 "ARTIFACT_DIR": str(root / "artifacts"),
                 "BAHA": str(fake_baha),
                 "BASEHARBOR_TEST_RUNTIME": "static",
+                "DEMO_FAILURE_RECORD": str(root / "policy-failure.txt"),
                 "DIAGNOSTIC_TEST_SECRET": "must-not-appear",
             }
             result = subprocess.run(
@@ -83,11 +89,32 @@ class ConsentTests(unittest.TestCase):
                 capture_output=True,
                 check=False,
             )
+            failure_text = (root / "policy-failure.txt").read_text()
+
+            artifacts = root / "acceptance-report"
+            artifacts.mkdir()
+            results = artifacts / "results.tsv"
+            groups = artifacts / "groups.tsv"
+            results.write_text("Policy\tFAIL\toperator setup failed\n")
+            groups.write_text("policy\tFAIL\t" + failure_text)
+            report_result = subprocess.run(
+                ["bash", str(Path(__file__).parents[1] / "scripts" / "report.sh"), str(results)],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
 
         self.assertEqual(result.returncode, 37)
-        self.assertIn("policy gate unexpected ERR: line=47 exit=37 command=tee\\ ", result.stderr)
+        self.assertRegex(result.stderr, r"policy gate unexpected ERR: .*/tests/policy/run\.sh:\d+: assertion command failed \(exit 37\): tee\\ ")
         self.assertEqual(result.stderr.count("policy gate unexpected ERR:"), 1)
         self.assertNotIn("must-not-appear", result.stdout + result.stderr)
+        self.assertRegex(
+            failure_text,
+            r".*/tests/policy/run\.sh:\d+: assertion command failed \(exit 37\): tee\\ ",
+        )
+        self.assertEqual(report_result.returncode, 1)
+        self.assertIn("Acceptance groups", report_result.stdout)
+        self.assertIn(failure_text.strip(), report_result.stdout)
 
     def test_recovery_atomic_bootstrap_does_not_enable_identity_or_management_ui(self):
         resources = json.loads((Path(__file__).parent / "gate-resources.json").read_text())

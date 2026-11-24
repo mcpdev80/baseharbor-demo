@@ -8,8 +8,12 @@ policy_unexpected_err() {
   if [[ "$failed_command" == "("* ]]; then
     return "$exit_code"
   fi
-  printf 'policy gate unexpected ERR: line=%s exit=%s command=%q\n' \
-    "$source_line" "$exit_code" "$failed_command" >&2
+  printf -v failure '%s:%s: assertion command failed (exit %s): %q' \
+    "${BASH_SOURCE[0]}" "$source_line" "$exit_code" "$failed_command"
+  printf 'policy gate unexpected ERR: %s\n' "$failure" >&2
+  if [ -n "${DEMO_FAILURE_RECORD:-}" ]; then
+    printf '%s\n' "$failure" > "$DEMO_FAILURE_RECORD"
+  fi
   return "$exit_code"
 }
 

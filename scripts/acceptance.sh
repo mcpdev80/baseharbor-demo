@@ -200,6 +200,18 @@ record_group() {
   printf '%s\t%s\t%s\n' "$gate" "$status" "$detail" >> "$ARTIFACT_DIR/groups.tsv"
 }
 
+record_gate_failure() {
+  local gate="$1"
+  local rc="$2"
+  local failure_file="$ARTIFACT_DIR/failure-${gate}.txt"
+  local detail="selected acceptance gate failed (exit $rc)"
+
+  if [ -s "$failure_file" ]; then
+    detail="$(head -c 512 "$failure_file")"
+  fi
+  record_group "$gate" FAIL "$detail"
+}
+
 mark_remaining_blocked() {
   local failed_gate="$1"
   local seen_failed=0
@@ -279,6 +291,8 @@ for gate in "${ordered_gates[@]}"; do
   if [ "${DEMO_ATOMIC_GATE:-0}" = "1" ] && [ "$gate" != "guided" ] && [ "$gate" != "config-matrix" ] && [ "$gate" != "init" ] && [ "$gate" != "mcp" ] && [ "$gate" != "agent" ]; then
     bash "$DEMO_ROOT/tests/atomic-bootstrap.sh" "$gate"
   fi
+  export DEMO_FAILURE_RECORD="$ARTIFACT_DIR/failure-${gate}.txt"
+  rm -f "$DEMO_FAILURE_RECORD"
   set +e
   bash "$script"
   rc=$?
@@ -294,17 +308,21 @@ for gate in "${ordered_gates[@]}"; do
   bash "$DEMO_ROOT/scripts/failure-runtime-diagnostics.sh" "$gate" || true
 
   if [ "$full_suite" -ne 1 ]; then
-    record_group "$gate" FAIL "selected acceptance gate failed (exit $rc)"
+    record_gate_failure "$gate" "$rc"
     report_and_exit "$rc"
   fi
 
   if environment_is_usable; then
-    record_group "$gate" FAIL "selected acceptance gate failed (exit $rc); shared runtime remains usable"
+    record_gate_failure "$gate" "$rc"
     echo "demo-$gate failed, but the shared application runtime is still running; continuing full acceptance." >&2
     continue
   fi
 
-  record_group "$gate" ERROR "gate failed (exit $rc) and the shared acceptance runtime is no longer usable"
+  failure_detail="gate failed (exit $rc) and the shared acceptance runtime is no longer usable"
+  if [ -s "$DEMO_FAILURE_RECORD" ]; then
+    failure_detail="$(head -c 512 "$DEMO_FAILURE_RECORD")"
+  fi
+  record_group "$gate" ERROR "$failure_detail"
   mark_remaining_blocked "$gate"
   echo "demo-$gate failed and the shared acceptance runtime is not usable; aborting remaining gates." >&2
   report_and_exit 70
