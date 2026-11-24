@@ -21,7 +21,9 @@ record_unexpected_assertion_failure() {
   fi
   return "$exit_code"
 }
-trap 'record_unexpected_assertion_failure "$LINENO" "$BASH_COMMAND"' ERR
+if [ -z "$(trap -p ERR)" ]; then
+  trap 'record_unexpected_assertion_failure "$LINENO" "$BASH_COMMAND"' ERR
+fi
 
 CONTAINER_CLI="${BASEHARBOR_TEST_RUNTIME:-}"
 if [ "$CONTAINER_CLI" = "static" ]; then
