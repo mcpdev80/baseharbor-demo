@@ -91,6 +91,7 @@ try:
         "baseharbor.runtime.stop",
         "baseharbor.runtime.restart",
         "baseharbor.app.list",
+        "baseharbor.app.pull",
         "baseharbor.inspect",
         "baseharbor.workspace.list",
         "baseharbor.workspace.resolve",
@@ -105,6 +106,7 @@ try:
         "baseharbor.app.perses.remove",
         "baseharbor.app.prune",
         "baseharbor.app.versions",
+        "baseharbor.app.pull",
         "baseharbor.plan",
         "baseharbor.apply",
         "baseharbor.status",
@@ -184,6 +186,7 @@ try:
         "baseharbor.secret.delete",
         "baseharbor.app.perses.remove",
         "baseharbor.app.prune",
+        "baseharbor.app.pull",
         "baseharbor.destroy",
         "baseharbor.provider.remove",
     }
