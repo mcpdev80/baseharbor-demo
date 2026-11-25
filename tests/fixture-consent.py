@@ -54,6 +54,39 @@ def candidate_confirmation(value):
     return match.group(1)
 
 
+# The candidate-source consent refusal that carries the digest is always
+# emitted through the two nested pre-mutation boundaries of `baha up`
+# ("record deployment before mutation: <direct>: <direct>"). The digest
+# sentence never floats freely in unrelated stderr: it is preceded by that
+# wrapped marker and indented under a `Next:` label. Requiring BOTH keeps an
+# unrelated failure that merely mentions `--confirm-candidate` from ever being
+# retried with a fabricated digest (the w136 defect: an unanchored digest
+# search applied to ANY non-JSON failure).
+_CANDIDATE_CONSENT_MARKER = (
+    "record deployment before mutation: candidate submission requires an "
+    "explicit operator/automation consent (--confirm-candidate); refusing to "
+    "record deployment state"
+)
+# One canonical `Next:`-wrapped digest sentence, at its real indentation:
+# "  Re-run with --confirm-candidate <64hex> to acknowledge this exact submission."
+_DIGEST_SENTENCE = (
+    r"^\s+Re-run with --confirm-candidate ([0-9a-f]{64}) "
+    r"to acknowledge this exact submission\.\s*$"
+)
+
+
+def require_candidate_consent_marker(stderr_text):
+    """Fail closed unless the REAL candidate-source consent marker is present.
+
+    The digest sentence is only meaningful when preceded by the exact nested
+    `record deployment before mutation: ...` marker. Any other stderr that
+    merely contains a `--confirm-candidate`-like line is NOT a candidate
+    consent refusal and must not trigger a retry.
+    """
+    if _CANDIDATE_CONSENT_MARKER not in stderr_text:
+        raise ValueError("plain-text stream does not carry the candidate-consent marker")
+
+
 def candidate_digest_from_text(stderr_text):
     """Extract the exact --confirm-candidate digest from the REAL plain-text
     `baha up` refusal.
@@ -62,22 +95,31 @@ def candidate_digest_from_text(stderr_text):
     refusal as PLAIN TEXT (not JSON): the digest refusal is wrapped behind two
     pre-mutation boundaries ("record deployment before mutation: <direct>:
     <direct>") and carries the exact source digest once in a `Next:` line of
-    the form
+    the form (indented, as emitted under the `Next:` label)
 
         Re-run with --confirm-candidate <64hex> to acknowledge this exact submission.
 
-    Only that exact documented sentence with a single 64-hex digest is
-    accepted; any other line that merely contains the phrase is rejected so the
-    fail-closed enforcement is never bypassed. This is the shape the JSON-v1
-    ``candidate_confirmation`` branch never sees (it requires valid JSON).
+    Two gates keep this fail-closed: the exact documented candidate-consent
+    marker must be present first (require_candidate_consent_marker), and the
+    digest sentence must be anchored to its `Next:` indentation (the regex is
+    anchored with ^...$ and requires leading whitespace, so a prefix/suffix
+    near-miss or an unindented stray line does not match). Any other line is
+    rejected so fail-closed enforcement is never bypassed. This is the shape
+    the JSON-v1 ``candidate_confirmation`` branch never sees (it requires
+    valid JSON).
     """
-    match = re.search(
-        r"Re-run with --confirm-candidate ([0-9a-f]{64}) to acknowledge this exact submission\.",
-        stderr_text,
-    )
-    if not match:
+    require_candidate_consent_marker(stderr_text)
+    matches = re.findall(_DIGEST_SENTENCE, stderr_text, re.MULTILINE)
+    if not matches:
         raise ValueError("plain-text refusal does not carry one exact source digest")
-    return match.group(1)
+    digest = matches[0]
+    # Repeated prompts (the digest is carried through BOTH nested boundaries)
+    # must all carry the SAME digest. A differing digest at any boundary is a
+    # different source and must fail closed, never fabricate a merge.
+    for got in matches[1:]:
+        if got != digest:
+            raise ValueError("candidate consent carries differing digests across boundaries")
+    return digest
 
 
 def candidate_already_immutable(value):

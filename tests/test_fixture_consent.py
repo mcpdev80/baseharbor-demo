@@ -809,6 +809,102 @@ class ConsentTests(unittest.TestCase):
             finally:
                 os.chdir(original_cwd)
 
+    def test_fixture_unrelated_error_with_prompt_like_text_does_not_retry(self):
+        # w136 regression: the digest sentence must NOT be applied to any
+        # non-JSON failure. An unrelated error that merely contains a
+        # `--confirm-candidate`-like line (and lacks the exact
+        # candidate-consent marker) must not trigger a retry; the fixture
+        # re-emits the refusal (returncode stays non-zero).
+        digest = "7" * 64
+        unrelated = (
+            "error: cannot reach registry: "
+            "Re-run with --confirm-candidate " + digest
+            + " to acknowledge this exact submission.\n"
+        )
+        replies = iter((
+            subprocess.CompletedProcess([], 1, b"", unrelated.encode()),
+            subprocess.CompletedProcess([], 1, b"", unrelated.encode()),
+        ))
+
+        def run(args, **kwargs):
+            return next(replies)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            demo = root / "demo"
+            fixture_root = root / "fixture"
+            binary = root / "bin" / "baha"
+            for path in (demo, fixture_root / "data", fixture_root / "config", binary.parent):
+                path.mkdir(parents=True, exist_ok=True)
+            binary.write_text("fixture binary")
+            original_cwd = Path.cwd()
+            os.chdir(demo)
+            try:
+                with mock.patch.dict(os.environ, {
+                    "BASEHARBOR_DEMO_FIXTURE": str(fixture_root),
+                    "DEMO_ROOT": str(demo),
+                    "XDG_DATA_HOME": str(fixture_root / "data"),
+                    "XDG_CONFIG_HOME": str(fixture_root / "config"),
+                    "BAHA": str(binary),
+                }), mock.patch.object(sys, "argv", [str(root / "tests" / "fixture-consent.py"), str(binary), "up", "--yes"]), \
+                     mock.patch.object(subprocess, "run", side_effect=run), \
+                     contextlib.redirect_stdout(io.TextIOWrapper(io.BytesIO())), \
+                     contextlib.redirect_stderr(io.TextIOWrapper(io.BytesIO())):
+                    self.assertNotEqual(fixture.main(), 0)
+            finally:
+                os.chdir(original_cwd)
+
+    def test_fixture_digest_near_miss_prefix_suffix_fails_closed(self):
+        # The anchored digest sentence rejects prefix/suffix near-misses. A
+        # digest line that is not the exact documented `Re-run with
+        # --confirm-candidate <64hex> to acknowledge this exact submission.`
+        # (extra leading text, or a trailing suffix) must fail closed even with
+        # the marker present.
+        digest = "7" * 64
+        marker = (
+            "record deployment before mutation: candidate submission requires an "
+            "explicit operator/automation consent (--confirm-candidate); refusing "
+            "to record deployment state: candidate submission requires an explicit "
+            "operator/automation consent (--confirm-candidate); refusing to record "
+            "deployment state\n"
+        )
+        near_miss = marker + (
+            "  Re-run with --confirm-candidate " + digest
+            + " to acknowledge this exact submission EXTRA SUFFIX.\n"
+        )
+        replies = iter((
+            subprocess.CompletedProcess([], 1, b"", near_miss.encode()),
+            subprocess.CompletedProcess([], 1, b"", near_miss.encode()),
+        ))
+
+        def run(args, **kwargs):
+            return next(replies)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            demo = root / "demo"
+            fixture_root = root / "fixture"
+            binary = root / "bin" / "baha"
+            for path in (demo, fixture_root / "data", fixture_root / "config", binary.parent):
+                path.mkdir(parents=True, exist_ok=True)
+            binary.write_text("fixture binary")
+            original_cwd = Path.cwd()
+            os.chdir(demo)
+            try:
+                with mock.patch.dict(os.environ, {
+                    "BASEHARBOR_DEMO_FIXTURE": str(fixture_root),
+                    "DEMO_ROOT": str(demo),
+                    "XDG_DATA_HOME": str(fixture_root / "data"),
+                    "XDG_CONFIG_HOME": str(fixture_root / "config"),
+                    "BAHA": str(binary),
+                }), mock.patch.object(sys, "argv", [str(root / "tests" / "fixture-consent.py"), str(binary), "up", "--yes"]), \
+                     mock.patch.object(subprocess, "run", side_effect=run), \
+                     contextlib.redirect_stdout(io.TextIOWrapper(io.BytesIO())), \
+                     contextlib.redirect_stderr(io.TextIOWrapper(io.BytesIO())):
+                    self.assertNotEqual(fixture.main(), 0)
+            finally:
+                os.chdir(original_cwd)
+
 
 if __name__ == "__main__":
     unittest.main()
