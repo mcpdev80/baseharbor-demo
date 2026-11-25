@@ -296,6 +296,121 @@ class ConsentTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             fixture.candidate_confirmation(value)
 
+    def test_fixture_retries_nested_candidate_refusal_with_actual_digest(self):
+        # The `baha up` nested refusal wraps the candidate-source digest refusal
+        # behind a second pre-mutation boundary ("record deployment before
+        # mutation: <direct>: <direct>"). The fixture must retry the candidate
+        # submission with the ACTUAL digest carried through BOTH nested
+        # boundaries before falling back to the current-provider-plan stages;
+        # the digest is the exact current source, so it is stable across the
+        # two nested refusals. A retry that loses the digest at the second
+        # boundary must still fail closed, never fabricate consent.
+        digest = "7" * 64
+        direct = self.candidate_refusal(digest)["error"]["message"]
+        nested = "record deployment before mutation: " + direct + ": " + direct
+        first_nested = subprocess.CompletedProcess([], 1, b"", json.dumps({
+            "contract_version": "v1",
+            "error": {"code": "validation_failed", "message": nested,
+                      "next": f"Re-run with --confirm-candidate {digest} to acknowledge this exact submission."},
+        }).encode())
+        second_nested = subprocess.CompletedProcess([], 1, b"", json.dumps({
+            "contract_version": "v1",
+            "error": {"code": "validation_failed", "message": nested,
+                      "next": f"Re-run with --confirm-candidate {digest} to acknowledge this exact submission."},
+        }).encode())
+        success = subprocess.CompletedProcess([], 0, b"deployed\n", b"")
+        seen = []
+        replies = iter((first_nested, second_nested, success))
+
+        def run(args, **kwargs):
+            seen.append(list(args))
+            return next(replies)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            demo = root / "demo"
+            fixture_root = root / "fixture"
+            binary = root / "bin" / "baha"
+            for path in (demo, fixture_root / "data", fixture_root / "config", binary.parent):
+                path.mkdir(parents=True, exist_ok=True)
+            binary.write_text("fixture binary")
+            original_cwd = Path.cwd()
+            os.chdir(demo)
+            try:
+                with mock.patch.dict(os.environ, {
+                    "BASEHARBOR_DEMO_FIXTURE": str(fixture_root),
+                    "DEMO_ROOT": str(demo),
+                    "XDG_DATA_HOME": str(fixture_root / "data"),
+                    "XDG_CONFIG_HOME": str(fixture_root / "config"),
+                    "BAHA": str(binary),
+                }), mock.patch.object(sys, "argv", [str(root / "tests" / "fixture-consent.py"), str(binary), "up", "--yes"]), \
+                     mock.patch.object(subprocess, "run", side_effect=run), \
+                     contextlib.redirect_stdout(io.TextIOWrapper(io.BytesIO())), \
+                     contextlib.redirect_stderr(io.TextIOWrapper(io.BytesIO())):
+                    self.assertEqual(fixture.main(), 0)
+            finally:
+                os.chdir(original_cwd)
+
+        self.assertEqual(len(seen), 3)
+        # The digest is carried through BOTH nested refusals to the retry.
+        self.assertEqual(seen[1][-2:], ["--confirm-candidate", digest])
+        self.assertEqual(seen[2][-2:], ["--confirm-candidate", digest])
+
+    def test_fixture_nested_retry_carries_digest_exactly_once_each(self):
+        # The nested digest refusal is retried with the actual source digest at
+        # every nested boundary before the fixture falls back to the
+        # current-provider-plan stages. Each retry must carry the SAME digest
+        # exactly once (no doubled or missing --confirm-candidate), proving the
+        # retry loop carries the digest through every nested boundary without
+        # fabricating a different one.
+        digest = "7" * 64
+        direct = self.candidate_refusal(digest)["error"]["message"]
+        nested = "record deployment before mutation: " + direct + ": " + direct
+
+        def make():
+            return subprocess.CompletedProcess([], 1, b"", json.dumps({
+                "contract_version": "v1",
+                "error": {"code": "validation_failed", "message": nested,
+                          "next": f"Re-run with --confirm-candidate {digest} to acknowledge this exact submission."},
+            }).encode())
+
+        replies = iter((make(), make(), make(), subprocess.CompletedProcess([], 0, b"deployed\n", b"")))
+        seen = []
+
+        def run(args, **kwargs):
+            seen.append(list(args))
+            return next(replies)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            demo = root / "demo"
+            fixture_root = root / "fixture"
+            binary = root / "bin" / "baha"
+            for path in (demo, fixture_root / "data", fixture_root / "config", binary.parent):
+                path.mkdir(parents=True, exist_ok=True)
+            binary.write_text("fixture binary")
+            original_cwd = Path.cwd()
+            os.chdir(demo)
+            try:
+                with mock.patch.dict(os.environ, {
+                    "BASEHARBOR_DEMO_FIXTURE": str(fixture_root),
+                    "DEMO_ROOT": str(demo),
+                    "XDG_DATA_HOME": str(fixture_root / "data"),
+                    "XDG_CONFIG_HOME": str(fixture_root / "config"),
+                    "BAHA": str(binary),
+                }), mock.patch.object(sys, "argv", [str(root / "tests" / "fixture-consent.py"), str(binary), "up", "--yes"]), \
+                     mock.patch.object(subprocess, "run", side_effect=run), \
+                     contextlib.redirect_stdout(io.TextIOWrapper(io.BytesIO())), \
+                     contextlib.redirect_stderr(io.TextIOWrapper(io.BytesIO())):
+                    self.assertEqual(fixture.main(), 0)
+            finally:
+                os.chdir(original_cwd)
+
+        self.assertEqual(len(seen), 4)
+        for step in (1, 2, 3):
+            self.assertEqual(seen[step][-2:], ["--confirm-candidate", digest])
+            self.assertEqual(seen[step].count("--confirm-candidate"), 1)
+
     def test_fixture_retries_only_with_reported_candidate_digest(self):
         digest = "d" * 64
         value = self.candidate_refusal(digest)
@@ -525,6 +640,167 @@ class ConsentTests(unittest.TestCase):
         for status in ("FAILED", "SKIPPED", "DEFERRED"):
             with self.assertRaises(ValueError):
                 fixture.installation_remainder(previous, result(progress={**report, "results": report["results"] + [{"status": status}]}))
+
+    def _plain_text_nested_refusal(self, digest):
+        """The real `baha up` nested candidate refusal, as emitted to stderr in
+        the hosted CI light gate (jobs 139255096992/139255097231, head
+        50c6d84e6): PLAIN TEXT, NOT JSON. The candidate-source digest refusal is
+        wrapped behind two pre-mutation boundaries ("record deployment before
+        mutation: <direct>: <direct>") and carries the exact digest once in a
+        `Next:  Re-run with --confirm-candidate <64hex> ...` line.
+        """
+        direct = (
+            "candidate submission requires an explicit operator/automation "
+            "consent (--confirm-candidate); refusing to record deployment state"
+        )
+        nested = "record deployment before mutation: " + direct + ": " + direct
+        first = (
+            "Candidate to bind for confirmation:\n"
+            "  app.id 1bfda7af-52fe-4e34-abbe-63fa6a78860c\n"
+            "  target.name atomic-podman-connectivity\n"
+            "  source e8ec022e948216d3c37ec7628bb1dcb88cef68108d5f1a7ce6401c51d1c54101\n"
+            "  confirm-hash " + digest + "\n"
+            "Re-run with --confirm-candidate " + digest
+            + " to acknowledge this exact submission.\n"
+            "Error: " + nested + "\n"
+            "\nNext:\n"
+            "  Re-run with --confirm-candidate " + digest
+            + " to acknowledge this exact submission.\n"
+        )
+        return (
+            subprocess.CompletedProcess([], 1, b"", first.encode()),
+            subprocess.CompletedProcess([], 1, b"", first.encode()),
+        )
+
+    def test_fixture_retries_real_plain_text_refusal_with_extracted_digest(self):
+        # the refusal as JSON (json.loads on plain-text stderr -> ValueError ->
+        # break -> digest never extracted -> light gate fails record-deployment).
+        # The fixture must extract the exact --confirm-candidate digest from the
+        # PLAIN TEXT refusal and retry with that same digest through BOTH nested
+        # boundaries, never fabricating a digest and never bypassing the
+        # fail-closed enforcement. This test stubs the REAL plain-text shape,
+        # not the JSON shape the hosted stream is not.
+        digest = "7" * 64
+        first_nested, second_nested = self._plain_text_nested_refusal(digest)
+        success = subprocess.CompletedProcess([], 0, b"deployed\n", b"")
+        seen = []
+        replies = iter((first_nested, second_nested, success))
+
+        def run(args, **kwargs):
+            seen.append(list(args))
+            return next(replies)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            demo = root / "demo"
+            fixture_root = root / "fixture"
+            binary = root / "bin" / "baha"
+            for path in (demo, fixture_root / "data", fixture_root / "config", binary.parent):
+                path.mkdir(parents=True, exist_ok=True)
+            binary.write_text("fixture binary")
+            original_cwd = Path.cwd()
+            os.chdir(demo)
+            try:
+                with mock.patch.dict(os.environ, {
+                    "BASEHARBOR_DEMO_FIXTURE": str(fixture_root),
+                    "DEMO_ROOT": str(demo),
+                    "XDG_DATA_HOME": str(fixture_root / "data"),
+                    "XDG_CONFIG_HOME": str(fixture_root / "config"),
+                    "BAHA": str(binary),
+                }), mock.patch.object(sys, "argv", [str(root / "tests" / "fixture-consent.py"), str(binary), "up", "--yes"]), \
+                     mock.patch.object(subprocess, "run", side_effect=run), \
+                     contextlib.redirect_stdout(io.TextIOWrapper(io.BytesIO())), \
+                     contextlib.redirect_stderr(io.TextIOWrapper(io.BytesIO())):
+                    self.assertEqual(fixture.main(), 0)
+            finally:
+                os.chdir(original_cwd)
+
+        self.assertEqual(len(seen), 3)
+        # The exact real digest is carried through BOTH nested boundaries.
+        self.assertEqual(seen[1][-2:], ["--confirm-candidate", digest])
+        self.assertEqual(seen[2][-2:], ["--confirm-candidate", digest])
+
+    def test_fixture_real_plain_text_refusal_carries_digest_exactly_once(self):
+        # Each retry of the real plain-text refusal carries the SAME digest
+        # exactly once (no doubled or missing --confirm-candidate) through every
+        # nested boundary without fabricating a different one.
+        digest = "7" * 64
+        first_nested, second_nested = self._plain_text_nested_refusal(digest)
+        third = subprocess.CompletedProcess([], 1, b"", first_nested.stderr)
+        fourth = subprocess.CompletedProcess([], 1, b"", first_nested.stderr)
+        success = subprocess.CompletedProcess([], 0, b"deployed\n", b"")
+        seen = []
+        replies = iter((first_nested, second_nested, third, fourth, success))
+
+        def run(args, **kwargs):
+            seen.append(list(args))
+            return next(replies)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            demo = root / "demo"
+            fixture_root = root / "fixture"
+            binary = root / "bin" / "baha"
+            for path in (demo, fixture_root / "data", fixture_root / "config", binary.parent):
+                path.mkdir(parents=True, exist_ok=True)
+            binary.write_text("fixture binary")
+            original_cwd = Path.cwd()
+            os.chdir(demo)
+            try:
+                with mock.patch.dict(os.environ, {
+                    "BASEHARBOR_DEMO_FIXTURE": str(fixture_root),
+                    "DEMO_ROOT": str(demo),
+                    "XDG_DATA_HOME": str(fixture_root / "data"),
+                    "XDG_CONFIG_HOME": str(fixture_root / "config"),
+                    "BAHA": str(binary),
+                }), mock.patch.object(sys, "argv", [str(root / "tests" / "fixture-consent.py"), str(binary), "up", "--yes"]), \
+                     mock.patch.object(subprocess, "run", side_effect=run), \
+                     contextlib.redirect_stdout(io.TextIOWrapper(io.BytesIO())), \
+                     contextlib.redirect_stderr(io.TextIOWrapper(io.BytesIO())):
+                    self.assertEqual(fixture.main(), 0)
+            finally:
+                os.chdir(original_cwd)
+
+        self.assertEqual(len(seen), 5)
+
+    def test_fixture_real_plain_text_refusal_still_fails_closed_when_no_digest(self):
+        # A plain-text refusal that does NOT carry the documented
+        # `--confirm-candidate <64hex>` digest must not be silently consumed:
+        # the fixture re-emits the refusal (returncode stays non-zero), proving
+        # fail-closed enforcement is untouched.
+        refusal = (
+            "Error: record deployment before mutation: candidate submission "
+            "requires an explicit operator/automation consent "
+            "(--confirm-candidate); refusing to record deployment state\n"
+        )
+        replies = iter((
+            subprocess.CompletedProcess([], 1, b"", refusal.encode()),
+            subprocess.CompletedProcess([], 1, b"", refusal.encode()),
+        ))
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            demo = root / "demo"
+            fixture_root = root / "fixture"
+            binary = root / "bin" / "baha"
+            for path in (demo, fixture_root / "data", fixture_root / "config", binary.parent):
+                path.mkdir(parents=True, exist_ok=True)
+            binary.write_text("fixture binary")
+            original_cwd = Path.cwd()
+            os.chdir(demo)
+            try:
+                with mock.patch.dict(os.environ, {
+                    "BASEHARBOR_DEMO_FIXTURE": str(fixture_root),
+                    "DEMO_ROOT": str(demo),
+                    "XDG_DATA_HOME": str(fixture_root / "data"),
+                    "XDG_CONFIG_HOME": str(fixture_root / "config"),
+                    "BAHA": str(binary),
+                }), mock.patch.object(sys, "argv", [str(root / "tests" / "fixture-consent.py"), str(binary), "up", "--yes"]), \
+                     mock.patch.object(subprocess, "run", side_effect=lambda *a, **k: next(replies)), \
+                     contextlib.redirect_stdout(io.TextIOWrapper(io.BytesIO())), \
+                     contextlib.redirect_stderr(io.TextIOWrapper(io.BytesIO())):
+                    self.assertNotEqual(fixture.main(), 0)
+            finally:
+                os.chdir(original_cwd)
 
 
 if __name__ == "__main__":

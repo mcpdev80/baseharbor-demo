@@ -54,6 +54,32 @@ def candidate_confirmation(value):
     return match.group(1)
 
 
+def candidate_digest_from_text(stderr_text):
+    """Extract the exact --confirm-candidate digest from the REAL plain-text
+    `baha up` refusal.
+
+    The hosted Demo CI light gate emits the nested candidate-source consent
+    refusal as PLAIN TEXT (not JSON): the digest refusal is wrapped behind two
+    pre-mutation boundaries ("record deployment before mutation: <direct>:
+    <direct>") and carries the exact source digest once in a `Next:` line of
+    the form
+
+        Re-run with --confirm-candidate <64hex> to acknowledge this exact submission.
+
+    Only that exact documented sentence with a single 64-hex digest is
+    accepted; any other line that merely contains the phrase is rejected so the
+    fail-closed enforcement is never bypassed. This is the shape the JSON-v1
+    ``candidate_confirmation`` branch never sees (it requires valid JSON).
+    """
+    match = re.search(
+        r"Re-run with --confirm-candidate ([0-9a-f]{64}) to acknowledge this exact submission\.",
+        stderr_text,
+    )
+    if not match:
+        raise ValueError("plain-text refusal does not carry one exact source digest")
+    return match.group(1)
+
+
 def candidate_already_immutable(value):
     """Return True when the Core reports a no-op re-apply of a bound candidate.
 
@@ -179,19 +205,32 @@ def main():
     for _ in range(64):
         if not result.returncode:
             break
+        digest = ""
+        plain_digest = ""
+        parsed = None
         try:
-            value = json.loads(result.stderr)
+            parsed = json.loads(result.stderr)
         except (ValueError, TypeError, AttributeError):
-            break
+            # The real hosted light-gate refusal is PLAIN TEXT, not JSON, so the
+            # JSON parse fails. Extract the exact digest from the plain-text
+            # `Next:` line instead of breaking (which previously left the digest
+            # unextracted and the gate failed at record-deployment).
+            try:
+                plain_digest = candidate_digest_from_text(result.stderr.decode("utf-8", "replace"))
+            except (ValueError, TypeError, AttributeError):
+                plain_digest = ""
 
-        try:
-            digest = candidate_confirmation(value)
-        except (ValueError, TypeError, AttributeError):
-            digest = ""
+        if plain_digest:
+            digest = plain_digest
+        elif parsed is not None:
+            try:
+                digest = candidate_confirmation(parsed)
+            except (ValueError, TypeError, AttributeError):
+                digest = ""
         if digest:
             args = set_candidate_confirmation(args, digest)
             print("isolated-demo-fixture: acknowledge the exact current application source candidate", file=sys.stderr)
-        elif candidate_already_immutable(value):
+        elif parsed is not None and candidate_already_immutable(parsed):
             # No-op re-apply over an already-ready, already-consented deployment:
             # Core's immutability gate is not a consent refusal. The deployment is
             # already in the desired state, so the fixture returns success
@@ -200,11 +239,11 @@ def main():
             return 0
         else:
             try:
-                next_consent = current_consent(value)
+                next_consent = current_consent(parsed)
             except (ValueError, TypeError, AttributeError):
                 break
             if previous_plan is None:
-                previous_plan = value["error"]["details"]
+                previous_plan = parsed["error"]["details"]
                 print("isolated-demo-fixture: explicit current-plan stages and separate owned-data consent", file=sys.stderr)
             else:
                 try:
