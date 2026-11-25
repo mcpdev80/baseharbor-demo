@@ -27,12 +27,31 @@ cleanup_companion() {
 }
 trap cleanup_companion EXIT
 
+# NOTE (w198 demo fixture fix-forward, #1842): the compound companion inspect/init/consented-up/
+# doctor block hid which subcommand failed (jobs 139422945410 docker / 139422945343 podman). Run
+# each with its own stdout/stderr/status. The logs showed workload/endpoint readiness but not the
+# failing command. Capture each result; if `doctor` reports authentication is required, the
+# ephemeral operator-test identity setup is available in the policy fixture — that call is
+# intentionally left to the next fix pass once the captured diagnostic confirms it, so this split
+# preserves the exact error for that decision instead of guessing, and does not weaken product auth.
 (
   cd "$companion"
-  "$BAHA" app inspect . > "$ARTIFACT_DIR/companion-inspect.txt"
-  "$BAHA" app init --quick --json > "$ARTIFACT_DIR/companion-init.json"
-  run_consented "$BAHA" up --yes > "$ARTIFACT_DIR/companion-up.txt"
-  "$BAHA" app doctor > "$ARTIFACT_DIR/companion-doctor.txt"
+  "$BAHA" app inspect . > "$ARTIFACT_DIR/companion-inspect.txt" 2>&1
+  inspect_rc=$?
+  "$BAHA" app init --quick --json > "$ARTIFACT_DIR/companion-init.json" 2>&1
+  init_rc=$?
+  run_consented "$BAHA" up --yes > "$ARTIFACT_DIR/companion-up.txt" 2>&1
+  up_rc=$?
+  "$BAHA" app doctor > "$ARTIFACT_DIR/companion-doctor.txt" 2>&1
+  doctor_rc=$?
+  for pair in "inspect:$inspect_rc" "init:$init_rc" "up:$up_rc" "doctor:$doctor_rc"; do
+    step="${pair%%:*}"; rc="${pair##*:}"
+    if [ "$rc" -ne 0 ]; then
+      echo "connectivity $step failed (rc=$rc)" >&2
+      cat "$ARTIFACT_DIR/companion-${step}.txt" >&2 || true
+      exit "$rc"
+    fi
+  done
 )
 grep -q '^READY' "$ARTIFACT_DIR/companion-doctor.txt"
 companion_app_name="$(awk '/^[[:space:]]*name:[[:space:]]*/ {sub(/^[[:space:]]*name:[[:space:]]*/, ""); gsub(/["'\'' ]/, ""); print; exit}' "$companion/baseharbor.yaml")"
