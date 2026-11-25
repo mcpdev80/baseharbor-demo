@@ -394,6 +394,78 @@ class ConsentTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             fixture.set_candidate_confirmation(["baha", "up", "--confirm-candidate"], "b" * 64)
 
+    def immutability_refusal(self):
+        return {
+            "contract_version": "v1",
+            "error": {
+                "code": "internal_error",
+                "message": "candidate is already persisted with consent and is immutable; a second identical submission is refused, apply a changed source to record a new candidate",
+            },
+        }
+
+    def test_candidate_already_immutable_accepts_only_documented_message(self):
+        self.assertTrue(fixture.candidate_already_immutable(self.immutability_refusal()))
+        # Any other refusal code or message must not be accepted as a no-op.
+        # Any other refusal code or message must not be accepted as a no-op,
+        # including any near-match that merely contains the documented phrases
+        # as a substring (prefix, suffix, or inserted text).
+        for change in (
+            {"contract_version": "v2"},
+            {"error": {"code": "validation_failed"}},
+            {"error": {"message": "some other internal failure"}},
+            {},
+            {"contract_version": "v1", "error": {"code": "internal_error",
+                "message": "candidate is already persisted with consent and is immutable; a second identical submission is refused, apply a changed source to record a new candidate X"}},
+            {"contract_version": "v1", "error": {"code": "internal_error",
+                "message": "X candidate is already persisted with consent and is immutable; a second identical submission is refused, apply a changed source to record a new candidate"}},
+            {"contract_version": "v1", "error": {"code": "internal_error",
+                "message": "candidate is already persisted with consent and is immutable; a second identical submission is refused, apply a changed source to record a new candidate\n"}},
+            {"contract_version": "v1", "error": {"code": "internal_error",
+                "message": "candidate is already persisted with consent and is immutable\na second identical submission is refused, apply a changed source to record a new candidate"}},
+            {"contract_version": "v1", "error": {"code": "internal_error",
+                "message": "candidate is already persisted with consent and is immutable; a second identical submission is refused, apply a changed source to record a new candidate; and more"}},
+        ):
+            with self.subTest(change=change):
+                self.assertFalse(fixture.candidate_already_immutable(change))
+
+    def test_main_treats_immutable_reapply_as_success(self):
+        refusal = subprocess.CompletedProcess([], 1, b"", json.dumps(self.immutability_refusal()).encode())
+        success = subprocess.CompletedProcess([], 0, b"applied\n", b"")
+        replies = iter((refusal, success))
+        seen_args = []
+
+        def run(args, **_kwargs):
+            seen_args.append(list(args))
+            return next(replies)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            demo = root / "demo"
+            fixture_root = root / "fixture"
+            binary = root / "bin" / "baha"
+            for path in (demo, fixture_root / "data", fixture_root / "config", binary.parent):
+                path.mkdir(parents=True, exist_ok=True)
+            binary.write_text("fixture binary")
+            original_cwd = Path.cwd()
+            os.chdir(demo)
+            try:
+                with mock.patch.dict(os.environ, {
+                    "BASEHARBOR_DEMO_FIXTURE": str(fixture_root),
+                    "DEMO_ROOT": str(demo),
+                    "XDG_DATA_HOME": str(fixture_root / "data"),
+                    "XDG_CONFIG_HOME": str(fixture_root / "config"),
+                    "BAHA": str(binary),
+                }), mock.patch.object(sys, "argv", [str(root / "tests" / "fixture-consent.py"), str(binary), "app", "apply"]), \
+                     mock.patch.object(subprocess, "run", side_effect=run), \
+                     contextlib.redirect_stdout(io.TextIOWrapper(io.BytesIO())), \
+                     contextlib.redirect_stderr(io.TextIOWrapper(io.BytesIO())):
+                    self.assertEqual(fixture.main(), 0)
+            finally:
+                os.chdir(original_cwd)
+        # The fixture recognized the immutability no-op and returned success
+        # directly (no re-run needed: a re-run would re-hit the gate).
+        self.assertEqual(len(seen_args), 1)
+
     def test_explicit_installation_remainder_cannot_expand_or_retry_failed_mutation(self):
         first, second = "11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222"
         child = lambda value: {"scope": {"owner": {"subject": value}}}

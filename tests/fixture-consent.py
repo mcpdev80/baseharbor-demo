@@ -54,6 +54,36 @@ def candidate_confirmation(value):
     return match.group(1)
 
 
+def candidate_already_immutable(value):
+    """Return True when the Core reports a no-op re-apply of a bound candidate.
+
+    A repository-owned ``app apply`` over an already-ready, already-consented
+    deployment hits Core's immutability gate (never a consent refusal): a second
+    identical submission (same app/target/source identity and digest) is refused
+    with the explicit cause "candidate is already persisted with consent and is
+    immutable; a second identical submission is refused, apply a changed source
+    to record a new candidate". This is a successful no-op for a positive test
+    fixture: the deployment is already in the desired state, so the fixture must
+    not treat it as a failure. It is NOT a consent/auth relaxation — the prior
+    consent is preserved and only the exact documented immutability message is
+    accepted; any other refusal still propagates.
+    """
+    # Accept only the single documented immutability refusal. Compare the complete
+    # error.message to the exact documented string (not substring membership):
+    # a prefix, suffix, or inserted text is a different Core refusal and must not
+    # be treated as a successful no-op.
+    message = value.get("error", {}).get("message", "")
+    return (
+        value.get("contract_version") == "v1"
+        and value.get("error", {}).get("code") == "internal_error"
+        and message == (
+            "candidate is already persisted with consent and is immutable; "
+            "a second identical submission is refused, apply a changed source "
+            "to record a new candidate"
+        )
+    )
+
+
 def set_candidate_confirmation(args, digest):
     """Replace a stale exact-source acknowledgement with the current one."""
     updated = []
@@ -161,6 +191,13 @@ def main():
         if digest:
             args = set_candidate_confirmation(args, digest)
             print("isolated-demo-fixture: acknowledge the exact current application source candidate", file=sys.stderr)
+        elif candidate_already_immutable(value):
+            # No-op re-apply over an already-ready, already-consented deployment:
+            # Core's immutability gate is not a consent refusal. The deployment is
+            # already in the desired state, so the fixture returns success
+            # directly without re-running (a re-run would re-hit the gate).
+            print("isolated-demo-fixture: re-apply over already-ready candidate is a no-op; prior consent preserved", file=sys.stderr)
+            return 0
         else:
             try:
                 next_consent = current_consent(value)
