@@ -3,6 +3,10 @@ set -euo pipefail
 source "$DEMO_ROOT/tests/lib.sh"
 
 section "MCP"
+if [[ "${GATE:-}" == "mcp" ]]; then
+  export BASEHARBOR_DEMO_OPERATOR_GATE=mcp
+  export DEMO_ATOMIC_GATE=1
+fi
 python3 - "$BAHA" "$DEMO_ROOT" "$ARTIFACT_DIR/mcp.json" <<'PY'
 import json, subprocess, sys, time
 baha, cwd, output = sys.argv[1:]
