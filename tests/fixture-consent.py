@@ -68,12 +68,19 @@ def candidate_already_immutable(value):
     consent is preserved and only the exact documented immutability message is
     accepted; any other refusal still propagates.
     """
+    # Accept only the single documented immutability refusal. Compare the complete
+    # error.message to the exact documented string (not substring membership):
+    # a prefix, suffix, or inserted text is a different Core refusal and must not
+    # be treated as a successful no-op.
     message = value.get("error", {}).get("message", "")
     return (
         value.get("contract_version") == "v1"
         and value.get("error", {}).get("code") == "internal_error"
-        and "candidate is already persisted with consent and is immutable" in message
-        and "a second identical submission is refused, apply a changed source to record a new candidate" in message
+        and message == (
+            "candidate is already persisted with consent and is immutable; "
+            "a second identical submission is refused, apply a changed source "
+            "to record a new candidate"
+        )
     )
 
 

@@ -406,11 +406,24 @@ class ConsentTests(unittest.TestCase):
     def test_candidate_already_immutable_accepts_only_documented_message(self):
         self.assertTrue(fixture.candidate_already_immutable(self.immutability_refusal()))
         # Any other refusal code or message must not be accepted as a no-op.
+        # Any other refusal code or message must not be accepted as a no-op,
+        # including any near-match that merely contains the documented phrases
+        # as a substring (prefix, suffix, or inserted text).
         for change in (
             {"contract_version": "v2"},
             {"error": {"code": "validation_failed"}},
             {"error": {"message": "some other internal failure"}},
             {},
+            {"contract_version": "v1", "error": {"code": "internal_error",
+                "message": "candidate is already persisted with consent and is immutable; a second identical submission is refused, apply a changed source to record a new candidate X"}},
+            {"contract_version": "v1", "error": {"code": "internal_error",
+                "message": "X candidate is already persisted with consent and is immutable; a second identical submission is refused, apply a changed source to record a new candidate"}},
+            {"contract_version": "v1", "error": {"code": "internal_error",
+                "message": "candidate is already persisted with consent and is immutable; a second identical submission is refused, apply a changed source to record a new candidate\n"}},
+            {"contract_version": "v1", "error": {"code": "internal_error",
+                "message": "candidate is already persisted with consent and is immutable\na second identical submission is refused, apply a changed source to record a new candidate"}},
+            {"contract_version": "v1", "error": {"code": "internal_error",
+                "message": "candidate is already persisted with consent and is immutable; a second identical submission is refused, apply a changed source to record a new candidate; and more"}},
         ):
             with self.subTest(change=change):
                 self.assertFalse(fixture.candidate_already_immutable(change))
