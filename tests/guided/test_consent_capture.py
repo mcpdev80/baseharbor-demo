@@ -34,6 +34,7 @@ Discovered by `python3 -m unittest discover -s tests/guided -p "test_*.py"`.
 import os
 import io
 from pathlib import Path
+import re
 import sys
 import tempfile
 import time
@@ -79,7 +80,7 @@ def write_fake_core(lines, exit_code, delay=0.6, final_delay=None):
         fh.write("if _n >= 1:\n")
         fh.write("    for _line in [" + lines_repr + "]:\n")
         fh.write("        sys.stdout.write(_line); sys.stdout.flush()\n")
-        fh.write("        if _line.startswith('Apply these changes?'):\n")
+        fh.write("        if _line.startswith('Apply these changes'):\n")
         fh.write("            if sys.stdin.readline().strip().lower() != 'y': sys.exit(4)\n")
         fh.write(f"        time.sleep({delay!r})\n")
         fh.write('    sys.stdout.write("READY application and requested infrastructure verified\\n"); sys.stdout.flush()\n')
@@ -87,7 +88,7 @@ def write_fake_core(lines, exit_code, delay=0.6, final_delay=None):
         fh.write("open(r'" + counter + "', 'w').write(str(_n + 1))\n")
         for index, line in enumerate(lines):
             fh.write("sys.stdout.write(" + repr(line) + "); sys.stdout.flush()\n")
-            if line.startswith("Apply these changes?"):
+            if line.startswith("Apply these changes"):
                 fh.write("if sys.stdin.readline().strip().lower() != 'y': sys.exit(4)\n")
             current_delay = delay if final_delay is None or index < len(lines) - 1 else final_delay
             fh.write(f"time.sleep({current_delay!r})\n")
@@ -284,7 +285,7 @@ class ConsentCaptureRegression(unittest.TestCase):
             self.assertIn("--confirm-candidate", " ".join(res["second_argv"]))
             apply_rule = next(
                 rule for rule in drive.up_rules
-                if rule.pattern.pattern == r"Apply these changes\? \[y/N\]:?\s*$"
+                if rule.pattern.pattern == drive.provider_impact_apply_pattern()
             )
             self.assertEqual(1, apply_rule.used, "second up must answer its own provider-plan prompt")
             self.assertFalse(res["foreign_error_second_up"])
@@ -462,11 +463,17 @@ class ConsentCaptureRegression(unittest.TestCase):
         argv = run_tty.call_args.args[1]
         self.assertEqual([new_edit.BAHA, "app", "apply", "--confirm-candidate", digest], argv)
         rules = run_tty.call_args.args[2]
-        self.assertTrue(any(
-            rule.pattern.pattern.startswith("(?:Confirm the displayed provider changes")
-            for rule in rules
-        ))
-        self.assertTrue(any(rule.pattern.pattern == r"Apply these changes\? \[y/N\]:?\s*$" for rule in rules))
+        # The retry set must acknowledge the core's staged provider plan and
+        # answer the apply stage. Assert it against BOTH marker variants the
+        # core can print (post #1696 lead, or no lead), so the demo keeps one
+        # interpretation of the core rule instead of a literal pattern copy.
+        for text in (self.CORE_ACKNOWLEDGING_PROMPTS[1], self.CORE_ACKNOWLEDGING_PROMPTS[2],
+                     self.CORE_ACKNOWLEDGING_PROMPTS_WITHOUT_MARKER[0]):
+            self.assertTrue(any(rule.match(text) for rule in rules),
+                            f"retry rules do not acknowledge stage: {text!r}")
+        for text in ("Warning: Apply these changes? [y/N]: ", "Apply these changes? [y/N]: "):
+            self.assertTrue(any(rule.match(text) for rule in rules),
+                            f"retry rules do not answer the apply stage: {text!r}")
 
     def test_13_unrelated_error_with_candidate_hash_still_aborts(self):
         digest = "c" * 64
@@ -582,7 +589,7 @@ class ConsentCaptureRegression(unittest.TestCase):
         ], exit_code=0)
         apply_rule = next(
             rule for rule in drive.up_rules
-            if rule.pattern.pattern == r"Apply these changes\? \[y/N\]:?\s*$"
+            if rule.pattern.pattern == drive.provider_impact_apply_pattern()
         )
         try:
             run_capture("c12", core, drive.up_rules, exit_code=0)
@@ -592,12 +599,16 @@ class ConsentCaptureRegression(unittest.TestCase):
             apply_rule.used = 0
             cleanup_fake_core(core)
 
-    def test_20_dual_match_accepts_achtung_and_warning_confirm_prompts(self):
-        # 0428-099 dual-match: after core #1663 renames the CLI/contract marker
-        # "Achtung:" -> "Warning:", the demo consumer matchers must stay green
-        # against BOTH variants. Drive the production flow against a fake core
-        # that prints the POST-MERGE "Warning:" confirm prompt and reaches READY;
-        # the same rule set must accept it. This is the superset guarantee.
+    def test_20_dual_match_accepts_warning_confirm_prompts(self):
+        # 0428-099 dual-match, trimmed to the live rule: after core #1663 renamed
+        # the CLI/contract marker "Achtung:" -> "Warning:" the consumer matcher
+        # must be green against the shipped "Warning:" spelling. Drive the
+        # production flow against a fake core that prints the POST-MERGE
+        # "Warning:" confirm prompt and reaches READY; the same rule set must
+        # accept it. The German "Achtung:" prose is retired (core
+        # internal/application/provider_change_plan.go sets "Warning") and is no
+        # longer matched: the retired spelling is guarded negatively in
+        # new_edit_helpers_test.test_consent_rejects_replayed_stale_and_impossible_stages.
         core = write_fake_core([
             "Application name [demo]:",
             "Environment [demo]:",
@@ -618,6 +629,180 @@ class ConsentCaptureRegression(unittest.TestCase):
             self.assertTrue(False, f"dual-match Warning prompt should reach ready, got: {e}")
         finally:
             cleanup_fake_core(core)
+
+    # --- core #1696 (0428-126) coupling: the marker leads EVERY stage ---------
+    # (regression added by card t-20261119-r28-demo-drive-matcher-warning-marker)
+    # drive.ATTENTION_LEAD is defined once in drive.py as the single source for
+    # the prose lead the core prepends, so these literals name the same rule the
+    # production matcher is built from rather than a second interpretation.
+    # The core prints the structured attention marker as a prose "Warning: "
+    # lead in every acknowledging CLI stage (cmd/baha/provider_change_confirmation.go
+    # providerImpactAttentionLead), so the real strings are
+    #   stage 1/1 non-destructive : "Warning: Confirm the displayed provider changes (1/1, plan <64hex>)? [y/N]: "
+    #   stage 1/2 non-destructive : "Warning: confirm the displayed outcome without a working alternative (1/2, plan <64hex>)? [y/N]: "
+    #   stage 2/2 non-destructive : same label, stage 2/2
+    #   destructive stage         : "Warning: confirm the displayed changes and permanent data deletion (<n>/2, plan <64hex>)? [y/N]: "
+    #   apply stage               : "Warning: Apply these changes[ and permanently delete the listed data]? [y/N]: "
+    # The two catalog labels carry their lead INSIDE the catalog value, so the
+    # core prints them with the lead in every case; only the hardcoded labels can
+    # lose the lead when no attention marker is set.
+    # and, when no attention marker is set, the SAME labels WITHOUT the lead.
+    # A matcher that only knows one of these variants silently treats an
+    # acknowledged stage as not-acknowledged, so the demo must match the core
+    # rule -- marker optional, one rule, no second interpretation.
+    CORE_ACKNOWLEDGING_PROMPTS = [
+        # 1/1 single-confirmation non-destructive (the stage 0428-126 added).
+        "Warning: Confirm the displayed provider changes (1/1, plan " + "a" * 64 + ")? [y/N]: ",
+        # Catalog labels: the lead is part of the value, so this is the ONLY
+        # spelling the core prints for these stages.
+        "Warning: confirm the displayed outcome without a working alternative (1/2, plan " + "a" * 64 + ")? [y/N]: ",
+        "Warning: confirm the displayed outcome without a working alternative (2/2, plan " + "a" * 64 + ")? [y/N]: ",
+        "Warning: confirm the displayed changes and permanent data deletion (1/2, plan " + "a" * 64 + ")? [y/N]: ",
+        "Warning: confirm the displayed changes and permanent data deletion (2/2, plan " + "a" * 64 + ")? [y/N]: ",
+    ]
+    # The hardcoded single-confirmation label WITHOUT the lead, i.e. a plan whose
+    # attention marker is unset (core negative assertion in
+    # TestProviderImpactMarkerPrintedOnEveryAcknowledgingStage). The catalog
+    # labels have no lead-less spelling and are deliberately absent here.
+    CORE_ACKNOWLEDGING_PROMPTS_WITHOUT_MARKER = [
+        "Confirm the displayed provider changes (1/1, plan " + "a" * 64 + ")? [y/N]: ",
+        "Confirm the displayed provider changes (2/2, plan " + "a" * 64 + ")? [y/N]: ",
+    ]
+    CORE_APPLY_PROMPTS = [
+        "Warning: Apply these changes? [y/N]: ",
+        "Warning: Apply these changes and permanently delete the listed data? [y/N]: ",
+        "Apply these changes? [y/N]: ",
+    ]
+    # Spelling the matcher used BEFORE this card: only the two catalog stages,
+    # the German prose as a literal alternative, and no lead on the single-
+    # confirmation or apply stages. Kept solely so the coupling regression is
+    # demonstrably RED against it (mission point 2), never as a production rule.
+    PRE_COUPLING_UP_RULES = [
+        drive.Rule(r"(?:Confirm the displayed provider changes|Achtung: confirm the displayed outcome "
+             r"without a working alternative|Warning: confirm the displayed outcome without a "
+             r"working alternative) \(1/[12], plan [0-9a-f]{64}\)\? \[y/N\]:\s*$",
+                   "yes\n", repeat=True, optional=True),
+        drive.Rule(r"(?:Achtung: confirm the displayed outcome without a working alternative|Warning: "
+             r"confirm the displayed outcome without a working alternative) \(2/2, plan "
+             r"[0-9a-f]{64}\)\? \[y/N\]:\s*$", "yes\n", repeat=True, optional=True),
+        drive.Rule(r"Apply these changes\? \[y/N\]:?\s*$", "y\n", optional=True),
+    ]
+
+    def _up_rule_matching(self, rules, text):
+        return [rule for rule in rules if rule.match(text)]
+
+    def test_21_core_acknowledging_stages_lead_rule_matches_up_rules(self):
+        # Coupling regression for core #1696 / card 0428-126: every stage the
+        # core prints must be matched (and answered "yes") by the production up
+        # rule set, both with the "Warning: " lead and, for the labels whose lead
+        # the core prepends, without it.
+        for text in self.CORE_ACKNOWLEDGING_PROMPTS + self.CORE_ACKNOWLEDGING_PROMPTS_WITHOUT_MARKER:
+            matches = self._up_rule_matching(drive.up_rules, text)
+            self.assertTrue(matches, f"no up rule matches: {text!r}")
+            for rule in matches:
+                self.assertEqual("yes\n", rule.value(rule.match(text), text),
+                                 f"wrong answer for {text!r}")
+        for text in self.CORE_APPLY_PROMPTS:
+            matches = self._up_rule_matching(drive.up_rules, text)
+            self.assertTrue(matches, f"no up rule matches apply stage: {text!r}")
+            for rule in matches:
+                self.assertEqual("y\n", rule.value(rule.match(text), text),
+                                 f"wrong answer for apply stage {text!r}")
+
+    def test_22_pre_coupling_matcher_misses_marked_stages(self):
+        # Mission point 2, the RED side of the coupling stated at the level of
+        # the core's RULE rather than of one spelling. Before this card the demo
+        # hardcoded a per-spelling alternation that knew only
+        #   * the marker-less single-confirmation label at stage position 1
+        #     ("Confirm the displayed provider changes (1/1" or "(1/2"), and
+        #   * the catalog label for "no working alternative" at 1/1, 1/2 and 2/2.
+        # The destructive stage the core prints as
+        #   "Warning: confirm the displayed changes and permanent data deletion (1/2, ...)"
+        # is therefore invisible to that matcher: an acknowledging stage of a
+        # destructive plan reads as not-acknowledged, exactly the demo-side
+        # false-negative gap this card closes.
+        destructive_stage_1 = self.CORE_ACKNOWLEDGING_PROMPTS[3]
+        stale = self._up_rule_matching(self.PRE_COUPLING_UP_RULES, destructive_stage_1)
+        self.assertFalse(stale, "the stale matcher unexpectedly recognizes the destructive stage 1/2")
+        # The same stage at the other position, and both apply-stage spellings
+        # the core can print with the prepended lead, are equally invisible to
+        # the stale matcher.
+        stale_all = self._up_rule_matching(self.PRE_COUPLING_UP_RULES,
+                                           self.CORE_ACKNOWLEDGING_PROMPTS[4])
+        self.assertFalse(stale_all, "the stale matcher unexpectedly recognizes the destructive stage 2/2")
+        # The destructive apply label with the core-prepended lead is likewise
+        # invisible: the stale rule anchored the marker-less label only.
+        self.assertFalse(self._up_rule_matching(self.PRE_COUPLING_UP_RULES,
+                                                self.CORE_APPLY_PROMPTS[1]),
+                         "the stale matcher unexpectedly answers the marked destructive apply stage")
+        stale_ids = {id(rule.pattern) for rule in self.PRE_COUPLING_UP_RULES}
+        production_ids = {id(rule.pattern) for rule in drive.up_rules}
+        self.assertEqual(stale_ids & production_ids, set(),
+                         "the production rule set still carries the stale matcher")
+        # And the production set really does acknowledge every stage the core
+        # can print, including the ones the stale matcher missed.
+        for text in ([destructive_stage_1, self.CORE_ACKNOWLEDGING_PROMPTS[4]]
+                     + self.CORE_APPLY_PROMPTS):
+            self.assertTrue(self._up_rule_matching(drive.up_rules, text),
+                            f"production rules miss what the core prints: {text!r}")
+
+    def test_23_current_consent_rule_accepts_marked_and_plain_stages(self):
+        # The edit-journey consent state machine must advance on every spelling
+        # the core can print for the stage; an unmatched prompt would stall the
+        # journey instead of acknowledging it. The core walks a plan in stage
+        # order, so feed the stages in order too (the state machine refuses a
+        # replayed or reordered stage on purpose).
+        for text in self.CORE_ACKNOWLEDGING_PROMPTS + self.CORE_ACKNOWLEDGING_PROMPTS_WITHOUT_MARKER:
+            consent = new_edit.CurrentConsent()
+            rule = consent.rule()
+            total = re.search(r"\(([12])/([12])", text)[2]
+            for stage in range(1, int(total) + 1):
+                ordered = re.sub(r"\([12](/[12])", f"({stage}\\1", text)
+                match = rule.match(ordered)
+                self.assertIsNotNone(match, f"CurrentConsent rule misses: {ordered!r}")
+                self.assertEqual("yes\n", rule.value(match, ordered),
+                                 f"CurrentConsent rule answers wrongly: {ordered!r}")
+
+    def test_24_marker_lead_only_variants_are_the_same_stage(self):
+        # The rule must not invent a new stage: the lead is presentation, so the
+        # stage/total pair the demo tracks stays identical with and without it.
+        for stage, total in (("1", "1"), ("1", "2"), ("2", "2")):
+            plain = (f"Confirm the displayed provider changes ({stage}/{total}, plan "
+                     + "a" * 64 + ")? [y/N]: ")
+            marked = "Warning: " + plain
+            consent = new_edit.CurrentConsent()
+            rule = consent.rule()
+            for text in (plain, marked):
+                match = rule.match(text)
+                self.assertIsNotNone(match, f"rule misses {text!r}")
+                self.assertEqual((match[1], match[2]), (stage, total),
+                                 f"stage/total misread for {text!r}")
+
+    def test_25_replaced_led_alternation_is_retired(self):
+        # The coupling must be ONE rule, not a union of an old and a new
+        # interpretation. The rule is anchored at the prompt's end, so a prose
+        # prefix the core never prints cannot be proven absent by a positive
+        # match; it is proven absent from the generated pattern itself, built
+        # from the single label set the demo shares with the core.
+        for pattern in (drive.provider_impact_acknowledgement_pattern(1, "[12]"),
+                        drive.provider_impact_acknowledgement_pattern(2, "2"),
+                        drive.provider_impact_apply_pattern(),
+                        new_edit.CurrentConsent().rule().pattern.pattern):
+            self.assertNotIn(drive.RETIRED_ATTENTION_MARKER, pattern,
+                             f"pattern carries the retired German prose: {pattern}")
+        # The lead the core prepends always carries its trailing space, and every
+        # pattern is anchored with \s*$ (whitespace, then end). "Apply these
+        # changes" is moreover not a consequence-acknowledgement stage label, so
+        # the acknowledgement pattern must not accept it at all.
+        self.assertIn(re.escape(drive.ATTENTION_LEAD), drive.provider_impact_apply_pattern())
+        self.assertTrue(drive.provider_impact_apply_pattern().endswith(r"\[y/N\]:?\s*$"))
+        self.assertIsNone(re.compile(drive.provider_impact_acknowledgement_pattern(1, "[12]"))
+                          .search("Apply these changes? [y/N]: "))
+        for text in (self.CORE_APPLY_PROMPTS[0],
+                     self.CORE_APPLY_PROMPTS[1],
+                     "Apply these changes? [y/N]: "):
+            self.assertTrue(self._up_rule_matching(drive.up_rules, text),
+                            f"apply stage lost: {text!r}")
 
 
 if __name__ == "__main__":

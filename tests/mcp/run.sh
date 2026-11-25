@@ -190,6 +190,7 @@ try:
         "baseharbor.secret.delete",
         "baseharbor.app.perses.remove",
         "baseharbor.app.prune",
+        "baseharbor.app.pull",
         "baseharbor.destroy",
         "baseharbor.provider.remove",
     }
