@@ -33,6 +33,15 @@ operator_test_idp_setup() {
   openssl x509 -req -in "$dir/operator.csr" -CA "$dir/ca.pem" -CAkey "$dir/ca.key" -CAcreateserial -out "$dir/operator.pem" -days 1 -extfile "$dir/operator.ext" >/dev/null 2>&1
   chmod 0600 "$dir"/*.key
 
+  # NOTE (w198 demo fixture fix-forward, #1842): the server TLS key is bind-mounted read-only into a
+  # Keycloak container running under a different UID. Keeping server.key at 0600 makes it unreadable
+  # there, so Keycloak fails with `Invalid key/certificate pair configuration` / `Unable to read file
+  # /opt/keycloak/conf/server.key`. Grant read to the service UID ONLY on this ephemeral key, inside
+  # the private 0700 fixture directory; keep operator.key (and every other key) at 0600. The server
+  # certificate is already world-readable, so the mounted pair is complete.
+  chmod 0644 "$dir/server.key"
+  chmod 0644 "$dir/server.pem"
+
   docker run --detach --name "$name" --publish "127.0.0.1:${port}:8443" \
     --env KC_BOOTSTRAP_ADMIN_USERNAME=admin --env "KC_BOOTSTRAP_ADMIN_PASSWORD=$password" \
     --env KC_HTTPS_CERTIFICATE_FILE=/opt/keycloak/conf/server.pem \
