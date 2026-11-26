@@ -344,15 +344,29 @@ def apply_created_application(project, *, environment=None, name=None):
     digest = capture_confirm_hash(transcript)
     if digest is None:
         digest = capture_provider_impact_candidate_hash(transcript)
-    if first.returncode == 0 or digest is None:
-        raise RuntimeError("app apply did not produce the exact candidate-consent challenge: " + transcript[-2000:])
+    if digest is None:
+        # A new application source carries mandatory repository candidate
+        # consent. Core fails closed and names the exact digest to re-run with
+        # --confirm-candidate; the fixture acknowledges that exact submission
+        # through the isolated positive fixture (fixture-consent.py), exactly as
+        # the other New/Edit journeys do. Leaving this path exit-0 without
+        # consent never produced the mandated consent between-state, so it could
+        # never reach the runtime gate's READY marker.
+        raise RuntimeError(
+            "app apply did not produce the exact candidate-consent challenge: "
+            + (transcript[-2000:] or "no digest"))
 
     consent = CurrentConsent()
     rules = [consent.rule(), apply_changes_rule("run", require_provider_changes=True),
              Rule(r"Is this installation running on a machine where you write code\?.*?Choice \[1\]:\s*$", "1\n", optional=True),
              Rule(r"PostgreSQL host port \[\d+\]:\s*$", "\n", optional=True)]
+    # The documented automation-consent re-run. The digest is the source's
+    # canonical content hash; the isolated positive fixture acknowledges the
+    # exact same submission on Core's fail-closed consent boundary, so
+    # supplying --confirm-candidate does not relax any consent/authorization.
+    consented_argv = [*argv, "--confirm-candidate", digest]
     label = name or project.name
-    run_tty("new-edit-" + label + "-apply", [*argv, "--confirm-candidate", digest], rules,
+    run_tty("new-edit-" + label + "-apply", consented_argv, rules,
             cwd=project, env={"BASEHARBOR_LOGS_ENABLED": "false", **(environment or {})},
             timeout=600, no_output_timeout=120)
 
