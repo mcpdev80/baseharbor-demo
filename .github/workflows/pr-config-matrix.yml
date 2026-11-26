@@ -1,0 +1,90 @@
+name: Demo · PR config matrix
+
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - .github/workflows/pr-config-matrix.yml
+      - baseharbor-core.ref
+      - compose.yaml
+      - scripts/acceptance.sh
+      - scripts/failure-runtime-diagnostics.sh
+      - scripts/install-baseharbor.sh
+      - tests/config-matrix/**
+      - tests/connectivity/run.sh
+      - tests/full-destroy/run.sh
+      - tests/policy/operator-test-certificate.sh
+      - tests/reconciliation/run.sh
+      - tests/fixture-consent.py
+      - tests/lib.sh
+
+permissions:
+  contents: read
+
+jobs:
+  config-matrix:
+    name: Demo acceptance · changed-path gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      BASEHARBOR_TEST_RUNTIME: docker
+      DEMO_ATOMIC_GATE: '1'
+      GOFLAGS: -tags=baseharbor_ci_operator_testonly
+      ARTIFACT_DIR: ${{ runner.temp }}/demo-config-matrix-artifacts
+      BASEHARBOR_INSTALL_DIR: ${{ runner.temp }}/demo-config-matrix-bin
+      BASEHARBOR_SOURCE_DIR: ${{ runner.temp }}/demo-config-matrix-core
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate pinned Core revision
+        id: core
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidate="$(cat baseharbor-core.ref)"
+          [[ "$candidate" =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$candidate" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: mcpdev80/baseharbor
+          ref: ${{ steps.core.outputs.sha }}
+          path: .core-runtime-tools
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: .core-runtime-tools/go.mod
+          cache: false
+      - name: Run changed acceptance gates at the exact Demo PR head
+        shell: bash
+        env:
+          DEMO_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          DEMO_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          changed_paths="$(git diff --name-only "${DEMO_BASE_SHA}...${DEMO_HEAD_SHA}")"
+          declare -A selected=()
+          matched=0
+          while IFS= read -r path; do
+            [ -n "$path" ] || continue
+            case "$path" in
+              tests/config-matrix/*) selected[config-matrix]=1; matched=1 ;;
+              tests/connectivity/run.sh) selected[connectivity]=1; matched=1 ;;
+              tests/full-destroy/run.sh) selected[full-destroy]=1; matched=1 ;;
+              tests/policy/operator-test-certificate.sh) selected[policy]=1; matched=1 ;;
+              tests/reconciliation/run.sh) selected[reconciliation]=1; matched=1 ;;
+            esac
+          done <<< "$changed_paths"
+          if [ "$matched" -eq 0 ]; then
+            selected[config-matrix]=1
+          fi
+          gates=()
+          for gate in config-matrix connectivity full-destroy policy reconciliation; do
+            if [ "${selected[$gate]:-0}" = "1" ]; then
+              gates+=("$gate")
+            fi
+          done
+          printf 'Selected Demo acceptance gates: %s\n' "${gates[*]}"
+          bash scripts/acceptance.sh "${gates[@]}"
