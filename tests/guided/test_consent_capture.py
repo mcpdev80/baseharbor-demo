@@ -700,21 +700,26 @@ class ConsentCaptureRegression(unittest.TestCase):
             # Pre-existing captured bytes + bytes the drain loop left unread.
             fh.write(b"Application name [demo]:\n")
             fh.write(b"Re-run with --confirm-candidate " + digest.encode() + b" done\n")
+        # The third argument of reconcile_capture_from_log is an INTEGER byte
+        # offset (the number of log bytes already appended to capture_buffer),
+        # NOT the captured bytes themselves. Passing the bytes prefix here was
+        # the round-5 TypeError (slice indices must be integers); the already-
+        # captured prefix is exactly len(buffer) bytes, so that is the offset.
         buffer = "Application name [demo]:\n"
-        tail = b"Application name [demo]:\n"
-        out, new_tail = drive.reconcile_capture_from_log(log_path, buffer, tail)
+        already_read = len(buffer)
+        out, new_tail = drive.reconcile_capture_from_log(log_path, buffer, already_read)
         try:
             self.assertIn(digest, out,
                           "the digest in the log must reach the capture buffer")
             self.assertIn("Re-run with --confirm-candidate", out,
                           "the documented retry hint must reach the capture buffer")
             self.assertEqual(
-                b"Application name [demo]:\n"
-                + b"Re-run with --confirm-candidate "
-                + digest.encode()
-                + b" done\n",
+                len(b"Application name [demo]:\n"
+                    + b"Re-run with --confirm-candidate "
+                    + digest.encode()
+                    + b" done\n"),
                 new_tail,
-                "the helper returns the full consumed log as the new tail",
+                "the helper returns the full consumed log length as the new int offset (new_already_read)",
             )
             # Idempotency: a second call with the updated tail appends nothing new.
             again, _ = drive.reconcile_capture_from_log(log_path, out, new_tail)
@@ -832,6 +837,33 @@ class ConsentCaptureRegression(unittest.TestCase):
                 1, transcript.count(digest),
                 "the final-drain digest must appear EXACTLY ONCE, not be duplicated by a double append",
             )
+            # Codex round-5 (0428-284): beyond digest.count==1, the returned
+            # transcript must be byte-for-byte / log-equivalent to the on-disk
+            # log after CR-normalization. drive.run_tty strips CR from every
+            # chunk it appends (".replace(\"\\r\", \"\")"), so the equivalence
+            # baseline is the log with CR stripped. Every byte the Core wrote to
+            # the terminal (log) must be present in the returned buffer exactly
+            # once - the digest-bearing tail (>4096 bytes) read by the final
+            # drain must neither be missing nor double-appended. CR-normalization
+            # makes this a log-equivalence (the digest line may be preceded by
+            # padding already asserted present), so a duplicated final-drain tail
+            # that holds only a newline/padding after the digest still FAILS.
+            log_text = None
+            try:
+                log_path = drive.ARTIFACT_DIR / "test25.txt"
+                if log_path.exists():
+                    with log_path.open("rb") as _lr:
+                        log_text = _lr.read().replace(b"\r", b"")
+                    transcript_norm = transcript.replace("\r", "")
+                    self.assertEqual(
+                        log_text.decode("utf-8", errors="replace"),
+                        transcript_norm,
+                        "returned transcript must be byte-for-byte / log-equivalent "
+                        "to the on-disk log after CR-normalization (every log byte "
+                        "present exactly once: neither missing nor double-appended)",
+                    )
+            except FileNotFoundError:
+                pass
         finally:
             cleanup_fake_core(core)
 
