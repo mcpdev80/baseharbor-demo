@@ -26,6 +26,16 @@ ARTIFACT_DIR = Path(os.environ.get("ARTIFACT_DIR", ROOT / "artifacts"))
 # prove the digest-bearing tail was read by the final-drain branch.
 FINAL_DRAIN_CHUNKS = 0
 
+# Test-harness final-drain probe default. A driving test may set
+# run_tty._test_final_drain_hook to a callable that receives every chunk read by
+# run_tty's final-drain branch (the bytes written to the terminal as the process
+# exited that the main select() loop never read). This gives a DETERMINISTIC
+# handle on the final-drain branch WITHOUT depending on PTY-exit timing; the
+# probe fires inside the branch that guards the exactly-once digest boundary.
+# It is a test-only instrumentation hook; it never changes consent/auth/
+# authorization logic or the production capture path.
+_run_tty_final_drain_hook = None
+
 class Rule:
     def __init__(self, pattern, response=None, callback=None, repeat=False, optional=False):
         self.pattern = re.compile(pattern, re.S)
@@ -340,7 +350,7 @@ def run_tty(name, argv, rules, env=None, timeout=900, no_output_timeout=None,
     # can assert the digest-bearing tail was actually read there. It is a
     # test-only instrumentation hook; it never changes consent/auth/authorization
     # logic or the production capture path.
-    run_tty._final_drain_hook = getattr(run_tty, "_final_drain_hook", None)
+    run_tty._final_drain_hook = _run_tty_final_drain_hook
     started = time.monotonic()
     last_output = started
     last_heartbeat = started
@@ -442,7 +452,7 @@ def run_tty(name, argv, rules, env=None, timeout=900, no_output_timeout=None,
                             # that proves the digest-bearing tail reached this
                             # branch; a test without the hook asserts the tail
                             # would be dropped instead. No consent/auth path runs.
-                            hook = getattr(run_tty, "_final_drain_hook", None)
+                            hook = _run_tty_final_drain_hook
                             if hook is not None and chunk:
                                 hook(chunk)
                             if len(buffer) > 65536:
