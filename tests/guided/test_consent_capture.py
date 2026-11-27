@@ -1059,7 +1059,7 @@ class ConsentCaptureRegression(unittest.TestCase):
                 self.assertEqual(
                     _recon_out,
                     _recon_buffer +
-                    "Re-run with --confirm-candidate " + _recon_digest + " done",
+                    "Re-run with --confirm-candidate " + _recon_digest + " done\n",
                     "reconciliation appends the unread log tail exactly once, not doubled",
                 )
                 _recon_again, _ = drive.reconcile_capture_from_log(
@@ -1112,7 +1112,7 @@ class ConsentCaptureRegression(unittest.TestCase):
             )
             self.assertEqual(
                 out,
-                buffer + "Re-run with --confirm-candidate " + digest + " done",
+                buffer + "Re-run with --confirm-candidate " + digest + " done\n",
                 "reconciliation appends the unread log tail exactly once, not doubled",
             )
             # Idempotency: a second call with the updated tail appends nothing.
