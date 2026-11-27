@@ -304,6 +304,11 @@ def run_tty(name, argv, rules, env=None, timeout=900, no_output_timeout=None,
     capture=True returns the full transcript instead of raising on non-zero so
     the caller can drive a follow-up run (feature-detected candidate consent).
     """
+    # The final-drain regression counter is module-level (drive.FINAL_DRAIN_CHUNKS).
+    # It is assigned inside run_tty, so Python would treat it as a local name
+    # unless declared global here; without this declaration the module counter
+    # never advances and the test's >=1 assertion would be a no-op.
+    global FINAL_DRAIN_CHUNKS
     ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
     log_path = ARTIFACT_DIR / f"{name}.txt"
     merged_env = os.environ.copy()

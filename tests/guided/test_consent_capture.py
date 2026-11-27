@@ -751,6 +751,17 @@ class ConsentCaptureRegression(unittest.TestCase):
         # a pass proves the digest-bearing tail (>4096 bytes) was read by the
         # final-drain branch, not the main select() loop.
         #
+        # Scoping guard (round-4 finding): FINAL_DRAIN_CHUNKS is a module-level
+        # counter but is assigned inside run_tty, so without an explicit
+        # 'global FINAL_DRAIN_CHUNKS' declaration in run_tty Python treats the
+        # name as a LOCAL and the module counter never advances (the >=1
+        # assertion would be a no-op). Static bytecode check proves the fix:
+        # 'global FINAL_DRAIN_CHUNKS' is declared in run_tty, the name is in
+        # run_tty.__code__.co_names and is NOT in co_varnames[:nlocals] (i.e.
+        # not a local). The main select() read path (chunk = os.read(master...)
+        # inside the `if ready:` block) never increments the counter - only the
+        # final-drain loop does.
+        #
         # Negative proof (static, no local run): the final-drain loop appends
         # every final-drain chunk to capture_buffer AND advances bytes_read +=
         # len(chunk); reconcile_capture_from_log then appends only
@@ -798,14 +809,21 @@ class ConsentCaptureRegression(unittest.TestCase):
             pass
         # Proof of branch membership: the digest-bearing bytes (start offset
         # >= 4096, past one 4096-byte read) must have been read by the final
-        # drain, not the main loop. >= 1 chunk in the final-drain branch is
-        # exactly the precondition the reconcile step guards; without it the
-        # digest never reaches reconcile and count would be 0.
-        self.assertGreaterEqual(
-            drive.FINAL_DRAIN_CHUNKS, 1,
+        # drain, not the main loop. A final-drain chunk count >= 1 is exactly
+        # the precondition the reconcile step guards; without it the digest
+        # never reaches reconcile and count would be 0. The count must be
+        # strictly greater than zero (assertNotEqual), not merely truthy.
+        self.assertNotEqual(
+            drive.FINAL_DRAIN_CHUNKS, 0,
             "at least one final-drain chunk must be read after process exit; "
             "this proves the digest-bearing tail (>4096 bytes) was consumed by "
             "the final-drain branch, not the main select() loop",
+        )
+        self.assertGreaterEqual(
+            drive.FINAL_DRAIN_CHUNKS, 1,
+            "final-drain chunk count must be >= 1 (the digest-bearing tail is "
+            "read by the final-drain branch; the main select() loop never "
+            "increments FINAL_DRAIN_CHUNKS)",
         )
         try:
             self.assertIn(digest, transcript,
