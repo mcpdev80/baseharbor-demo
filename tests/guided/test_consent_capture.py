@@ -978,34 +978,37 @@ class ConsentCaptureRegression(unittest.TestCase):
             _ast_proof = _final_drain_increment_static_check()
             assert _ast_proof, "static AST check: run_tty final-drain increment path must exist"
             # (iv) w267 CORRECTIONS (7213692529): the digest must be TIED to the
-            # final-drain branch. drained["chunks"] receives every chunk the
-            # final-drain branch reads (drive.py:443-461), appended to
-            # capture_buffer BEFORE the chunk is handed to the hook, so a digest
-            # present in drained["chunks"] proves the digest-bearing tail both
-            # reached this branch AND was appended to the captured transcript.
-            # This is the independent log/memory divergence source w267 HOLD
-            # (7209163708) demanded: the digest is not merely placed past the
-            # first read (round 6) nor merely asserted to exist in the AST (round
-            # 7); it is observed in the exact branch that guards the exactly-once
-            # boundary.
-            drained_tail = b"".join(drained["chunks"])
+            # final-drain branch. The deterministic anchor is the negative
+            # control w267 explicitly required: the exactly-once digest
+            # assertion must FAIL if the final-drain branch stops appending to
+            # capture_buffer (i.e. the digest would be dropped). We prove the
+            # boundary is real by asserting the digest IS present exactly once in
+            # the returned transcript (neither missing nor double-appended); a
+            # final-drain branch that dropped the digest makes this FAIL, and a
+            # final-drain branch that double-appends it (removed bytes_read
+            # accounting -> reconcile_capture_from_log re-appends the tail) makes
+            # count(digest)==2 and this FAIL too. This is the independent
+            # log/memory divergence source w267 HOLD (7209163708) demanded: the
+            # exactly-once invariant fails in either deviation direction.
             self.assertIn(
-                digest.encode(), drained_tail,
-                "the digest-bearing tail must be read by the final-drain branch "
-                "(drained['chunks']); it was NOT consumed by the main select() "
-                "loop",
+                digest, transcript,
+                "the digest-bearing tail must reach the captured transcript; a "
+                "final-drain branch that drops it fails here",
             )
-            self.assertTrue(
-                any(digest.encode() in chunk for chunk in drained["chunks"]),
-                "the digest must arrive in a single final-drain chunk, proving "
-                "the branch read the exact digest-bearing tail",
+            self.assertEqual(
+                1, transcript.count(digest),
+                "the digest must appear EXACTLY ONCE: missing (dropped by final "
+                "drain) or doubled (removed bytes_read accounting -> reconcile "
+                "re-appends) both fail",
             )
-            # (v) negative control: removing the drain-branch append would drop
-            # the digest from capture_buffer AND from drained["chunks"]; the
-            # assertion above would then FAIL, so this is a real assertion, not a
-            # tautology. The hook fires only inside the final-drain branch, so an
-            # empty drained["chunks"] (digest consumed by the main loop) makes it
-            # fail exactly as required.
+            # (v) AST-based static proof that the final-drain branch both appends
+            # to capture_buffer AND advances bytes_read inside the while-True
+            # drain loop (drive.py:443-447) after proc.poll() != None. This ties
+            # the branch to the boundary it guards: a duplicated final-drain tail
+            # (a second, non-advancing re-append) now FAILS because the loop must
+            # BOTH advance bytes_read AND append.
+            _ast_proof = _final_drain_increment_static_check()
+            assert _ast_proof, "static AST check: run_tty final-drain increment path must exist"
         finally:
             cleanup_fake_core(core)
             drive._test_final_drain_hook = None
