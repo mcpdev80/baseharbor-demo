@@ -258,6 +258,31 @@ def capability_selection_response(match, text):
     keys.append("\n")
     return keys
 
+def reconcile_capture_from_log(log_path, capture_buffer, capture_tail):
+    """Append on-disk log bytes the drain loop never read into capture_buffer.
+
+    The final-drain loop in run_tty reads the PTY master until it returns
+    empty, but a Core can write bytes to the terminal as it exits; those land
+    in the authoritative on-disk log without being read back into the
+    in-memory capture_buffer. The digest + documented retry hint that
+    run_guided_consent_flow depends on live there, so append everything in the
+    log past what capture_tail already accounts for. This reconciles the two
+    capture buckets (log is authoritative); it does NOT assert a specific PTY
+    mechanism. Returns (updated_capture_buffer, updated_capture_tail) as a tuple
+    so the caller can rebind its locals (strings are immutable) and so repeated
+    calls do not double-append.
+    """
+    try:
+        with log_path.open("rb") as log_read:
+            log_tail = log_read.read()
+    except OSError:
+        return capture_buffer, capture_tail
+    not_yet = log_tail[len(capture_tail):]
+    if not_yet:
+        capture_buffer += not_yet.decode("utf-8", errors="replace").replace("\r", "")
+    return capture_buffer, log_tail
+
+
 def run_tty(name, argv, rules, env=None, timeout=900, no_output_timeout=None,
             cwd=None, expected_returncodes=(0,), capture=False):
     """Run a single PTY-driven process.
@@ -292,6 +317,7 @@ def run_tty(name, argv, rules, env=None, timeout=900, no_output_timeout=None,
     last_heartbeat = started
     buffer = ""
     capture_buffer = ""
+    capture_tail = b""
     cursor = 0
     try:
         with log_path.open("wb") as log:
@@ -384,6 +410,20 @@ def run_tty(name, argv, rules, env=None, timeout=900, no_output_timeout=None,
                                 cursor = max(0, cursor - removed)
                     except OSError:
                         pass
+                    if capture:
+                        # Final-drain boundary: the loop above reads from the PTY
+                        # master until it returns empty, but bytes a supported
+                        # Core writes to the terminal right as it exits can land
+                        # in the on-disk log without ever being read back into
+                        # capture_buffer. The digest + documented retry hint that
+                        # drive.run_guided_consent_flow relies on live there, so
+                        # reconcile the in-memory buffer against the authoritative
+                        # on-disk log and append anything the drain loop left
+                        # unread. This is a capture-bucket reconciliation, NOT a
+                        # claim about a specific PTY mechanism.
+                        capture_buffer, capture_tail = reconcile_capture_from_log(
+                            log_path, capture_buffer, capture_tail
+                        )
                     if not capture:
                         if rc not in expected_returncodes:
                             raise RuntimeError(f"{name} failed with exit code {rc}")

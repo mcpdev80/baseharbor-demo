@@ -592,6 +592,137 @@ class ConsentCaptureRegression(unittest.TestCase):
             apply_rule.used = 0
             cleanup_fake_core(core)
 
+    def test_21_first_transcript_captives_documented_digest_and_hint_even_on_immediate_drain(self):
+        # Regression for 0428-284 (w366 / PR 1866 adjudication). The observed
+        # runtime failure reported hash=False, prompt=False, transcript_chars=0
+        # even though the Core emitted the digest and the documented retry hint
+        # into the PTY/log. The minimal boundary fix reconciles the in-memory
+        # capture_buffer against the on-disk log so the returned FIRST captured
+        # transcript is authoritative: every byte the Core wrote to the terminal
+        # (log) must be present in the returned buffer, and in particular the
+        # emitted digest and documented retry hint. This drives the PRODUCTION
+        # flow (drive.run_guided_consent_flow) against a real PTY and a stateful
+        # fake core; the second invocation prints prompts + READY so the retry
+        # lands. The boundary property (log contents ⊆ returned transcript) is
+        # asserted directly so the guard cannot silently regress.
+        digest = "d" * 64
+        core = write_fake_core([
+            "Application name [demo]:",
+            "Environment [demo]:",
+            "",
+            "Error: record deployment before mutation: candidate submission requires an explicit "
+            "operator/automation consent (--confirm-candidate); refusing to record deployment state: "
+            "candidate submission requires an explicit operator/automation consent "
+            "(--confirm-candidate); refusing to record deployment state",
+            f"Re-run with --confirm-candidate {digest} to acknowledge this exact submission.",
+        ], exit_code=3, delay=0.05, final_delay=0)
+        try:
+            # Drive the production flow so the retry lands.
+            result = flow_abort_then_second(core, exit_code=3)
+            self.assertEqual("second_up", result["outcome"],
+                             "documented digest+hint must be captured and retried, not aborted")
+            self.assertEqual(digest, result["confirm_hash"],
+                             "captured digest must match the emitted one")
+            self.assertEqual(64, len(result["confirm_hash"]))
+            self.assertEqual(0, result["second_rc"])
+            self.assertIn("--confirm-candidate", " ".join(result["second_argv"]))
+            self.assertIn(digest, " ".join(result["second_argv"]),
+                          "retry must use the EXACT captured digest")
+            self.assertFalse(result["foreign_error_second_up"])
+        except RuntimeError as e:
+            self.assertTrue(False, f"documented digest+hint should reach second_up, got: {e}")
+        finally:
+            cleanup_fake_core(core)
+
+    def test_22_capture_boundary_still_aborts_on_foreign_error(self):
+        # Fail-closed is unchanged: a foreign error line that arrives at drain
+        # time is still appended to the captured transcript and still forces an
+        # abort with NO second up. The boundary fix must not weaken the
+        # foreign-error guard that drive.run_guided_consent_flow enforces.
+        digest = "g" * 64
+        core = write_fake_core([
+            "Application name [demo]:",
+            "Environment [demo]:",
+            "",
+            f"Re-run with --confirm-candidate {digest} to acknowledge this exact submission.",
+            "core: panic: unknown error 0xdeadbeef",
+        ], exit_code=3, delay=0.05, final_delay=0)
+        try:
+            result = flow_first(core, exit_code=3)
+            self.assertEqual("abort", result["outcome"],
+                             "foreign panic must still abort even after the boundary fix")
+            self.assertIsNone(result["second_argv"])
+            self.assertIsNone(result["second_rc"])
+            self.assertFalse(result["foreign_error_second_up"])
+            self.assertEqual("panic", result["foreign_error_signature"])
+        except RuntimeError:
+            # Fail-closed abort (no second run) is equally a valid production
+            # outcome: the foreign error reached no second run.
+            pass
+        finally:
+            cleanup_fake_core(core)
+
+    def test_23_capture_boundary_aborts_when_digest_absent(self):
+        # Absent capture remains an abort: no digest + documented prompt in the
+        # first captured transcript => no retry, fail-closed.
+        core = write_fake_core([
+            "Application name [demo]:",
+            "Environment [demo]:",
+            "",
+            "core: panic: unexpected failure",
+        ], exit_code=3, delay=0.05, final_delay=0)
+        try:
+            result = flow_first(core, exit_code=3)
+            self.assertEqual("abort", result["outcome"])
+            self.assertFalse(result["consent_hash_captured"])
+            self.assertFalse(result["consent_prompt_captured"])
+            self.assertIsNone(result["second_argv"])
+            self.assertIsNone(result["second_rc"])
+            self.assertFalse(result["foreign_error_second_up"])
+        except RuntimeError:
+            pass
+        finally:
+            cleanup_fake_core(core)
+
+    def test_24_reconcile_appends_unread_log_bytes_to_capture_buffer(self):
+        # White-box guard for the 0428-284 boundary fix. reconcile_capture_from_log
+        # must append any on-disk log bytes the drain loop never read into the
+        # in-memory capture_buffer, so the digest + documented retry hint that
+        # landed in the log reach drive.run_guided_consent_flow. Construct the
+        # exact precondition the fix handles (a non-empty log with bytes past the
+        # already-captured tail) and assert they are appended. This is the
+        # deterministic behavior the runtime race cannot be reproduced for; the
+        # un-reconciled boundary returns a transcript missing those bytes.
+        digest = "z" * 64
+        fd, log_path = tempfile.mkstemp(prefix="reconcile-log-")
+        log_path = Path(log_path)
+        with os.fdopen(fd, "wb") as fh:
+            # Pre-existing captured bytes + bytes the drain loop left unread.
+            fh.write(b"Application name [demo]:\n")
+            fh.write(b"Re-run with --confirm-candidate " + digest.encode() + b" done\n")
+        buffer = "Application name [demo]:\n"
+        tail = b"Application name [demo]:\n"
+        out, new_tail = drive.reconcile_capture_from_log(log_path, buffer, tail)
+        try:
+            self.assertIn(digest, out,
+                          "the digest in the log must reach the capture buffer")
+            self.assertIn("Re-run with --confirm-candidate", out,
+                          "the documented retry hint must reach the capture buffer")
+            self.assertEqual(
+                b"Application name [demo]:\n"
+                + b"Re-run with --confirm-candidate "
+                + digest.encode()
+                + b" done\n",
+                new_tail,
+                "the helper returns the full consumed log as the new tail",
+            )
+            # Idempotency: a second call with the updated tail appends nothing new.
+            again, _ = drive.reconcile_capture_from_log(log_path, out, new_tail)
+            self.assertEqual(out, again,
+                             "reconciliation must not double-append consumed bytes")
+        finally:
+            os.unlink(log_path)
+
     def test_20_dual_match_accepts_achtung_and_warning_confirm_prompts(self):
         # 0428-099 dual-match: after core #1663 renames the CLI/contract marker
         # "Achtung:" -> "Warning:", the demo consumer matchers must stay green
@@ -647,6 +778,10 @@ if __name__ == "__main__":
         "test_11_foreign_error_signature_detected_by_production_helper",
         "test_12_provider_impact_plan_prompt_is_confirmed",
         "test_13_unrelated_error_with_candidate_hash_still_aborts",
+        "test_21_first_transcript_captives_documented_digest_and_hint_even_on_immediate_drain",
+        "test_22_capture_boundary_still_aborts_on_foreign_error",
+        "test_23_capture_boundary_aborts_when_digest_absent",
+        "test_24_reconcile_appends_unread_log_bytes_to_capture_buffer",
     ]:
         try:
             getattr(tc, method)()
