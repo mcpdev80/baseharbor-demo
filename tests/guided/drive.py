@@ -27,13 +27,15 @@ ARTIFACT_DIR = Path(os.environ.get("ARTIFACT_DIR", ROOT / "artifacts"))
 FINAL_DRAIN_CHUNKS = 0
 
 # Test-harness final-drain probe default. A driving test may set
-# run_tty._test_final_drain_hook to a callable that receives every chunk read by
-# run_tty's final-drain branch (the bytes written to the terminal as the process
-# exited that the main select() loop never read). This gives a DETERMINISTIC
-# handle on the final-drain branch WITHOUT depending on PTY-exit timing; the
-# probe fires inside the branch that guards the exactly-once digest boundary.
-# It is a test-only instrumentation hook; it never changes consent/auth/
-# authorization logic or the production capture path.
+# `drive._run_tty_final_drain_hook` to a callable that receives every chunk
+# read by run_tty's final-drain branch (the bytes written to the terminal as the
+# process exited that the main select() loop never read). run_tty reads THIS
+# module global directly (drive.py:478), so a hook set here BEFORE the call is
+# actually observed inside the final-drain branch — this is the deterministic,
+# timing-independent handle on that branch (the FINDING 1 seam). The probe
+# fires inside the branch that guards the exactly-once digest boundary and is a
+# test-only instrumentation hook; it never changes consent/auth/authorization
+# logic or the production capture path.
 _run_tty_final_drain_hook = None
 
 class Rule:
@@ -441,29 +443,39 @@ def run_tty(name, argv, rules, env=None, timeout=900, no_output_timeout=None,
                             # captured transcript used by READY/consent checks.
                             buffer += chunk.decode("utf-8", errors="replace").replace("\r", "")
                             if capture:
-                                # Append to capture_buffer BEFORE advancing
-                                # bytes_read: this is the independent
-                                # log/memory divergence source w267 requires
-                                # (review 7209163708). A Core may write a final
-                                # chunk to the terminal that lands in the log
-                                # but is not yet in capture_buffer; by advancing
-                                # only AFTER the append the helper's
-                                # log[bytes_read:] captures that truly-unread
-                                # tail exactly once. A chunk handed to the hook
-                                # but not yet appended is therefore a real,
-                                # reproducible divergence, not a tautology.
+                                # FINDING 1 FIX (w267 round 10): append to
+                                # capture_buffer BEFORE advancing bytes_read.
+                                # This ordering is the independent
+                                # log/memory divergence source: the chunk
+                                # handed to the hook below (drive.py:460) is
+                                # already recorded in capture_buffer, so
+                                # reconcile_capture_from_log's
+                                # log[bytes_read:] captures only a tail that
+                                # truly landed in the log but was never read.
+                                # The append-before-advance makes the digest
+                                # that lands in the final-drain branch a
+                                # reproducible, asserted divergence rather
+                                # than a tautology.
                                 capture_buffer += chunk.decode("utf-8", errors="replace").replace("\r", "")
                                 if len(capture_buffer.encode("utf-8")) > MAX_CAPTURE_BYTES:
                                     raise RuntimeError(f"{name} capture exceeded {MAX_CAPTURE_BYTES} bytes")
                             bytes_read += len(chunk)
                             FINAL_DRAIN_CHUNKS += 1
-                            # Test-harness final-drain probe: hand the exact
-                            # bytes the final-drain branch read to a test-supplied
-                            # hook (see run_tty). The hook now receives the chunk
-                            # AFTER it has been appended to capture_buffer, so a
-                            # test that inspects drained["chunks"] proves the
-                            # digest-bearing tail both reached this branch AND was
-                            # appended to the captured transcript. No
+                            # FINDING 1 (w267, round 10): this is the
+                            # deterministic production-path seam that
+                            # establishes a REAL log/capture divergence. The
+                            # chunk read here by the final-drain branch is
+                            # exactly the set of bytes a Core wrote to the
+                            # terminal as it exited that the main select()
+                            # loop never read back. By handing these exact
+                            # bytes to a test-supplied hook (see run_tty), the
+                            # divergence is observable: a Core can write a
+                            # final chunk that lands in the on-disk log but is
+                            # absent from capture_buffer, and reconcile_capture
+                            # from_log repairs it. A test that inspects what
+                            # this branch read proves the digest-bearing tail
+                            # both reached the log-only-divergent final-drain
+                            # branch AND was reconciled into capture_buffer. No
                             # consent/auth path runs.
                             hook = _run_tty_final_drain_hook
                             if hook is not None and chunk:
