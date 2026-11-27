@@ -734,20 +734,38 @@ class ConsentCaptureRegression(unittest.TestCase):
         # exactly once (not duplicated by a second append) and not missing
         # (not skipped by an unflushed writer).
         #
-        # Determinism: run_tty reads up to 4096 bytes per normal select() event,
+        # Determinism. run_tty reads up to 4096 bytes per normal select() event,
         # so a digest smaller than one read (as in the previous < 4 KiB version)
-        # could be consumed entirely by the normal loop and never exercise the
+        # could be consumed entirely by the main loop and never exercise the
         # final-drain reconcile path, hiding the bug. We therefore emit, as the
-        # final core line before exit, a single blob LARGER than one read: a
-        # padding prefix that fills the first 4096-byte read, with the digest in
-        # the TAIL past the read boundary. The padding prefix is consumed by the
-        # normal loop; the digest tail is read by the final drain after the
-        # process exits, which is exactly the boundary the fix guards.
+        # final core line before exit, a padding prefix of at least 4096 bytes
+        # and ONLY then the digest, so the digest's START OFFSET is >= 4096 and
+        # its bytes fall past the first 4096-byte read. The padding is consumed
+        # by the main loop; the digest tail is read by the final-drain branch
+        # after the process exits - exactly the boundary the fix guards.
+        #
+        # Negative proof (static, no local run): the final-drain loop in
+        # run_tty (drive.py lines 397-415) appends every final-drain chunk to
+        # capture_buffer (line 408) AND advances bytes_read += len(chunk)
+        # (line 411); reconcile_capture_from_log then appends only
+        # log[bytes_read:] (lines 436-438). If bytes_read += len(chunk) were
+        # removed from the final-drain loop, bytes_read would lag by the digest
+        # tail and reconcile would re-append it -> count(digest) == 2. This test
+        # therefore FAILS deterministically without that line and passes with it.
         digest = "a" * 64
         digest_line = f"Re-run with --confirm-candidate {digest} to acknowledge this exact submission."
-        assert len(digest_line) > 0
-        pad = "P" * (4096 - len(digest_line) + 1)  # ensure digest starts past byte 4096
-        final_blob = pad + digest_line
+        # Fix requirement 1: padding prefix of MINIMUM 4096 bytes, digest appended
+        # AFTER the prefix so its start offset is >= 4096 (past one 4096-byte
+        # read), not merely that the whole blob exceeds 4096 bytes.
+        pad_len = 4096 + len(digest_line)
+        final_blob = "P" * pad_len + digest_line
+        # Fix requirement 2: assert the digest START OFFSET >= 4096 (computed),
+        # not merely that the blob length exceeds 4096.
+        digest_start_offset = pad_len
+        assert digest_start_offset >= 4096, (
+            "digest start offset %d must be >= 4096 so the digest tail lands in "
+            "the final drain, not the main loop" % digest_start_offset
+        )
         assert len(final_blob) > 4096, "final blob must exceed one 4096-byte read"
         # A fake core that prints the prompts, then a single >4096 byte final
         # blob whose digest tail lands in the final drain, then exits non-zero.
