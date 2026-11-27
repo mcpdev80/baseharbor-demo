@@ -733,10 +733,24 @@ class ConsentCaptureRegression(unittest.TestCase):
         # particular a digest written as the very last output must be present
         # exactly once (not duplicated by a second append) and not missing
         # (not skipped by an unflushed writer).
+        #
+        # Determinism: run_tty reads up to 4096 bytes per normal select() event,
+        # so a digest smaller than one read (as in the previous < 4 KiB version)
+        # could be consumed entirely by the normal loop and never exercise the
+        # final-drain reconcile path, hiding the bug. We therefore emit, as the
+        # final core line before exit, a single blob LARGER than one read: a
+        # padding prefix that fills the first 4096-byte read, with the digest in
+        # the TAIL past the read boundary. The padding prefix is consumed by the
+        # normal loop; the digest tail is read by the final drain after the
+        # process exits, which is exactly the boundary the fix guards.
         digest = "a" * 64
-        # A fake core that prints the prompts then exits non-zero. The digest
-        # line is emitted last, after the read loop has drained the PTY master,
-        # so the missing-rest-byte path is the one exercised.
+        digest_line = f"Re-run with --confirm-candidate {digest} to acknowledge this exact submission."
+        assert len(digest_line) > 0
+        pad = "P" * (4096 - len(digest_line) + 1)  # ensure digest starts past byte 4096
+        final_blob = pad + digest_line
+        assert len(final_blob) > 4096, "final blob must exceed one 4096-byte read"
+        # A fake core that prints the prompts, then a single >4096 byte final
+        # blob whose digest tail lands in the final drain, then exits non-zero.
         core = write_fake_core([
             "Application name [demo]:",
             "Environment [demo]:",
@@ -745,8 +759,8 @@ class ConsentCaptureRegression(unittest.TestCase):
             "operator/automation consent (--confirm-candidate); refusing to record deployment state: "
             "candidate submission requires an explicit operator/automation consent "
             "(--confirm-candidate); refusing to record deployment state",
-            f"Re-run with --confirm-candidate {digest} to acknowledge this exact submission.",
-        ], exit_code=3, delay=0.02, final_delay=0)
+            final_blob,
+        ], exit_code=3, delay=0.0, final_delay=0)
         transcript = ""
         try:
             _, transcript = run_capture(
