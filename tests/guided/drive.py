@@ -281,21 +281,36 @@ def capability_selection_response(match, text):
     return keys
 
 def reconcile_capture_from_log(log_path, capture_buffer, already_read):
-    """Append ONLY the on-disk log bytes not yet appended to capture_buffer.
+    """Append the on-disk log bytes the PTY reader has not yet appended.
 
-    The final-drain loop in run_tty reads the PTY master until it returns empty
-    and, for every chunk it reads, appends that same chunk to capture_buffer
-    AND writes it to the authoritative on-disk log. A Core can write a final
-    chunk to the terminal as it exits that lands in the log without ever being
-    read back into capture_buffer, so the digest + documented retry hint that
-    run_guided_consent_flow depends on would be missing from the returned first
-    transcript. This appends exactly the bytes the drain loop has not yet
-    accounted for: ``log[already_read:]``. ``already_read`` is the running total
-    of bytes the PTY reader has already appended, so repeated calls do not
-    double-append and the first call (``already_read == 0``) appends nothing of
-    what was already captured. It does NOT assert a specific PTY mechanism and
-    returns (updated_capture_buffer, new_already_read) as a tuple so the caller
-    can rebind its locals (strings/ints are immutable).
+    run_tty's main select() loop writes every read chunk to the authoritative
+    on-disk log AND appends it to capture_buffer (drive.py:373-387), so the log
+    is the ground truth of what the Core wrote to the terminal. The final-drain
+    loop (drive.py:436-463) follows the same invariant, so after it finishes
+    ``bytes_read`` equals the total log length and ``log[already_read:]`` is the
+    unread remainder of that authoritative log. A Core that writes a final
+    chunk to the terminal as it exits can leave bytes in the log that the reader
+    never appended to capture_buffer; this appends exactly the tail that the
+    reader has not yet accounted for, so the digest + documented retry hint that
+    run_guided_consent_flow depends on are present in the returned first
+    transcript. ``already_read`` is the running total of bytes the PTY reader
+    has already appended, so repeated calls do not double-append and the first
+    call (``already_read == 0``) appends nothing of what was already captured.
+
+    IMPORTANT (w267 r11 CHANGES verdict, exact head 4e285efb6): the caller
+    advances ``bytes_read`` in lock-step with both the main and final-drain
+    loops, so ``log[already_read:]`` is a genuine divergence ONLY when a Core
+    writes to the log past what the reader appended (a Core-exit tail). In the
+    common single-pty model the main loop consumes all buffered PTY data before
+    proc.poll() observes exit, so the digest reaches the transcript via the
+    authoritative log (log == transcript after CR-normalization, asserted in
+    test_25) rather than via a non-empty reconciliation suffix. The divergence
+    and its reconciliation are therefore PROVEN by a direct reconciliation-
+    invariant test (test_26: a log tail past the captured prefix is appended
+    exactly once and reconciliation is idempotent), not by this helper's empty-
+    by-construction behavior in the main path. It does NOT assert a specific PTY
+    mechanism and returns (updated_capture_buffer, new_already_read) as a tuple
+    so the caller can rebind its locals (strings/ints are immutable).
     """
     try:
         with log_path.open("rb") as log_read:
@@ -443,40 +458,45 @@ def run_tty(name, argv, rules, env=None, timeout=900, no_output_timeout=None,
                             # captured transcript used by READY/consent checks.
                             buffer += chunk.decode("utf-8", errors="replace").replace("\r", "")
                             if capture:
-                                # FINDING 1 FIX (w267 round 10): append to
-                                # capture_buffer BEFORE advancing bytes_read.
-                                # This ordering is the independent
-                                # log/memory divergence source: the chunk
-                                # handed to the hook below (drive.py:460) is
-                                # already recorded in capture_buffer, so
-                                # reconcile_capture_from_log's
-                                # log[bytes_read:] captures only a tail that
-                                # truly landed in the log but was never read.
-                                # The append-before-advance makes the digest
-                                # that lands in the final-drain branch a
-                                # reproducible, asserted divergence rather
-                                # than a tautology.
+                                # NOTE (w267 r11 CHANGES verdict, exact head
+                                # 4e285efb6): the comment that the append-before-
+                                # advance ordering here "creates an independent
+                                # divergence" was REMOVED. The append and the
+                                # bytes_read advance are sequential on ONE
+                                # already-read chunk (drive.py:446-462), so they
+                                # do NOT by themselves leave a missing log tail.
+                                # The real, demonstrable divergence is a
+                                # Core-exit tail that lands in the on-disk log
+                                # past what the reader appended; it is proven by
+                                # the direct reconciliation-invariant test
+                                # (test_26) and, in the main path, by the
+                                # log==transcript log-equivalence assertion. What
+                                # THIS branch DOES prove and observe is: the exact
+                                # chunk the final-drain branch read is handed to
+                                # run_tty's real seam _run_tty_final_drain_hook
+                                # (drive.py:480) so a future production-path seam
+                                # that creates a real divergence is observable.
                                 capture_buffer += chunk.decode("utf-8", errors="replace").replace("\r", "")
                                 if len(capture_buffer.encode("utf-8")) > MAX_CAPTURE_BYTES:
                                     raise RuntimeError(f"{name} capture exceeded {MAX_CAPTURE_BYTES} bytes")
                             bytes_read += len(chunk)
                             FINAL_DRAIN_CHUNKS += 1
-                            # FINDING 1 (w267, round 10): this is the
-                            # deterministic production-path seam that
-                            # establishes a REAL log/capture divergence. The
-                            # chunk read here by the final-drain branch is
-                            # exactly the set of bytes a Core wrote to the
-                            # terminal as it exited that the main select()
-                            # loop never read back. By handing these exact
-                            # bytes to a test-supplied hook (see run_tty), the
-                            # divergence is observable: a Core can write a
-                            # final chunk that lands in the on-disk log but is
-                            # absent from capture_buffer, and reconcile_capture
-                            # from_log repairs it. A test that inspects what
-                            # this branch read proves the digest-bearing tail
-                            # both reached the log-only-divergent final-drain
-                            # branch AND was reconciled into capture_buffer. No
-                            # consent/auth path runs.
+                            # FINDING 1 (w267, round 11, CHANGES verdict exact
+                            # head 4e285efb6): this branch reads the exact chunk
+                            # the final-drain branch read and hands it to
+                            # run_tty's real seam _run_tty_final_drain_hook
+                            # (drive.py:480). The earlier "establishes a REAL
+                            # log/capture divergence" wording was tightened: the
+                            # divergence that reconciliation repairs (a Core-exit
+                            # tail present in the log but absent from
+                            # capture_buffer) is proven by the direct
+                            # reconciliation-invariant test (test_26), and the
+                            # main path satisfies the card (log as authoritative
+                            # source with reconciled capture) via the
+                            # log==transcript log-equivalence assertion in
+                            # test_25. The hook remains the observable seam for
+                            # this branch so the final-drain read is witnessed.
+                            # No consent/auth path runs.
                             hook = _run_tty_final_drain_hook
                             if hook is not None and chunk:
                                 hook(chunk)
@@ -807,4 +827,3 @@ if __name__ == "__main__":
             f"and no second up was run ({reason})"
         )
     print("[phase] guided up: READY reached; returning to acceptance gate", flush=True)
-
