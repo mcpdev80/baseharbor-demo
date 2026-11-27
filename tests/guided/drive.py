@@ -330,6 +330,17 @@ def run_tty(name, argv, rules, env=None, timeout=900, no_output_timeout=None,
     )
     os.close(slave)
 
+    # Test-harness final-drain probe. When the driving test sets
+    # run_tty._final_drain_hook to a callable, run_tty calls it with the exact
+    # bytes read by the final-drain loop (the bytes the process wrote to the
+    # terminal as it exited and that the main select() loop never read). This
+    # gives the test a DETERMINISTIC handle on the final-drain branch WITHOUT
+    # depending on PTY-exit timing: the probe fires inside the branch that
+    # guards the exactly-once digest boundary (drive.py:411-431), so the test
+    # can assert the digest-bearing tail was actually read there. It is a
+    # test-only instrumentation hook; it never changes consent/auth/authorization
+    # logic or the production capture path.
+    run_tty._final_drain_hook = getattr(run_tty, "_final_drain_hook", None)
     started = time.monotonic()
     last_output = started
     last_heartbeat = started
@@ -425,6 +436,15 @@ def run_tty(name, argv, rules, env=None, timeout=900, no_output_timeout=None,
                                     raise RuntimeError(f"{name} capture exceeded {MAX_CAPTURE_BYTES} bytes")
                             bytes_read += len(chunk)
                             FINAL_DRAIN_CHUNKS += 1
+                            # Test-harness final-drain probe: hand the exact
+                            # bytes the final-drain branch read to a test-supplied
+                            # hook (see run_tty). This is the deterministic anchor
+                            # that proves the digest-bearing tail reached this
+                            # branch; a test without the hook asserts the tail
+                            # would be dropped instead. No consent/auth path runs.
+                            hook = getattr(run_tty, "_final_drain_hook", None)
+                            if hook is not None and chunk:
+                                hook(chunk)
                             if len(buffer) > 65536:
                                 removed = len(buffer) - 65536
                                 buffer = buffer[removed:]

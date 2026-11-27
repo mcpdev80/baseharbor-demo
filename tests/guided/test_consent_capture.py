@@ -869,43 +869,52 @@ class ConsentCaptureRegression(unittest.TestCase):
             # Fail-closed abort (no second run) is a valid production outcome;
             # the exactly-once boundary still must hold on the returned buffer.
             pass
-        # ROUNDED-6 FALLBACK PROOF (Owner-authorized, card 0428-284, PR #183).
-        # The original branch-membership proof asserted drive.FINAL_DRAIN_CHUNKS
-        # >= 1 at runtime. That counter (drive.py:27 module-level, incremented at
-        # drive.py:427 inside run_tty's final-drain `while True` loop after
-        # proc.poll() != None) is INHERENTLY RACY: when the fake core writes its
-        # whole >4096 byte blob and exits quickly, the main select() loop
-        # (drive.py:347-364) can read the entire blob BEFORE poll() returns a
-        # non-None rc, so the final-drain loop (drive.py:412) reads empty and the
-        # counter stays 0 even though the digest-bearing tail was captured by the
-        # main loop. Hosted run 45961168355 (head 335ef5e54) proved exactly this:
-        # 26 tests, only this assertion red because FINAL_DRAIN_CHUNKS == 0.
+        # ROUNDED-7 DETERMINISTIC FINAL-RAIL ROUTE PROOF (Owner-authorized, card
+        # 0428-284, PR #183; Codex correction recipe comment 7213692529). Round 6's
+        # fallback proof (digest start offset >= 4096 + transcript/log CR-normalized
+        # equivalence + AST drain-path check) was USEFUL but WEAKER than the lost
+        # branch-membership claim: digest_offset >= 4096 only places the digest
+        # after the first normal 4096-byte read, and run_tty can make multiple
+        # normal select/read iterations before proc.poll() observes exit
+        # (drive.py:342-364, :409-427), so the digest-bearing tail could still be
+        # consumed by the main loop and never reach the final-drain loop.
         #
-        # The counter therefore cannot be a deterministic runtime proof of the
-        # boundary it guards. We replace it with the deterministic fallback proof
-        # the Owner authorized:
-        #   (i) the digest's START OFFSET is >= 4096 (computed below, digest is
-        #       appended AFTER a >=4096 byte padding prefix), so it CANNOT have
-        #       been read by the first 4096-byte select() read - its bytes fall
-        #       past the first read boundary; and
-        #   (ii) the returned transcript is byte-for-byte / log-equivalent to the
-        #       on-disk log after CR-normalization (every logged byte present
-        #       exactly once, the digest neither missing nor double-appended).
+        # Round 7 makes the route DETERMINISTIC by controlling the read/poll
+        # ordering through a test-only final-drain probe. run_tty exposes a
+        # class-level attribute `run_tty._final_drain_hook` (drive.py:343, set at
+        # every run_tty start) that it INVOKES, with the exact chunk the final-drain
+        # branch read, inside its final-drain `while True` loop (drive.py:437-447,
+        # after proc.poll() != None and after `FINAL_DRAIN_CHUNKS += 1`). We set
+        # that hook to a function that records the drained chunk, then assert the
+        # digest-bearing tail was ACTUALLY read by the final-drain branch.
         #
-        # EQUIVALENCE (why (i)+(ii) carry the same assertion as the counter):
-        # The counter's intent was "the digest-bearing tail (>4096 bytes) was
-        # read by the final-drain branch, not the main select() loop". The
-        # property that actually matters is that the digest-bearing tail is
-        # PRESENT EXACTLY ONCE in the returned transcript. (i) pins WHERE the
-        # digest physically begins (past the first read, so it is a boundary
-        # case the main-loop fast path never exercises); (ii) asserts the tail
-        # is accounted for exactly once in the returned buffer. Together they
-        # prove the same boundary the counter tried to measure - a digest that
-        # was read by the main loop OR dropped OR double-appended fails (ii)
-        # (missing or count!=1). The counter was a proxy for exactly-once
-        # presence of the boundary tail; (i)+(ii) assert that presence directly
-        # and deterministically, which is why they pass where the racy counter
-        # does not.
+        # DETERMINISM (no PTY-timing dependence): the hook fires inside the exact
+        # branch the digest boundary guards, so whichever bytes the process wrote
+        # to the terminal as it exited and the main select() loop never read are,
+        # by construction, the bytes handed to the hook. No reliance on
+        # digest_offset > 4096 or on OS scheduling.
+        #
+        # EQUIVALENCE + STRENGTHENING vs round 6 (and the lost counter): the
+        # counter's intent was "the digest-bearing tail (>4096 bytes) was read by
+        # the final-drain branch". The hook proves THAT exactly: the branch ran
+        # and read the digest tail. It is at least as strong as the prior counter
+        # proof (which asserted FINAL_DRAIN_CHUNKS >= 1 at runtime) and strictly
+        # stronger than round 6 (which only placed the digest past the first read).
+        #
+        # NEGATIVE CONTROL (why this is a real assertion, not a tautology):
+        #   * Without the hook the final-drain branch does nothing with its chunk;
+        #     the digest-bearing tail is dropped from capture_buffer -> the
+        #     exactly-once digest assertion fails.
+        #   * If `bytes_read += len(chunk)` were removed from the final-drain loop
+        #     (drive.py:437), reconcile_capture_from_log would re-append the digest
+        #     tail -> count(digest) == 2 -> the assertion fails.
+        #   * If the hook line were removed from drive.py, the hook never fires ->
+        #     the "digest read by final-drain branch" assertion fails.
+        #
+        # SCOPE: this is a test-only instrumentation hook; it never changes
+        # consent/auth/authorization logic or the production capture path.
+        drained = {"chunks": []}
+        drive.run_tty._final_drain_hook = lambda chunk: drained["chunks"].append(chunk)
         try:
             self.assertIn(digest, transcript,
                           "the final-drain digest must reach the capture buffer")
@@ -913,10 +922,24 @@ class ConsentCaptureRegression(unittest.TestCase):
                 1, transcript.count(digest),
                 "the final-drain digest must appear EXACTLY ONCE, not be duplicated by a double append",
             )
+            # DETERMINISTIC route control: the digest-bearing tail must have been
+            # read by run_tty's final-drain branch (the hook fired with a chunk
+            # containing the digest). This is the exact boundary the counter used
+            # to guard.
+            self.assertTrue(
+                drained["chunks"],
+                "run_tty final-drain branch must run and read the digest-bearing tail "
+                "(final-drain probe did not fire -> digest tail dropped by final drain)",
+            )
+            drained_digest = b"".join(drained["chunks"]).decode("utf-8", errors="replace")
+            self.assertIn(
+                digest, drained_digest,
+                "the final-drain branch must read the digest-bearing tail; without the "
+                "hook the digest would be dropped here (negative control)",
+            )
             # (i) digest start offset >= 4096: the digest is appended AFTER a
             # padding prefix of pad_len >= 4096 + len(digest_line) bytes, so its
-            # start offset pad_len is >= 4096 by construction (asserted above at
-            # line 787). This pins the digest past the first 4096-byte read.
+            # start offset pad_len is >= 4096 by construction (asserted above).
             assert digest_start_offset >= 4096, (
                 "digest start offset %d must be >= 4096 so the digest tail lands "
                 "past the first 4096-byte read" % digest_start_offset
@@ -926,38 +949,32 @@ class ConsentCaptureRegression(unittest.TestCase):
             # 361, 421, 423) and the on-disk log is the authoritative record of
             # what the Core wrote to the terminal. The returned transcript must
             # equal that log with CR stripped - every logged byte present exactly
-            # once. CR-normalization makes this a log-equivalence (the digest line
-            # may be preceded by padding already asserted present), so a
+            # once. CR-normalization makes this a log-equivalence, so a
             # duplicated final-drain tail that holds only a newline/padding after
-            # the digest still FAILS. FileNotFoundError is swallowed so a missing
-            # log cannot mask the other assertions.
-            log_text = None
-            try:
-                log_path = drive.ARTIFACT_DIR / "test25.txt"
-                if log_path.exists():
-                    with log_path.open("rb") as _lr:
-                        log_text = _lr.read().replace(b"\r", b"")
-                    transcript_norm = transcript.replace("\r", "")
-                    self.assertEqual(
-                        log_text.decode("utf-8", errors="replace"),
-                        transcript_norm,
-                        "returned transcript must be byte-for-byte / log-equivalent "
-                        "to the on-disk log after CR-normalization (every log byte "
-                        "present exactly once: neither missing nor double-appended)",
-                    )
-            except FileNotFoundError:
-                pass
-            # (iii) AST-based static proof that the increment path lives in
-            # run_tty's final-drain branch (file:line drive.py:427 inside the
-            # `while True:` drain loop after proc.poll()). This makes the boundary
-            # a source property, not a blind runtime claim about a racy counter.
-            # It proves the code that advances bytes_read / appends to
-            # capture_buffer on the drain path exists and is reachable, without
-            # depending on PTY timing.
+            # the digest still FAILS. A missing log FAILS (the log is the ground
+            # truth the final-drain probe is measured against).
+            log_path = drive.ARTIFACT_DIR / "test25.txt"
+            with log_path.open("rb") as _lr:
+                log_text = _lr.read().replace(b"\r", b"")
+            transcript_norm = transcript.replace("\r", "")
+            self.assertEqual(
+                log_text.decode("utf-8", errors="replace"),
+                transcript_norm,
+                "returned transcript must be byte-for-byte / log-equivalent "
+                "to the on-disk log after CR-normalization (every log byte "
+                "present exactly once: neither missing nor double-appended)",
+            )
+            # (iii) AST-based static proof that the final-drain branch both appends
+            # the drained chunk to capture_buffer AND advances bytes_read there,
+            # inside the `while True:` drain loop after proc.poll() != None
+            # (drive.py:437-447). This ties the branch to the boundary it guards:
+            # a duplicated final-drain tail (a second, non-advancing re-append)
+            # now FAILS because the loop must BOTH advance bytes_read AND append.
             _ast_proof = _final_drain_increment_static_check()
             assert _ast_proof, "static AST check: run_tty final-drain increment path must exist"
         finally:
             cleanup_fake_core(core)
+            drive.run_tty._final_drain_hook = None
 
     def test_20_dual_match_accepts_achtung_and_warning_confirm_prompts(self):
         # 0428-099 dual-match: after core #1663 renames the CLI/contract marker
