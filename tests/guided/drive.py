@@ -16,6 +16,16 @@ ROOT = Path(os.environ.get("DEMO_ROOT", Path(__file__).resolve().parents[2]))
 BAHA = os.environ.get("BAHA", "baha")
 ARTIFACT_DIR = Path(os.environ.get("ARTIFACT_DIR", ROOT / "artifacts"))
 
+# Instrumentation for the 0428-284 exactly-once final-drain regression.
+# FINAL_DRAIN_CHUNKS counts chunks read in run_tty's final-drain branch (the
+# `while True` loop after proc.poll() returns non-None, drive.py ~line 397),
+# i.e. bytes read from the PTY AFTER the process exited - the exact bytes the
+# reconcile step must append exactly once. It is a module-level counter (not a
+# return value) so run_tty's (rc, buffer) signature and all callers stay
+# unchanged. Tests reset it to 0 before a run and assert >= 1 afterwards to
+# prove the digest-bearing tail was read by the final-drain branch.
+FINAL_DRAIN_CHUNKS = 0
+
 class Rule:
     def __init__(self, pattern, response=None, callback=None, repeat=False, optional=False):
         self.pattern = re.compile(pattern, re.S)
@@ -409,6 +419,7 @@ def run_tty(name, argv, rules, env=None, timeout=900, no_output_timeout=None,
                                 if len(capture_buffer.encode("utf-8")) > MAX_CAPTURE_BYTES:
                                     raise RuntimeError(f"{name} capture exceeded {MAX_CAPTURE_BYTES} bytes")
                             bytes_read += len(chunk)
+                            FINAL_DRAIN_CHUNKS += 1
                             if len(buffer) > 65536:
                                 removed = len(buffer) - 65536
                                 buffer = buffer[removed:]

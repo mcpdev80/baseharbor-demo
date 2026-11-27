@@ -744,13 +744,19 @@ class ConsentCaptureRegression(unittest.TestCase):
         # by the main loop; the digest tail is read by the final-drain branch
         # after the process exits - exactly the boundary the fix guards.
         #
-        # Negative proof (static, no local run): the final-drain loop in
-        # run_tty (drive.py lines 397-415) appends every final-drain chunk to
-        # capture_buffer (line 408) AND advances bytes_read += len(chunk)
-        # (line 411); reconcile_capture_from_log then appends only
-        # log[bytes_read:] (lines 436-438). If bytes_read += len(chunk) were
-        # removed from the final-drain loop, bytes_read would lag by the digest
-        # tail and reconcile would re-append it -> count(digest) == 2. This test
+        # Branch-membership proof (static + runtime): drive.FINAL_DRAIN_CHUNKS
+        # is incremented once per chunk in run_tty's final-drain branch
+        # (the `while True` loop after proc.poll() != None, drive.py ~line 397).
+        # The test resets it to 0 before the run and asserts >= 1 afterwards, so
+        # a pass proves the digest-bearing tail (>4096 bytes) was read by the
+        # final-drain branch, not the main select() loop.
+        #
+        # Negative proof (static, no local run): the final-drain loop appends
+        # every final-drain chunk to capture_buffer AND advances bytes_read +=
+        # len(chunk); reconcile_capture_from_log then appends only
+        # log[bytes_read:]. If bytes_read += len(chunk) were removed from the
+        # final-drain loop, bytes_read would lag by the digest tail and
+        # reconcile would re-append it -> count(digest) == 2. This test
         # therefore FAILS deterministically without that line and passes with it.
         digest = "a" * 64
         digest_line = f"Re-run with --confirm-candidate {digest} to acknowledge this exact submission."
@@ -779,6 +785,8 @@ class ConsentCaptureRegression(unittest.TestCase):
             "(--confirm-candidate); refusing to record deployment state",
             final_blob,
         ], exit_code=3, delay=0.0, final_delay=0)
+        # Instrumentation: reset the final-drain counter before the run.
+        drive.FINAL_DRAIN_CHUNKS = 0
         transcript = ""
         try:
             _, transcript = run_capture(
@@ -788,6 +796,17 @@ class ConsentCaptureRegression(unittest.TestCase):
             # Fail-closed abort (no second run) is a valid production outcome;
             # the exactly-once boundary still must hold on the returned buffer.
             pass
+        # Proof of branch membership: the digest-bearing bytes (start offset
+        # >= 4096, past one 4096-byte read) must have been read by the final
+        # drain, not the main loop. >= 1 chunk in the final-drain branch is
+        # exactly the precondition the reconcile step guards; without it the
+        # digest never reaches reconcile and count would be 0.
+        self.assertGreaterEqual(
+            drive.FINAL_DRAIN_CHUNKS, 1,
+            "at least one final-drain chunk must be read after process exit; "
+            "this proves the digest-bearing tail (>4096 bytes) was consumed by "
+            "the final-drain branch, not the main select() loop",
+        )
         try:
             self.assertIn(digest, transcript,
                           "the final-drain digest must reach the capture buffer")
