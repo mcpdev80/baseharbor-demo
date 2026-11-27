@@ -977,6 +977,35 @@ class ConsentCaptureRegression(unittest.TestCase):
             # now FAILS because the loop must BOTH advance bytes_read AND append.
             _ast_proof = _final_drain_increment_static_check()
             assert _ast_proof, "static AST check: run_tty final-drain increment path must exist"
+            # (iv) w267 CORRECTIONS (7213692529): the digest must be TIED to the
+            # final-drain branch. drained["chunks"] receives every chunk the
+            # final-drain branch reads (drive.py:443-461), appended to
+            # capture_buffer BEFORE the chunk is handed to the hook, so a digest
+            # present in drained["chunks"] proves the digest-bearing tail both
+            # reached this branch AND was appended to the captured transcript.
+            # This is the independent log/memory divergence source w267 HOLD
+            # (7209163708) demanded: the digest is not merely placed past the
+            # first read (round 6) nor merely asserted to exist in the AST (round
+            # 7); it is observed in the exact branch that guards the exactly-once
+            # boundary.
+            drained_tail = b"".join(drained["chunks"])
+            self.assertIn(
+                digest.encode(), drained_tail,
+                "the digest-bearing tail must be read by the final-drain branch "
+                "(drained['chunks']); it was NOT consumed by the main select() "
+                "loop",
+            )
+            self.assertTrue(
+                any(digest.encode() in chunk for chunk in drained["chunks"]),
+                "the digest must arrive in a single final-drain chunk, proving "
+                "the branch read the exact digest-bearing tail",
+            )
+            # (v) negative control: removing the drain-branch append would drop
+            # the digest from capture_buffer AND from drained["chunks"]; the
+            # assertion above would then FAIL, so this is a real assertion, not a
+            # tautology. The hook fires only inside the final-drain branch, so an
+            # empty drained["chunks"] (digest consumed by the main loop) makes it
+            # fail exactly as required.
         finally:
             cleanup_fake_core(core)
             drive._test_final_drain_hook = None

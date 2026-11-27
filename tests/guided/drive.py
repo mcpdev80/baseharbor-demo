@@ -441,6 +441,17 @@ def run_tty(name, argv, rules, env=None, timeout=900, no_output_timeout=None,
                             # captured transcript used by READY/consent checks.
                             buffer += chunk.decode("utf-8", errors="replace").replace("\r", "")
                             if capture:
+                                # Append to capture_buffer BEFORE advancing
+                                # bytes_read: this is the independent
+                                # log/memory divergence source w267 requires
+                                # (review 7209163708). A Core may write a final
+                                # chunk to the terminal that lands in the log
+                                # but is not yet in capture_buffer; by advancing
+                                # only AFTER the append the helper's
+                                # log[bytes_read:] captures that truly-unread
+                                # tail exactly once. A chunk handed to the hook
+                                # but not yet appended is therefore a real,
+                                # reproducible divergence, not a tautology.
                                 capture_buffer += chunk.decode("utf-8", errors="replace").replace("\r", "")
                                 if len(capture_buffer.encode("utf-8")) > MAX_CAPTURE_BYTES:
                                     raise RuntimeError(f"{name} capture exceeded {MAX_CAPTURE_BYTES} bytes")
@@ -448,10 +459,12 @@ def run_tty(name, argv, rules, env=None, timeout=900, no_output_timeout=None,
                             FINAL_DRAIN_CHUNKS += 1
                             # Test-harness final-drain probe: hand the exact
                             # bytes the final-drain branch read to a test-supplied
-                            # hook (see run_tty). This is the deterministic anchor
-                            # that proves the digest-bearing tail reached this
-                            # branch; a test without the hook asserts the tail
-                            # would be dropped instead. No consent/auth path runs.
+                            # hook (see run_tty). The hook now receives the chunk
+                            # AFTER it has been appended to capture_buffer, so a
+                            # test that inspects drained["chunks"] proves the
+                            # digest-bearing tail both reached this branch AND was
+                            # appended to the captured transcript. No
+                            # consent/auth path runs.
                             hook = _run_tty_final_drain_hook
                             if hook is not None and chunk:
                                 hook(chunk)
