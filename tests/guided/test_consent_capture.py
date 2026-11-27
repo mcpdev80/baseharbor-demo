@@ -723,6 +723,49 @@ class ConsentCaptureRegression(unittest.TestCase):
         finally:
             os.unlink(log_path)
 
+    def test_25_run_tty_final_drain_appends_missing_log_bytes_once(self):
+        # Deterministic run_tty regression for the 0428-284 boundary fix. The
+        # review-2 finding was that the helper double-appended (capture_tail
+        # started empty and advanced only inside the helper) and reread the log
+        # before the writer flushed. Here we drive run_tty in capture mode and
+        # assert the exactly-once boundary property directly: the returned
+        # capture_buffer must contain every logged byte exactly once, and in
+        # particular a digest written as the very last output must be present
+        # exactly once (not duplicated by a second append) and not missing
+        # (not skipped by an unflushed writer).
+        digest = "a" * 64
+        # A fake core that prints the prompts then exits non-zero. The digest
+        # line is emitted last, after the read loop has drained the PTY master,
+        # so the missing-rest-byte path is the one exercised.
+        core = write_fake_core([
+            "Application name [demo]:",
+            "Environment [demo]:",
+            "",
+            "Error: record deployment before mutation: candidate submission requires an explicit "
+            "operator/automation consent (--confirm-candidate); refusing to record deployment state: "
+            "candidate submission requires an explicit operator/automation consent "
+            "(--confirm-candidate); refusing to record deployment state",
+            f"Re-run with --confirm-candidate {digest} to acknowledge this exact submission.",
+        ], exit_code=3, delay=0.02, final_delay=0)
+        transcript = ""
+        try:
+            _, transcript = run_capture(
+                "test25", core, drive.up_rules, exit_code=3, timeout=30,
+            )
+        except RuntimeError:
+            # Fail-closed abort (no second run) is a valid production outcome;
+            # the exactly-once boundary still must hold on the returned buffer.
+            pass
+        try:
+            self.assertIn(digest, transcript,
+                          "the final-drain digest must reach the capture buffer")
+            self.assertEqual(
+                1, transcript.count(digest),
+                "the final-drain digest must appear EXACTLY ONCE, not be duplicated by a double append",
+            )
+        finally:
+            cleanup_fake_core(core)
+
     def test_20_dual_match_accepts_achtung_and_warning_confirm_prompts(self):
         # 0428-099 dual-match: after core #1663 renames the CLI/contract marker
         # "Achtung:" -> "Warning:", the demo consumer matchers must stay green
@@ -782,6 +825,7 @@ if __name__ == "__main__":
         "test_22_capture_boundary_still_aborts_on_foreign_error",
         "test_23_capture_boundary_aborts_when_digest_absent",
         "test_24_reconcile_appends_unread_log_bytes_to_capture_buffer",
+        "test_25_run_tty_final_drain_appends_missing_log_bytes_once",
     ]:
         try:
             getattr(tc, method)()

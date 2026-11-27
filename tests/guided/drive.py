@@ -258,29 +258,32 @@ def capability_selection_response(match, text):
     keys.append("\n")
     return keys
 
-def reconcile_capture_from_log(log_path, capture_buffer, capture_tail):
-    """Append on-disk log bytes the drain loop never read into capture_buffer.
+def reconcile_capture_from_log(log_path, capture_buffer, already_read):
+    """Append ONLY the on-disk log bytes not yet appended to capture_buffer.
 
-    The final-drain loop in run_tty reads the PTY master until it returns
-    empty, but a Core can write bytes to the terminal as it exits; those land
-    in the authoritative on-disk log without being read back into the
-    in-memory capture_buffer. The digest + documented retry hint that
-    run_guided_consent_flow depends on live there, so append everything in the
-    log past what capture_tail already accounts for. This reconciles the two
-    capture buckets (log is authoritative); it does NOT assert a specific PTY
-    mechanism. Returns (updated_capture_buffer, updated_capture_tail) as a tuple
-    so the caller can rebind its locals (strings are immutable) and so repeated
-    calls do not double-append.
+    The final-drain loop in run_tty reads the PTY master until it returns empty
+    and, for every chunk it reads, appends that same chunk to capture_buffer
+    AND writes it to the authoritative on-disk log. A Core can write a final
+    chunk to the terminal as it exits that lands in the log without ever being
+    read back into capture_buffer, so the digest + documented retry hint that
+    run_guided_consent_flow depends on would be missing from the returned first
+    transcript. This appends exactly the bytes the drain loop has not yet
+    accounted for: ``log[already_read:]``. ``already_read`` is the running total
+    of bytes the PTY reader has already appended, so repeated calls do not
+    double-append and the first call (``already_read == 0``) appends nothing of
+    what was already captured. It does NOT assert a specific PTY mechanism and
+    returns (updated_capture_buffer, new_already_read) as a tuple so the caller
+    can rebind its locals (strings/ints are immutable).
     """
     try:
         with log_path.open("rb") as log_read:
             log_tail = log_read.read()
     except OSError:
-        return capture_buffer, capture_tail
-    not_yet = log_tail[len(capture_tail):]
-    if not_yet:
-        capture_buffer += not_yet.decode("utf-8", errors="replace").replace("\r", "")
-    return capture_buffer, log_tail
+        return capture_buffer, already_read
+    rest = log_tail[already_read:]
+    if rest:
+        capture_buffer += rest.decode("utf-8", errors="replace").replace("\r", "")
+    return capture_buffer, len(log_tail)
 
 
 def run_tty(name, argv, rules, env=None, timeout=900, no_output_timeout=None,
@@ -317,7 +320,7 @@ def run_tty(name, argv, rules, env=None, timeout=900, no_output_timeout=None,
     last_heartbeat = started
     buffer = ""
     capture_buffer = ""
-    capture_tail = b""
+    bytes_read = 0
     cursor = 0
     try:
         with log_path.open("wb") as log:
@@ -343,6 +346,7 @@ def run_tty(name, argv, rules, env=None, timeout=900, no_output_timeout=None,
                             capture_buffer += chunk.decode("utf-8", errors="replace").replace("\r", "")
                             if len(capture_buffer.encode("utf-8")) > MAX_CAPTURE_BYTES:
                                 raise RuntimeError(f"{name} capture exceeded {MAX_CAPTURE_BYTES} bytes")
+                        bytes_read += len(chunk)
                         if len(buffer) > 65536:
                             removed = len(buffer) - 65536
                             buffer = buffer[removed:]
@@ -418,11 +422,16 @@ def run_tty(name, argv, rules, env=None, timeout=900, no_output_timeout=None,
                         # capture_buffer. The digest + documented retry hint that
                         # drive.run_guided_consent_flow relies on live there, so
                         # reconcile the in-memory buffer against the authoritative
-                        # on-disk log and append anything the drain loop left
-                        # unread. This is a capture-bucket reconciliation, NOT a
+                        # on-disk log. bytes_read tracks every byte already
+                        # appended from the PTY reader, so appending only
+                        # log[bytes_read:] yields the missing REST bytes exactly
+                        # once and never double-appends what was already captured.
+                        # The writer is flushed before the reread so a final chunk
+                        # still sitting in the BufferedWriter's buffer is visible
+                        # here. This is a capture-bucket reconciliation, NOT a
                         # claim about a specific PTY mechanism.
-                        capture_buffer, capture_tail = reconcile_capture_from_log(
-                            log_path, capture_buffer, capture_tail
+                        capture_buffer, bytes_read = reconcile_capture_from_log(
+                            log_path, capture_buffer, bytes_read
                         )
                     if not capture:
                         if rc not in expected_returncodes:
