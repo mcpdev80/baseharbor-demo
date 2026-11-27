@@ -408,6 +408,7 @@ def run_tty(name, argv, rules, env=None, timeout=900, no_output_timeout=None,
                                 capture_buffer += chunk.decode("utf-8", errors="replace").replace("\r", "")
                                 if len(capture_buffer.encode("utf-8")) > MAX_CAPTURE_BYTES:
                                     raise RuntimeError(f"{name} capture exceeded {MAX_CAPTURE_BYTES} bytes")
+                            bytes_read += len(chunk)
                             if len(buffer) > 65536:
                                 removed = len(buffer) - 65536
                                 buffer = buffer[removed:]
@@ -422,14 +423,16 @@ def run_tty(name, argv, rules, env=None, timeout=900, no_output_timeout=None,
                         # capture_buffer. The digest + documented retry hint that
                         # drive.run_guided_consent_flow relies on live there, so
                         # reconcile the in-memory buffer against the authoritative
-                        # on-disk log. bytes_read tracks every byte already
-                        # appended from the PTY reader, so appending only
-                        # log[bytes_read:] yields the missing REST bytes exactly
-                        # once and never double-appends what was already captured.
-                        # The writer is flushed before the reread so a final chunk
+                        # on-disk log. bytes_read is advanced by len(chunk) for
+                        # every final-drain chunk above, so the helper appends only
+                        # log[bytes_read:] (the truly unread tail) exactly once and
+                        # never double-appends what was already captured. The writer
+                        # is flushed/fsynced before the reread so a final chunk
                         # still sitting in the BufferedWriter's buffer is visible
                         # here. This is a capture-bucket reconciliation, NOT a
                         # claim about a specific PTY mechanism.
+                        log.flush()
+                        os.fsync(log.fileno())
                         capture_buffer, bytes_read = reconcile_capture_from_log(
                             log_path, capture_buffer, bytes_read
                         )
