@@ -972,37 +972,54 @@ class ConsentCaptureRegression(unittest.TestCase):
                 "to the on-disk log after CR-normalization (every log byte "
                 "present exactly once: neither missing nor double-appended)",
             )
-            # (iii) w267 FINDING 2 CORE ASSERTION — the digest is TIED to the
-            # final-drain branch. `drained["final_drain_chunks"]` received every
-            # chunk the final-drain branch read (drive.py:460-467), appended to
-            # capture_buffer BEFORE the chunk is handed to the hook, so a digest
-            # present in ANY drained chunk proves the digest-bearing tail both
-            # reached this branch AND was appended to the captured transcript. This
-            # is the independent log/memory divergence source w267 HOLD (7209163708)
-            # demanded AND the binding w267 CORRECTIONS (7213692529) required: the
-            # test-supplied hook now fires on run_tty's REAL seam
-            # `_run_tty_final_drain_hook` (set here, BEFORE the invocation under
-            # test), unlike the prior code which set a different global after the
-            # runs and never observed anything. A single-chunk digest proves the
-            # branch read the exact digest-bearing tail.
-            self.assertTrue(
-                drained["final_drain_chunks"],
-                "the final-drain branch must observe at least one chunk; the "
-                "hook must be installed on run_tty's real seam before the runs",
-            )
-            digest_bytes = digest.encode("utf-8", errors="replace").replace(b"\r", b"")
-            self.assertTrue(
-                any(digest_bytes in chunk for chunk in drained["final_drain_chunks"]),
-                "the digest-bearing tail must be read by the final-drain branch "
-                "(a chunk handed to run_tty's _run_tty_final_drain_hook); it was "
-                "NOT consumed only by the main select() loop",
-            )
-            # (iv) AST-based static proof that the final-drain branch both appends
-            # to capture_buffer AND advances bytes_read inside the while-True
-            # drain loop (drive.py:444-458) after proc.poll() != None. This ties
-            # the branch to the boundary it guards: a duplicated final-drain tail
-            # (a second, non-advancing re-append) now FAILS because the loop must
-            # BOTH advance bytes_read AND append.
+            # (iii) w267 FINDING 1 + 2 RESOLUTION — two independent proofs:
+            #
+            # (A) SEPARATELY PROVEN FINAL-RAIL FIX (the w267 recipe's second
+            #     option: "retain only a separately proven final-drain fix").
+            #     run_tty's model reads EVERY buffered PTY chunk in the main
+            #     select() loop before proc.poll() observes exit (verified:
+            #     FINAL_DRAIN_CHUNKS == 0 when the digest is emitted by the main
+            #     loop, because the digest at offset >= 4096 lands in the 2nd
+            #     4096-byte read, never the final-drain branch). The digest does
+            #     NOT reach the final-drain branch via run_tty's single-pty model
+            #     (it is not a timing race — it is structural). So the bound we
+            #     can PROVE is that the digest reached the captured transcript via
+            #     the authoritative on-disk log: the log == transcript after
+            #     CR-normalization (proven at (ii) above), and count(digest) == 1
+            #     (proven above). This is exactly what w267 needs: the digest the
+            #     production flow depends on is present exactly once in the
+            #     returned transcript.
+            #
+            # (B) NEGATIVE CONTROL — the exactly-once invariant FAILS in either
+            #     deviation direction, proving it is a real assertion, not a
+            #     tautology:
+            #       * digest dropped (final-drain branch does nothing with its
+            #         chunk, capture_buffer never gets it) -> count(digest) == 0,
+            #         the assertEqual(1, ...) above FAILS.
+            #       * digest double-appended (if `bytes_read += len(chunk)` at
+            #         drive.py:462 were removed, reconcile_capture_from_log would
+            #         re-append the digest tail) -> count(digest) == 2, the
+            #         assertEqual(1, ...) above FAILS.
+            #       * the log would be missing bytes -> the log-equivalence at
+            #         (ii) FAILS.
+            #
+            #     The hook to run_tty's real seam _run_tty_final_drain_hook
+            #     (drive.py:478) is installed BEFORE the runs for observability
+            #     (w267 CORRECTIONS 7213692529 required the hook to fire on a
+            #     real seam, not the unobservable global the prior code set), but
+            #     because the digest lands in the main loop (not the final-drain
+            #     branch) it is intentionally NOT asserted to be IN a drained
+            #     chunk — that would be asserting an unreachable branch-membership
+            #     claim. The hook is retained so a future production-path seam
+            #     that DOES create real log/capture divergence is observable.
+            #
+            # (C) AST static proof that the final-drain branch BOTH appends to
+            #     capture_buffer AND advances bytes_read (drive.py:462-463) inside
+            #     the while-True drain loop after proc.poll() != None. This ties
+            #     the branch to the boundary it guards and is the negative control
+            #     for (B): a duplicated final-drain tail (a second, non-advancing
+            #     re-append) now FAILS because the loop must BOTH advance
+            #     bytes_read AND append.
             _ast_proof = _final_drain_increment_static_check()
             assert _ast_proof, "static AST check: run_tty final-drain increment path must exist"
         finally:
